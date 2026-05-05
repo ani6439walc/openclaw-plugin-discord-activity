@@ -15,6 +15,8 @@
 - **直觀圖示 (Tool Icons)**：為不同的工具類型配備了可愛的專屬 Emoji（例如 📂 代表檔案操作、🚀 代表指令執行）。
 - **自動清理 (Auto Cleanup)**：當 Agent turn 結束或準備回覆主人時，狀態訊息會自動消失。
 - **智慧過濾**：自動過濾掉 Sub-agents 的瑣碎狀態，專注於主畫面的呈現。
+- **DM 支援 (DM Support)**：增強了在私訊 (Direct Messages) 中的狀態顯示解析與 Fallback 訊息機制。
+- **Active Memory 處理**：優化了 Tool Status 更新中的 Active Memory 記憶處理。
 
 ## 🎬 效果預覽 (Preview)
 
