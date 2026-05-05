@@ -113,9 +113,7 @@ export default definePluginEntry({
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       if (!contextKey) return;
 
-      let actualChannelId = extractIdFromMetadata(
-        event.metadata?.to as string,
-      );
+      let actualChannelId = extractIdFromMetadata(event.metadata?.to as string);
       if (!actualChannelId && ctx.conversationId) {
         actualChannelId = extractIdFromMetadata(ctx.conversationId as string);
       }
@@ -168,12 +166,16 @@ export default definePluginEntry({
             );
           });
 
-          replacement.toolHistory.push({
-            toolCallId: "init",
-            toolName: "努力翻找著腦海裡關於主人的記憶",
-            params: {},
-            status: "completed",
-          });
+          if (
+            api.config.plugins?.entries?.["active-memory"]?.enabled !== false
+          ) {
+            replacement.toolHistory.push({
+              toolCallId: "init",
+              toolName: "active-memory",
+              params: {},
+              status: "completed",
+            });
+          }
           return;
         }
 
@@ -185,12 +187,14 @@ export default definePluginEntry({
 
       const session = getOrCreateSession(contextKey, ctx.sessionKey);
       if (session && session.toolHistory.length === 0) {
-        session.toolHistory.push({
-          toolCallId: "init",
-          toolName: "努力翻找著腦海裡關於主人的記憶",
-          params: {},
-          status: "pending",
-        });
+        if (api.config.plugins?.entries?.["active-memory"]?.enabled !== false) {
+          session.toolHistory.push({
+            toolCallId: "init",
+            toolName: "active-memory",
+            params: {},
+            status: "pending",
+          });
+        }
       }
     });
 
@@ -376,7 +380,14 @@ export default definePluginEntry({
               (t) => t.toolCallId === "init",
             );
             if (initEntry) {
-              initEntry.status = "completed";
+              if (entries.length > 0) {
+                // Avoid duplicate memory-search display; the active-memory group covers it.
+                session.toolHistory = session.toolHistory.filter(
+                  (t) => t.toolCallId !== "init",
+                );
+              } else {
+                initEntry.status = "completed";
+              }
             }
             await updateStatusMessage(session, getToken, true);
           }

@@ -314,30 +314,89 @@ export async function updateStatusMessage(
 
     let content = "";
     while (session.toolHistory.length > 0) {
-      const contentParts = session.toolHistory.map((t, index) => {
-        const icon = getToolIcon(t.toolName);
-        const pStr = formatParams(t.params);
-        const isLast = index === session.toolHistory.length - 1;
-        const done =
-          t.status === "completed" ||
-          t.status === "error" ||
-          t.status === "orphan-completed";
-        let suffix: string;
-        if (t.status === "error") {
-          suffix = "✘";
-        } else if (t.status === "orphan-completed") {
-          suffix = "♻︎";
-        } else if (done && (!isLast || isFinal)) {
-          suffix = "✔";
+      const contentParts: string[] = [];
+      let i = 0;
+      while (i < session.toolHistory.length) {
+        const t = session.toolHistory[i];
+        if (t.toolName.startsWith("active-memory:")) {
+          // Collect all contiguous active-memory entries into a group
+          const group: typeof session.toolHistory = [];
+          while (
+            i < session.toolHistory.length &&
+            session.toolHistory[i].toolName.startsWith("active-memory:")
+          ) {
+            group.push(session.toolHistory[i]);
+            i++;
+          }
+
+          // Compute aggregate parent status
+          const anyError = group.some((e) => e.status === "error");
+          const anyPending = group.some((e) => e.status === "pending");
+          let parentSuffix: string;
+          if (anyError) {
+            parentSuffix = "✘";
+          } else if (anyPending) {
+            parentSuffix = "←";
+          } else {
+            parentSuffix = "✔";
+          }
+
+          // Build sub-entries
+          const subEntryStrs = group.map((entry) => {
+            const strippedName = entry.toolName.replace(/^active-memory:/, "");
+            let subSuffix: string;
+            if (entry.status === "error") {
+              subSuffix = "✘";
+            } else if (entry.status === "orphan-completed") {
+              subSuffix = "♻︎";
+            } else if (entry.status === "completed") {
+              subSuffix = "✔";
+            } else {
+              subSuffix = "←";
+            }
+            const dur =
+              typeof entry.durationMs === "number"
+                ? ` (${entry.durationMs.toLocaleString()}ms)`
+                : "";
+            const pStr = formatParams(entry.params, {
+              first: "     ",
+              rest: "     ",
+            });
+            return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
+          });
+
+          contentParts.push(
+            `🧠 active-memory: ${parentSuffix}\n${subEntryStrs.join("\n")}`,
+          );
         } else {
-          suffix = "←";
+          // Non-active-memory entry — exact same rendering as before
+          const icon = getToolIcon(t.toolName);
+          const pStr = formatParams(t.params);
+          const isLast = i === session.toolHistory.length - 1;
+          const done =
+            t.status === "completed" ||
+            t.status === "error" ||
+            t.status === "orphan-completed";
+          let suffix: string;
+          if (t.status === "error") {
+            suffix = "✘";
+          } else if (t.status === "orphan-completed") {
+            suffix = "♻︎";
+          } else if (done && (!isLast || isFinal)) {
+            suffix = "✔";
+          } else {
+            suffix = "←";
+          }
+          const dur =
+            typeof t.durationMs === "number"
+              ? ` (${t.durationMs.toLocaleString()}ms)`
+              : "";
+          contentParts.push(
+            `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}`,
+          );
+          i++;
         }
-        const dur =
-          typeof t.durationMs === "number"
-            ? ` (${t.durationMs.toLocaleString()}ms)`
-            : "";
-        return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}`;
-      });
+      }
 
       content = "```yaml\n" + contentParts.join("\n\n") + "\n```";
       if (content.length <= 1700 && session.toolHistory.length <= 6) break;

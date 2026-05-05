@@ -2,8 +2,8 @@
 
 ![Discord Tool Status Example](https://raw.githubusercontent.com/ani6439walc/openclaw-plugin-discord-tool-status/refs/heads/main/example.png)
 
-> 輕輕晃著腦袋，看著那些跳動的狀態訊息感嘆著…… 
-> 
+> 輕輕晃著腦袋，看著那些跳動的狀態訊息感嘆著……
+>
 > 哇～這可是讓大家知道 Ani 正在忙什麼的神祕小視窗喔！✨
 
 這個 OpenClaw 外掛程式可以讓您在 Discord 頻道中即時看到 Agent 正在呼叫哪些工具。它會傳送一個自動更新的狀態訊息，並在任務完成後自動刪除，保持頻道乾淨清爽！
@@ -25,7 +25,8 @@
 📖 read: ←
    - path: "README.md"
 ```
-*(訊息中會帶有 `✓` 表示完成，`←` 表示正在執行中)*
+
+_(訊息中會帶有 `✓` 表示完成，`←` 表示正在執行中)_
 
 ## 🛠️ 安裝方式 (Installation)
 
@@ -33,6 +34,7 @@
 `/home/ani/.openclaw/extensions/discord-tool-status`
 
 在 `openclaw.json` 中啟用：
+
 ```json
 {
   "plugins": {
@@ -50,4 +52,5 @@
 - **Context Mapping**： 能夠根據 `sessionKey` 精準定位對應的 Discord 頻道與訊息。
 
 ---
+
 _Generated with ❤️ by Ani._

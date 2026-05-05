@@ -45,13 +45,18 @@ export function getToolIcon(name: string): string {
   return "💡";
 }
 
-export function formatParams(params: any): string {
+export function formatParams(
+  params: any,
+  indent?: { first: string; rest: string },
+): string {
   if (!params || typeof params !== "object") return "";
+  const firstPrefix = indent?.first ?? "   - ";
+  const restPrefix = indent?.rest ?? "     ";
   return Object.entries(params)
     .filter(([_, v]) => v !== undefined && v !== null)
     .map(([k, v], index) => {
-      const keyPrefix = index === 0 ? "   - " : "     ";
-      const valueIndent = index === 0 ? "      " : "      ";
+      const keyPrefix = index === 0 ? firstPrefix : restPrefix;
+      const valueIndent = "      ";
       let val = typeof v === "string" ? v : JSON.stringify(v, null, 5);
       val = val.trim();
 
