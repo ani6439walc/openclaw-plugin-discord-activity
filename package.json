@@ -1,21 +1,22 @@
 {
   "name": "discord-tool-status",
-  "version": "2026.5.5",
+  "version": "2026.5.4",
   "type": "module",
   "openclaw": {
     "extensions": [
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.5.3",
-      "minGatewayVersion": "2026.5.3"
+      "pluginApi": ">=2026.5.4",
+      "minGatewayVersion": "2026.5.4"
     },
     "build": {
-      "openclawVersion": "2026.5.3",
-      "pluginSdkVersion": "2026.5.3"
+      "openclawVersion": "2026.5.4",
+      "pluginSdkVersion": "2026.5.4"
     }
   },
   "scripts": {
+    "build": "bun build ./index.ts --outdir ./dist --target node",
     "test": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
