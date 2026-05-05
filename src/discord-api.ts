@@ -7,6 +7,36 @@ export function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+const dmChannelCache = new Map<string, string>();
+
+export async function resolveDmChannel(
+  userId: string,
+  token: string,
+): Promise<string | undefined> {
+  const cached = dmChannelCache.get(userId);
+  if (cached) return cached;
+
+  const res = await discordApiRequest(
+    `https://discord.com/api/v10/users/@me/channels`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ recipient_id: userId }),
+    },
+    "resolveDmChannel",
+  );
+
+  const data = (await res.json().catch(() => ({}))) as any;
+  if (res.ok && data.id) {
+    dmChannelCache.set(userId, data.id);
+    return data.id;
+  }
+  return undefined;
+}
+
 export async function getRetryDelayMs(res: Response): Promise<number> {
   const headerVal = Number(res.headers.get("retry-after"));
   if (Number.isFinite(headerVal) && headerVal > 0) {

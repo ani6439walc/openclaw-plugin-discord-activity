@@ -47,6 +47,14 @@ export function extractSenderId(metadata: any): string | undefined {
   return String(metadata?.senderId ?? "").trim() || undefined;
 }
 
+export function extractUserIdFromDirectSessionKey(
+  sessionKey: string | undefined,
+): string | undefined {
+  if (!sessionKey) return undefined;
+  const match = sessionKey.match(/discord:direct:(\d+)/i);
+  return match?.[1];
+}
+
 export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
   const messages = (event?.messages ?? []) as AgentEventMessage[];
   if (!Array.isArray(messages) || messages.length === 0) {

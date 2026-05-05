@@ -58,6 +58,14 @@ export default definePluginEntry({
       );
     }
 
+    function isDiscordContext(ctx: any): boolean {
+      return (
+        ctx.channelId === "discord" ||
+        ctx.messageProvider === "discord" ||
+        /^\d{17,20}$/.test(String(ctx.channelId))
+      );
+    }
+
     function shouldSkipSession(ctx: any, hookName: string): boolean {
       if (
         isActiveMemorySessionKey(ctx.sessionKey) ||
@@ -98,16 +106,22 @@ export default definePluginEntry({
     }
 
     api.on("message_received", async (event, ctx) => {
-      if (ctx.channelId !== "discord") return;
+      if (!isDiscordContext(ctx)) return;
       if (shouldSkipSession(ctx, "message_received")) return;
       logHookEvent("message_received", event, ctx);
 
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       if (!contextKey) return;
 
-      const actualChannelId = extractIdFromMetadata(
+      let actualChannelId = extractIdFromMetadata(
         event.metadata?.to as string,
       );
+      if (!actualChannelId && ctx.conversationId) {
+        actualChannelId = extractIdFromMetadata(ctx.conversationId as string);
+      }
+      if (!actualChannelId && /^\d{17,20}$/.test(String(ctx.channelId))) {
+        actualChannelId = String(ctx.channelId);
+      }
       if (!actualChannelId) return;
 
       sessionContextMap.set(contextKey, {
@@ -273,11 +287,37 @@ export default definePluginEntry({
     });
 
     api.on("message_sending", async (event, ctx) => {
-      if (ctx.channelId !== "discord") return undefined;
+      if (!isDiscordContext(ctx)) return undefined;
       if (shouldSkipSession(ctx, "message_sending")) return undefined;
       logHookEvent("message_sending", event, ctx);
 
-      await resolveAndFinalize(ctx, 1000, "message_sending");
+      let sessionKey = ctx.sessionKey;
+      if (!sessionKey && ctx.conversationId) {
+        const convId = extractIdFromMetadata(ctx.conversationId as string);
+        if (convId) {
+          for (const [_, session] of activeSessions) {
+            if (session.channelId === convId) {
+              sessionKey = session.ownerSessionKey;
+              break;
+            }
+          }
+        }
+      }
+      if (!sessionKey) return undefined;
+
+      const contextKey = getDiscordContextKey(sessionKey);
+      if (!contextKey) return undefined;
+      const session = await resolveSession(contextKey, sessionKey);
+      if (!session) return undefined;
+      await updateStatusMessage(session, getToken, true);
+      scheduleSessionCleanup(
+        contextKey,
+        session,
+        sessionKey,
+        1000,
+        "message_sending",
+        getToken,
+      );
       return undefined;
     });
 

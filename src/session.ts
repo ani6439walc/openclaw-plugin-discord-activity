@@ -5,7 +5,9 @@ import {
   sendMessage,
   editMessage,
   sleep,
+  resolveDmChannel,
 } from "./discord-api.js";
+import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { SESSION_RESOLVE_RETRY_MS } from "./constants.js";
 import { getToolIcon, formatParams } from "./formatting.js";
 
@@ -263,6 +265,28 @@ export async function clearStatusMessage(
   session.toolHistory = [];
 }
 
+async function sendMessageWithDmFallback(
+  session: SessionEntry,
+  content: string,
+  token: string,
+  replyToId?: string,
+): Promise<string | undefined> {
+  let createdId = await sendMessage(session.channelId, content, token, replyToId);
+  if (createdId) return createdId;
+
+  // sendMessage failed — possibly channelId is a userId for DMs
+  const userId = extractUserIdFromDirectSessionKey(session.ownerSessionKey);
+  if (userId && userId === session.channelId) {
+    const dmChannelId = await resolveDmChannel(userId, token);
+    if (dmChannelId) {
+      session.channelId = dmChannelId;
+      createdId = await sendMessage(dmChannelId, content, token, replyToId);
+      if (createdId) return createdId;
+    }
+  }
+  return undefined;
+}
+
 export async function updateStatusMessage(
   session: SessionEntry,
   getToken: (accountId?: string) => string,
@@ -332,8 +356,8 @@ export async function updateStatusMessage(
         return;
       }
 
-      const createdId = await sendMessage(
-        session.channelId,
+      const createdId = await sendMessageWithDmFallback(
+        session,
         content,
         token,
         session.userMessageId,
