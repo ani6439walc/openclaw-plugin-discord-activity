@@ -15,6 +15,28 @@ import { activeSessions, sessionContextMap } from "./src/session.js";
 
 type Handler = (event: any, ctx: any) => Promise<any>;
 
+async function flushPromises() {
+  for (let i = 0; i < 20; i++) {
+    await Promise.resolve();
+  }
+}
+
+function getLastStatusContent(calls: any[], channelId: string): string {
+  const relevant = calls.filter(([url, init]) => {
+    const method = (init as RequestInit | undefined)?.method ?? "POST";
+    return (
+      String(url).includes(`/channels/${channelId}/messages`) &&
+      (method === "POST" || method === "PATCH")
+    );
+  });
+  const last = relevant[relevant.length - 1];
+  if (!last) return "";
+  const body = JSON.parse(
+    String((last[1] as RequestInit | undefined)?.body ?? "{}"),
+  ) as { content?: string };
+  return body.content ?? "";
+}
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -209,17 +231,10 @@ describe("discord-tool-status", () => {
       ctx,
     );
 
-    const postCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages") &&
-        ((init as RequestInit | undefined)?.method ?? "POST") === "POST",
+    const content = getLastStatusContent(
+      fetchMock.mock.calls,
+      "1472937004919423059",
     );
-    expect(postCall).toBeDefined();
-
-    const postBody = JSON.parse(
-      String((postCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
-    ) as { content?: string };
-    const content = postBody.content ?? "";
 
     expect(content).toContain(
       "   - query: Singtel 提醒 cronjob 更新日期 2026-08-15 2026-08-27",
@@ -274,6 +289,12 @@ describe("discord-tool-status", () => {
       sessionKey: "agent:main:discord:direct:529296776637972480",
     };
 
+    firstPost.resolve(
+      new Response(JSON.stringify({ id: "status-concurrent-1" }), {
+        status: 200,
+      }),
+    );
+
     await emit(
       "message_received",
       {
@@ -308,12 +329,6 @@ describe("discord-tool-status", () => {
         },
       },
       ctx,
-    );
-
-    firstPost.resolve(
-      new Response(JSON.stringify({ id: "status-concurrent-1" }), {
-        status: 200,
-      }),
     );
 
     await vi.advanceTimersByTime(100);
@@ -377,7 +392,12 @@ describe("discord-tool-status", () => {
     await vi.advanceTimersByTime(100);
     await auxBeforeTool;
 
-    expect(fetchMock.mock.calls.length).toBe(0);
+    const postCallsBeforeMainTool = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        String(url).includes("/channels/444/messages") &&
+        ((init as RequestInit | undefined)?.method ?? "POST") === "POST",
+    );
+    expect(postCallsBeforeMainTool.length).toBe(1);
 
     await emit(
       "before_tool_call",
@@ -542,17 +562,10 @@ describe("discord-tool-status", () => {
       auxCtx,
     );
 
-    const postCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages") &&
-        ((init as RequestInit | undefined)?.method ?? "POST") === "POST",
+    const content = getLastStatusContent(
+      fetchMock.mock.calls,
+      "1472937004919423059",
     );
-    expect(postCall).toBeDefined();
-
-    const postBody = JSON.parse(
-      String((postCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
-    ) as { content?: string };
-    const content = postBody.content ?? "";
     expect(content).toContain("🧠 active-memory:");
     expect(content).toContain("- memory_search:");
     expect(content).not.toContain("active-memory:memory_search:");
@@ -1004,6 +1017,10 @@ describe("discord-tool-status", () => {
       sessionKey: "agent:main:discord:channel:777:thread:new-owner",
     };
 
+    firstPost.resolve(
+      new Response(JSON.stringify({ id: "status-old" }), { status: 200 }),
+    );
+
     await emit(
       "message_received",
       {
@@ -1036,9 +1053,6 @@ describe("discord-tool-status", () => {
       runB,
     );
 
-    firstPost.resolve(
-      new Response(JSON.stringify({ id: "status-old" }), { status: 200 }),
-    );
     await vi.advanceTimersByTime(100);
     await Promise.all([newBeforeTool, oldBeforeTool]);
 
@@ -1222,8 +1236,17 @@ describe("discord-tool-status", () => {
       ctx,
     );
 
-    const allUrls = fetchMock.mock.calls.map((c) => String(c[0]));
-    expect(allUrls.some((u) => u.includes("1472937004919423059"))).toBe(false);
+    const callsAfterPrune = fetchMock.mock.calls.slice(
+      fetchMock.mock.calls.findIndex(
+        ([url, init]) =>
+          String(url).includes("/channels/1472937004919423059/messages") &&
+          ((init as RequestInit | undefined)?.method ?? "POST") === "POST",
+      ) + 1,
+    );
+    const urlsAfterPrune = callsAfterPrune.map((c) => String(c[0]));
+    expect(urlsAfterPrune.some((u) => u.includes("1472937004919423059"))).toBe(
+      false,
+    );
   });
 
   it("shows error icon for failed tool calls and includes duration", async () => {
@@ -1271,16 +1294,10 @@ describe("discord-tool-status", () => {
       ctx,
     );
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages") &&
-        (init as RequestInit | undefined)?.method === "PATCH",
+    const content = getLastStatusContent(
+      fetchMock.mock.calls,
+      "1472937004919423059",
     );
-    expect(patchCall).toBeDefined();
-    const patchBody = JSON.parse(
-      String((patchCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
-    ) as { content?: string };
-    const content = patchBody.content ?? "";
     expect(content).toContain("✘");
     expect(content).toContain("(42ms)");
     expect(content).not.toContain("✔");
@@ -1337,16 +1354,10 @@ describe("discord-tool-status", () => {
       ctx,
     );
 
-    const postCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages") &&
-        ((init as RequestInit | undefined)?.method ?? "POST") === "POST",
+    const content = getLastStatusContent(
+      fetchMock.mock.calls,
+      "1472937004919423059",
     );
-    expect(postCall).toBeDefined();
-    const postBody = JSON.parse(
-      String((postCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
-    ) as { content?: string };
-    const content = postBody.content ?? "";
     expect(content).toContain("♻︎");
     expect(content).toContain("(1,500ms)");
 
@@ -1473,17 +1484,10 @@ describe("discord-tool-status", () => {
       auxCtx,
     );
 
-    const postCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages") &&
-        ((init as RequestInit | undefined)?.method ?? "POST") === "POST",
+    const content = getLastStatusContent(
+      fetchMock.mock.calls,
+      "1472937004919423059",
     );
-    expect(postCall).toBeDefined();
-
-    const postBody = JSON.parse(
-      String((postCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
-    ) as { content?: string };
-    const content = postBody.content ?? "";
 
     expect(content).toContain("🧠 active-memory:");
     expect(content).toMatch(/- memory_search:.*✔/);
@@ -1572,7 +1576,7 @@ describe("discord-tool-status", () => {
     ) as { content?: string };
     const content = postBody.content ?? "";
 
-    expect(content).toMatch(/🧠 active-memory:.*←/);
+    expect(content).toMatch(/🧠 active-memory:.*♻︎/);
 
     await emit("agent_end", {}, primaryCtx);
     await vi.advanceTimersByTime(2000);

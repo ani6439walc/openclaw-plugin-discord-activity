@@ -21,9 +21,8 @@ export function isCurrentSession(session: SessionEntry): boolean {
 }
 
 export function hasVisibleStatusState(session: SessionEntry): boolean {
-  return (
-    Boolean(session.statusMessageId) ||
-    session.toolHistory.some((t) => t.toolCallId !== "init")
+  return session.toolHistory.some(
+    (t) => t.toolCallId !== "init" && t.toolCallId !== "active-memory",
   );
 }
 
@@ -318,31 +317,24 @@ export async function updateStatusMessage(
       let i = 0;
       while (i < session.toolHistory.length) {
         const t = session.toolHistory[i];
-        if (t.toolName.startsWith("active-memory:")) {
-          // Collect all contiguous active-memory entries into a group
+        if (
+          t.toolName === "active-memory" ||
+          t.toolName.startsWith("active-memory:")
+        ) {
           const group: typeof session.toolHistory = [];
           while (
             i < session.toolHistory.length &&
-            session.toolHistory[i].toolName.startsWith("active-memory:")
+            (session.toolHistory[i].toolName === "active-memory" ||
+              session.toolHistory[i].toolName.startsWith("active-memory:"))
           ) {
             group.push(session.toolHistory[i]);
             i++;
           }
 
-          // Compute aggregate parent status
-          const anyError = group.some((e) => e.status === "error");
-          const anyPending = group.some((e) => e.status === "pending");
-          let parentSuffix: string;
-          if (anyError) {
-            parentSuffix = "✘";
-          } else if (anyPending) {
-            parentSuffix = "←";
-          } else {
-            parentSuffix = "✔";
-          }
-
-          // Build sub-entries
-          const subEntryStrs = group.map((entry) => {
+          const realEntries = group.filter((e) =>
+            e.toolName.startsWith("active-memory:"),
+          );
+          const subEntryStrs = realEntries.map((entry) => {
             const strippedName = entry.toolName.replace(/^active-memory:/, "");
             let subSuffix: string;
             if (entry.status === "error") {
@@ -359,14 +351,14 @@ export async function updateStatusMessage(
                 ? ` (${entry.durationMs.toLocaleString()}ms)`
                 : "";
             const pStr = formatParams(entry.params, {
-              first: "     ",
-              rest: "     ",
+              first: "     - ",
+              rest: "       ",
             });
             return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
           });
 
           contentParts.push(
-            `🧠 active-memory: ${parentSuffix}\n${subEntryStrs.join("\n")}`,
+            `🧠 active-memory: ♻︎${subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""}`,
           );
         } else {
           // Non-active-memory entry — exact same rendering as before

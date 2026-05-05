@@ -170,11 +170,12 @@ export default definePluginEntry({
             api.config.plugins?.entries?.["active-memory"]?.enabled !== false
           ) {
             replacement.toolHistory.push({
-              toolCallId: "init",
+              toolCallId: "active-memory",
               toolName: "active-memory",
               params: {},
-              status: "completed",
+              status: "pending",
             });
+            await updateStatusMessage(replacement, getToken);
           }
           return;
         }
@@ -189,11 +190,12 @@ export default definePluginEntry({
       if (session && session.toolHistory.length === 0) {
         if (api.config.plugins?.entries?.["active-memory"]?.enabled !== false) {
           session.toolHistory.push({
-            toolCallId: "init",
+            toolCallId: "active-memory",
             toolName: "active-memory",
             params: {},
             status: "pending",
           });
+          await updateStatusMessage(session, getToken);
         }
       }
     });
@@ -359,6 +361,9 @@ export default definePluginEntry({
               session.clearTimer = undefined;
             }
             const entries = parseActiveMemoryToolEntries(event);
+            session.toolHistory = session.toolHistory.filter(
+              (t) => t.toolCallId !== "active-memory",
+            );
             if (entries.length > 0) {
               for (const entry of entries) {
                 const existing = session.toolHistory.find(
@@ -374,19 +379,6 @@ export default definePluginEntry({
               }
               while (session.toolHistory.length > 10) {
                 session.toolHistory.shift();
-              }
-            }
-            const initEntry = session.toolHistory.find(
-              (t) => t.toolCallId === "init",
-            );
-            if (initEntry) {
-              if (entries.length > 0) {
-                // Avoid duplicate memory-search display; the active-memory group covers it.
-                session.toolHistory = session.toolHistory.filter(
-                  (t) => t.toolCallId !== "init",
-                );
-              } else {
-                initEntry.status = "completed";
               }
             }
             await updateStatusMessage(session, getToken, true);
