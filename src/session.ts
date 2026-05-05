@@ -271,20 +271,18 @@ async function sendMessageWithDmFallback(
   token: string,
   replyToId?: string,
 ): Promise<string | undefined> {
-  let createdId = await sendMessage(session.channelId, content, token, replyToId);
-  if (createdId) return createdId;
-
-  // sendMessage failed — possibly channelId is a userId for DMs
+  // Preemptively resolve DM channel for direct-message sessions
   const userId = extractUserIdFromDirectSessionKey(session.ownerSessionKey);
   if (userId && userId === session.channelId) {
     const dmChannelId = await resolveDmChannel(userId, token);
     if (dmChannelId) {
       session.channelId = dmChannelId;
-      createdId = await sendMessage(dmChannelId, content, token, replyToId);
-      if (createdId) return createdId;
+      return sendMessage(dmChannelId, content, token, replyToId);
     }
+    return undefined;
   }
-  return undefined;
+
+  return sendMessage(session.channelId, content, token, replyToId);
 }
 
 export async function updateStatusMessage(
