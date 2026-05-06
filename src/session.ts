@@ -4,158 +4,32 @@ import {
   deleteMessage,
   sendMessage,
   editMessage,
-  sleep,
   resolveDmChannel,
 } from "./discord-api.js";
 import { extractUserIdFromDirectSessionKey } from "./parser.js";
-import { SESSION_RESOLVE_RETRY_MS } from "./constants.js";
-import { getToolIcon, formatParams } from "./formatting.js";
+import { createSessionStore, rawSessions, rawContexts } from "./store.js";
+import { renderStatusContent } from "./render.js";
 
 const logger = createSubsystemLogger("plugins");
 
-export const sessionContextMap = new Map<string, ChannelMeta>();
-export const activeSessions = new Map<string, SessionEntry>();
+const defaultStore = createSessionStore();
 
-export function isCurrentSession(session: SessionEntry): boolean {
-  return activeSessions.get(session.contextKey) === session;
-}
+// Backward-compat re-exports during transition
+export const activeSessions = rawSessions;
+export const sessionContextMap = rawContexts;
 
-export function hasVisibleStatusState(session: SessionEntry): boolean {
-  return session.toolHistory.some(
-    (t) => t.toolCallId !== "init" && t.toolCallId !== "active-memory",
-  );
-}
-
-export async function waitForPendingOp(
-  session: SessionEntry,
-  hookName: string,
-) {
-  if (!session.pendingOp) return;
-  logger.debug(`discord-tool-status: [${hookName}] Waiting for pending op...`, {
-    subsystem: "plugins",
-  });
-  try {
-    await session.pendingOp;
-  } catch (err) {
-    logger.warn(`discord-tool-status: [${hookName}] Pending op failed.`, {
-      subsystem: "plugins",
-      error: String(err),
-    });
-  }
-}
-
-export function clearSessionState(
-  contextKey: string,
-  session?: SessionEntry,
-  expectedGeneration?: number,
-  expectedOwner?: string,
-) {
-  if (session) {
-    const current = activeSessions.get(contextKey);
-    if (current !== session) {
-      return;
-    }
-    if (
-      current &&
-      expectedGeneration !== undefined &&
-      current.generation !== expectedGeneration
-    ) {
-      return;
-    }
-    if (
-      current &&
-      expectedOwner !== undefined &&
-      current.ownerSessionKey !== expectedOwner
-    ) {
-      return;
-    }
-  }
-
-  if (session?.clearTimer) {
-    clearTimeout(session.clearTimer);
-    session.clearTimer = undefined;
-  }
-  activeSessions.delete(contextKey);
-  sessionContextMap.delete(contextKey);
-}
-
-export function getOrCreateSession(
-  contextKey: string,
-  requestSessionKey?: string,
-): SessionEntry | undefined {
-  const normalizedRequestSessionKey =
-    typeof requestSessionKey === "string" && requestSessionKey.trim().length > 0
-      ? requestSessionKey
-      : undefined;
-
-  const context = sessionContextMap.get(contextKey);
-  const preferredOwner = context?.sourceSessionKey;
-  const existing = activeSessions.get(contextKey);
-  if (existing) {
-    if (
-      normalizedRequestSessionKey &&
-      existing.ownerSessionKey === normalizedRequestSessionKey
-    ) {
-      return existing;
-    }
-
-    if (
-      normalizedRequestSessionKey &&
-      preferredOwner &&
-      normalizedRequestSessionKey === preferredOwner
-    ) {
-      return undefined;
-    }
-
-    if (
-      preferredOwner &&
-      existing.ownerSessionKey === preferredOwner &&
-      normalizedRequestSessionKey &&
-      normalizedRequestSessionKey !== preferredOwner
-    ) {
-      return undefined;
-    }
-
-    return existing;
-  }
-
-  if (!context) return undefined;
-
-  if (
-    preferredOwner &&
-    normalizedRequestSessionKey &&
-    normalizedRequestSessionKey !== preferredOwner
-  ) {
-    return undefined;
-  }
-
-  const ownerSessionKey =
-    normalizedRequestSessionKey || preferredOwner || contextKey;
-
-  const created: SessionEntry = {
-    contextKey,
-    channelId: context.actualChannelId,
-    userMessageId: context.userMessageId,
-    senderId: context.senderId,
-    accountId: context.accountId,
-    ownerSessionKey,
-    generation: 1,
-    toolHistory: [],
-  };
-  activeSessions.set(contextKey, created);
-  return created;
-}
-
-export async function resolveSession(
-  contextKey: string,
-  requestSessionKey?: string,
-): Promise<SessionEntry | undefined> {
-  const immediate = getOrCreateSession(contextKey, requestSessionKey);
-  if (immediate) return immediate;
-
-  await sleep(SESSION_RESOLVE_RETRY_MS);
-  return getOrCreateSession(contextKey, requestSessionKey);
-}
+// Re-export store methods for backward compat
+export const isCurrentSession =
+  defaultStore.isCurrentSession.bind(defaultStore);
+export const hasVisibleStatusState =
+  defaultStore.hasVisibleStatusState.bind(defaultStore);
+export const getOrCreateSession =
+  defaultStore.getOrCreateSession.bind(defaultStore);
+export const resolveSession = defaultStore.resolveSession.bind(defaultStore);
+export const clearSessionState =
+  defaultStore.clearSessionState.bind(defaultStore);
+export const waitForPendingOp =
+  defaultStore.waitForPendingOp.bind(defaultStore);
 
 export async function retireSession(
   session: SessionEntry,
@@ -313,84 +187,7 @@ export async function updateStatusMessage(
 
     let content = "";
     while (session.toolHistory.length > 0) {
-      const contentParts: string[] = [];
-      let i = 0;
-      while (i < session.toolHistory.length) {
-        const t = session.toolHistory[i];
-        if (
-          t.toolName === "active-memory" ||
-          t.toolName.startsWith("active-memory:")
-        ) {
-          const group: typeof session.toolHistory = [];
-          while (
-            i < session.toolHistory.length &&
-            (session.toolHistory[i].toolName === "active-memory" ||
-              session.toolHistory[i].toolName.startsWith("active-memory:"))
-          ) {
-            group.push(session.toolHistory[i]);
-            i++;
-          }
-
-          const realEntries = group.filter((e) =>
-            e.toolName.startsWith("active-memory:"),
-          );
-          const subEntryStrs = realEntries.map((entry) => {
-            const strippedName = entry.toolName.replace(/^active-memory:/, "");
-            let subSuffix: string;
-            if (entry.status === "error") {
-              subSuffix = "✘";
-            } else if (entry.status === "orphan-completed") {
-              subSuffix = "♻︎";
-            } else if (entry.status === "completed") {
-              subSuffix = "✔";
-            } else {
-              subSuffix = "←";
-            }
-            const dur =
-              typeof entry.durationMs === "number"
-                ? ` (${entry.durationMs.toLocaleString()}ms)`
-                : "";
-            const pStr = formatParams(entry.params, {
-              first: "     - ",
-              rest: "       ",
-            });
-            return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
-          });
-
-          contentParts.push(
-            `🧠 active-memory: ♻︎${subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""}`,
-          );
-        } else {
-          // Non-active-memory entry — exact same rendering as before
-          const icon = getToolIcon(t.toolName);
-          const pStr = formatParams(t.params);
-          const isLast = i === session.toolHistory.length - 1;
-          const done =
-            t.status === "completed" ||
-            t.status === "error" ||
-            t.status === "orphan-completed";
-          let suffix: string;
-          if (t.status === "error") {
-            suffix = "✘";
-          } else if (t.status === "orphan-completed") {
-            suffix = "♻︎";
-          } else if (done && (!isLast || isFinal)) {
-            suffix = "✔";
-          } else {
-            suffix = "←";
-          }
-          const dur =
-            typeof t.durationMs === "number"
-              ? ` (${t.durationMs.toLocaleString()}ms)`
-              : "";
-          contentParts.push(
-            `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}`,
-          );
-          i++;
-        }
-      }
-
-      content = "```yaml\n" + contentParts.join("\n\n") + "\n```";
+      content = renderStatusContent(session.toolHistory, isFinal);
       if (content.length <= 1700 && session.toolHistory.length <= 6) break;
       session.toolHistory.shift();
     }
