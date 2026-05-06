@@ -86,7 +86,7 @@ export function createHookHandlers(deps: HookDeps) {
     const session = await store.resolveSession(contextKey, ctx.sessionKey);
     if (!session) return;
     if (requireVisibleState && !store.hasVisibleStatusState(session)) return;
-    await updateStatusMessage(session, getToken, true);
+    await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
     scheduleSessionCleanup(
       contextKey,
       session,
@@ -169,7 +169,12 @@ export function createHookHandlers(deps: HookDeps) {
             params: {},
             status: "pending",
           });
-          await updateStatusMessage(replacement, getToken);
+          await updateStatusMessage(
+            replacement,
+            getToken,
+            false,
+            config.maxDisplayMs,
+          );
         }
         return;
       }
@@ -190,7 +195,12 @@ export function createHookHandlers(deps: HookDeps) {
           params: {},
           status: "pending",
         });
-        await updateStatusMessage(session, getToken);
+        await updateStatusMessage(
+          session,
+          getToken,
+          false,
+          config.maxDisplayMs,
+        );
       }
     }
   }
@@ -237,7 +247,7 @@ export function createHookHandlers(deps: HookDeps) {
     });
 
     if (session.toolHistory.length > 10) session.toolHistory.shift();
-    await updateStatusMessage(session, getToken);
+    await updateStatusMessage(session, getToken, false, config.maxDisplayMs);
   }
 
   async function onAfterToolCall(event: AfterToolCallEvent, ctx: ToolContext) {
@@ -290,7 +300,7 @@ export function createHookHandlers(deps: HookDeps) {
         toolEntry.status = "completed";
       }
       toolEntry.durationMs = event.durationMs;
-      await updateStatusMessage(session, getToken);
+      await updateStatusMessage(session, getToken, false, config.maxDisplayMs);
     }
   }
 
@@ -320,7 +330,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!contextKey) return undefined;
     const session = await store.resolveSession(contextKey, sessionKey);
     if (!session) return undefined;
-    await updateStatusMessage(session, getToken, true);
+    await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
     scheduleSessionCleanup(
       contextKey,
       session,
@@ -388,7 +398,12 @@ export function createHookHandlers(deps: HookDeps) {
               session.toolHistory.shift();
             }
           }
-          await updateStatusMessage(session, getToken, true);
+          await updateStatusMessage(
+            session,
+            getToken,
+            true,
+            config.maxDisplayMs,
+          );
         }
         return;
       }

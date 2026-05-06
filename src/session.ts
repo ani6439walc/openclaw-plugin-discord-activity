@@ -42,6 +42,10 @@ export async function retireSession(
     clearTimeout(session.clearTimer);
     session.clearTimer = undefined;
   }
+  if (session.maxDisplayTimer) {
+    clearTimeout(session.maxDisplayTimer);
+    session.maxDisplayTimer = undefined;
+  }
 
   await waitForPendingOp(session, `${hookName}_retire_wait`);
 
@@ -94,6 +98,11 @@ export function scheduleSessionCleanup(
       return;
     }
 
+    if (session.maxDisplayTimer) {
+      clearTimeout(session.maxDisplayTimer);
+      session.maxDisplayTimer = undefined;
+    }
+
     clearStatusMessage(session, hookName, getToken)
       .catch((err) => {
         logger.warn(
@@ -122,6 +131,11 @@ export async function clearStatusMessage(
   getToken: (accountId?: string) => string,
 ) {
   await waitForPendingOp(session, hookName);
+
+  if (session.maxDisplayTimer) {
+    clearTimeout(session.maxDisplayTimer);
+    session.maxDisplayTimer = undefined;
+  }
 
   if (!session.statusMessageId) return;
 
@@ -160,10 +174,49 @@ async function sendMessageWithDmFallback(
   return sendMessage(session.channelId, content, token, replyToId);
 }
 
+function startMaxDisplayTimer(
+  session: SessionEntry,
+  contextKey: string,
+  maxDisplayMs: number,
+  getToken: (accountId?: string) => string,
+) {
+  if (session.maxDisplayTimer) {
+    clearTimeout(session.maxDisplayTimer);
+  }
+
+  session.maxDisplayTimer = setTimeout(() => {
+    const current = activeSessions.get(contextKey);
+    if (!current || current !== session) {
+      return;
+    }
+
+    logger.warn(
+      `discord-tool-status: Status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
+      { subsystem: "plugins", contextKey, maxDisplayMs },
+    );
+
+    clearStatusMessage(session, "max_display_timeout", getToken)
+      .catch((err) => {
+        logger.warn(
+          "discord-tool-status: Failed to clear status message on max_display_timeout",
+          {
+            subsystem: "plugins",
+            contextKey,
+            error: String(err),
+          },
+        );
+      })
+      .finally(() => {
+        clearSessionState(contextKey, session);
+      });
+  }, maxDisplayMs);
+}
+
 export async function updateStatusMessage(
   session: SessionEntry,
   getToken: (accountId?: string) => string,
   isFinal = false,
+  maxDisplayMs?: number,
 ) {
   const priorOp = session.pendingOp;
   const op = (async () => {
@@ -199,7 +252,9 @@ export async function updateStatusMessage(
     const token = getToken(session.accountId);
     if (!token) return;
 
-    if (!session.statusMessageId) {
+    const isNewMessage = !session.statusMessageId;
+
+    if (isNewMessage) {
       if (!isCurrentSession(session)) {
         return;
       }
@@ -227,10 +282,23 @@ export async function updateStatusMessage(
           subsystem: "plugins",
         },
       );
+
+      if (maxDisplayMs && maxDisplayMs > 0) {
+        startMaxDisplayTimer(
+          session,
+          session.contextKey,
+          maxDisplayMs,
+          getToken,
+        );
+      }
       return;
     }
 
     if (!isCurrentSession(session)) {
+      return;
+    }
+
+    if (!session.statusMessageId) {
       return;
     }
 

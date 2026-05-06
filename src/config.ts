@@ -5,6 +5,7 @@ export const DEFAULT_MAX_STATUS_MESSAGE_LENGTH = 1700;
 export const DEFAULT_ORPHAN_TTL_MS = 5 * 60 * 1000;
 export const DEFAULT_CLEANUP_DELAY_MS = 1000;
 export const DEFAULT_AGENT_END_DELAY_MS = 1500;
+export const DEFAULT_MAX_DISPLAY_MS = 10 * 60 * 1000;
 
 const DiscordToolStatusConfigSchema = z.object({
   maxToolHistoryLength: z
@@ -20,6 +21,7 @@ const DiscordToolStatusConfigSchema = z.object({
     .max(4000)
     .default(DEFAULT_MAX_STATUS_MESSAGE_LENGTH),
   orphanTtlMs: z.number().int().positive().default(DEFAULT_ORPHAN_TTL_MS),
+  maxDisplayMs: z.number().int().positive().default(DEFAULT_MAX_DISPLAY_MS),
 });
 
 export type PluginConfig = z.infer<typeof DiscordToolStatusConfigSchema>;

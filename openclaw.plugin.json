@@ -28,6 +28,12 @@
         "minimum": 1,
         "default": 300000,
         "description": "Time in milliseconds before orphaned tool calls are pruned"
+      },
+      "maxDisplayMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "default": 600000,
+        "description": "Maximum time in milliseconds a status message may remain before automatic cleanup"
       }
     }
   }

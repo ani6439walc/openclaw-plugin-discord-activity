@@ -47,6 +47,7 @@ export type SessionEntry = {
   toolHistory: ToolEntry[];
   pendingOp?: Promise<void>;
   clearTimer?: ReturnType<typeof setTimeout>;
+  maxDisplayTimer?: ReturnType<typeof setTimeout>;
 };
 
 import type { PluginConfig } from "./config.js";

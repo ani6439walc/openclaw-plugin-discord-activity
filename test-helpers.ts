@@ -61,6 +61,7 @@ export function createMockSessionEntry(
     toolHistory: [],
     pendingOp: undefined,
     clearTimer: undefined,
+    maxDisplayTimer: undefined,
     ...overrides,
   };
 }
