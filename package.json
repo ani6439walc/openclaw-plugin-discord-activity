@@ -1,7 +1,13 @@
 {
   "name": "discord-tool-status",
-  "version": "2026.5.7",
+  "version": "2026.5.8",
   "type": "module",
+  "files": [
+    "dist",
+    "package.json",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
   "openclaw": {
     "extensions": [
       "./dist/index.js"
