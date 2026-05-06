@@ -12,7 +12,7 @@ import { renderStatusContent } from "./render.js";
 
 const logger = createSubsystemLogger("plugins");
 
-const defaultStore = createSessionStore();
+export const defaultStore = createSessionStore();
 
 // Backward-compat re-exports during transition
 export const activeSessions = rawSessions;

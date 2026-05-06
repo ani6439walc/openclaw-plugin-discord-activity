@@ -4,7 +4,7 @@ import {
   type OpenClawPluginApi,
 } from "../api.js";
 import { resolveDiscordToken } from "../token.js";
-import { createSessionStore } from "./store.js";
+import { defaultStore } from "./session.js";
 import { createOrphanToolManager } from "./orphans.js";
 import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
@@ -18,7 +18,7 @@ export function createPlugin(api: OpenClawPluginApi) {
   const getToken = (accountId?: string) =>
     resolveDiscordToken(api.config, { accountId }).token;
 
-  const store = createSessionStore();
+  const store = defaultStore;
   const orphans = createOrphanToolManager(config.orphanTtlMs);
   const handlers = createHookHandlers({ store, orphans, getToken, config });
 
