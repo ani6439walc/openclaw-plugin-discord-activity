@@ -8,11 +8,13 @@ import {
 } from "./discord-api.js";
 import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { createSessionStore, rawSessions, rawContexts } from "./store.js";
+import { createOrphanToolManager } from "./orphans.js";
 import { renderStatusContent } from "./render.js";
 
 const logger = createSubsystemLogger("plugins");
 
 export const defaultStore = createSessionStore();
+export const defaultOrphans = createOrphanToolManager();
 
 // Backward-compat re-exports during transition
 export const activeSessions = rawSessions;
