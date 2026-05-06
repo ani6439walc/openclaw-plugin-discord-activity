@@ -1,6 +1,6 @@
 {
   "name": "discord-tool-status",
-  "version": "2026.5.11",
+  "version": "2026.5.4-1",
   "type": "module",
   "files": [
     "dist",
