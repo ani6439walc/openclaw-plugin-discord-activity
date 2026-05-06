@@ -7,7 +7,7 @@ import {
   resolveDmChannel,
 } from "./discord-api.js";
 import { extractUserIdFromDirectSessionKey } from "./parser.js";
-import { createSessionStore, rawSessions, rawContexts } from "./store.js";
+import { createSessionStore } from "./store.js";
 import { createOrphanToolManager } from "./orphans.js";
 import { renderStatusContent } from "./render.js";
 
@@ -17,8 +17,8 @@ export const defaultStore = createSessionStore();
 export const defaultOrphans = createOrphanToolManager();
 
 // Backward-compat re-exports during transition
-export const activeSessions = rawSessions;
-export const sessionContextMap = rawContexts;
+export const activeSessions = defaultStore.sessions;
+export const sessionContextMap = defaultStore.contexts;
 
 // Re-export store methods for backward compat
 export const isCurrentSession =

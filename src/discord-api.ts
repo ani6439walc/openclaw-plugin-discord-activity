@@ -62,23 +62,63 @@ export async function discordApiRequest(
   operation: string,
 ): Promise<Response> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
-    const res = await fetch(url, init);
-    if (res.status !== 429) {
-      return res;
-    }
+    try {
+      const res = await fetch(url, init);
 
-    const delayMs = await getRetryDelayMs(res);
-    logger.warn(`discord-tool-status: ${operation} hit rate limit.`, {
-      subsystem: "plugins",
-      status: res.status,
-      retryInMs: delayMs,
-      attempt,
-    });
+      if (res.ok) {
+        return res;
+      }
 
-    if (attempt === MAX_RETRIES) {
+      if (res.status === 429) {
+        const delayMs = await getRetryDelayMs(res);
+        logger.warn(`discord-tool-status: ${operation} hit rate limit.`, {
+          subsystem: "plugins",
+          status: res.status,
+          retryInMs: delayMs,
+          attempt,
+        });
+        if (attempt === MAX_RETRIES) {
+          return res;
+        }
+        await sleep(delayMs);
+        continue;
+      }
+
+      if (res.status >= 500) {
+        if (attempt === MAX_RETRIES) {
+          return res;
+        }
+        const backoffMs = RETRY_FALLBACK_MS * Math.pow(2, attempt);
+        logger.warn(
+          `discord-tool-status: ${operation} server error, retrying.`,
+          {
+            subsystem: "plugins",
+            status: res.status,
+            retryInMs: backoffMs,
+            attempt,
+          },
+        );
+        await sleep(backoffMs);
+        continue;
+      }
+
       return res;
+    } catch (err) {
+      if (attempt === MAX_RETRIES) {
+        throw err;
+      }
+      const backoffMs = RETRY_FALLBACK_MS * Math.pow(2, attempt);
+      logger.warn(
+        `discord-tool-status: ${operation} network error, retrying.`,
+        {
+          subsystem: "plugins",
+          error: String(err),
+          retryInMs: backoffMs,
+          attempt,
+        },
+      );
+      await sleep(backoffMs);
     }
-    await sleep(delayMs);
   }
 
   throw new Error("discord-tool-status: unexpected retry loop exit");

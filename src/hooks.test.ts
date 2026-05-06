@@ -9,6 +9,7 @@ describe("createHookHandlers", () => {
   let orphans: ReturnType<typeof createOrphanToolManager>;
   let getToken: ReturnType<typeof vi.fn>;
   let config: ReturnType<typeof resolveConfig>;
+  let isActiveMemoryEnabled: ReturnType<typeof vi.fn>;
   let handlers: ReturnType<typeof createHookHandlers>;
 
   beforeEach(() => {
@@ -16,7 +17,14 @@ describe("createHookHandlers", () => {
     orphans = createOrphanToolManager();
     getToken = vi.fn().mockReturnValue("test-token");
     config = resolveConfig({});
-    handlers = createHookHandlers({ store, orphans, getToken, config });
+    isActiveMemoryEnabled = vi.fn().mockReturnValue(true);
+    handlers = createHookHandlers({
+      store,
+      orphans,
+      getToken,
+      config,
+      isActiveMemoryEnabled,
+    });
   });
 
   describe("onMessageReceived", () => {

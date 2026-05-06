@@ -55,6 +55,17 @@ export function extractUserIdFromDirectSessionKey(
   return match?.[1];
 }
 
+export function extractAgentIdFromSessionKey(
+  sessionKey: string | undefined,
+): string | undefined {
+  if (!sessionKey) return undefined;
+  const parts = sessionKey.split(":");
+  if (parts.length >= 2 && parts[0] === "agent") {
+    return parts[1];
+  }
+  return undefined;
+}
+
 export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
   const messages = (event?.messages ?? []) as AgentEventMessage[];
   if (!Array.isArray(messages) || messages.length === 0) {

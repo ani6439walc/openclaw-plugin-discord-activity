@@ -87,6 +87,7 @@ export type HookDeps = {
   orphans: OrphanToolManager;
   getToken: GetTokenFn;
   config: PluginConfig;
+  isActiveMemoryEnabled: (agentId: string) => boolean;
 };
 
 export type StatusRenderResult = {

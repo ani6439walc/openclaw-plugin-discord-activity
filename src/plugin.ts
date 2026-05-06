@@ -2,6 +2,7 @@ import {
   createSubsystemLogger,
   definePluginEntry,
   type OpenClawPluginApi,
+  type OpenClawConfig,
 } from "../api.js";
 import { resolveDiscordToken } from "../token.js";
 import { defaultStore, defaultOrphans } from "./session.js";
@@ -10,6 +11,25 @@ import { resolveConfig } from "./config.js";
 
 const logger = createSubsystemLogger("plugins");
 
+function buildIsActiveMemoryEnabled(
+  openClawConfig: OpenClawConfig,
+): (agentId: string) => boolean {
+  return (agentId: string): boolean => {
+    const plugins = openClawConfig.plugins;
+    if (!plugins) return false;
+    if (plugins.deny?.includes("active-memory")) return false;
+    if (plugins.allow && !plugins.allow.includes("active-memory")) return false;
+
+    const entry = plugins.entries?.["active-memory"];
+    if (!entry?.enabled) return false;
+
+    const agents = entry.config?.agents;
+    if (!Array.isArray(agents)) return false;
+
+    return agents.includes(agentId);
+  };
+}
+
 export function createPlugin(api: OpenClawPluginApi) {
   const config = resolveConfig(
     api.config.plugins?.entries?.["discord-tool-status"] ?? {},
@@ -17,9 +37,17 @@ export function createPlugin(api: OpenClawPluginApi) {
   const getToken = (accountId?: string) =>
     resolveDiscordToken(api.config, { accountId }).token;
 
+  const isActiveMemoryEnabled = buildIsActiveMemoryEnabled(api.config);
+
   const store = defaultStore;
   const orphans = defaultOrphans;
-  const handlers = createHookHandlers({ store, orphans, getToken, config });
+  const handlers = createHookHandlers({
+    store,
+    orphans,
+    getToken,
+    config,
+    isActiveMemoryEnabled,
+  });
 
   return definePluginEntry({
     id: "discord-tool-status",

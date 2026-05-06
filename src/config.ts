@@ -20,7 +20,6 @@ const DiscordToolStatusConfigSchema = z.object({
     .max(4000)
     .default(DEFAULT_MAX_STATUS_MESSAGE_LENGTH),
   orphanTtlMs: z.number().int().positive().default(DEFAULT_ORPHAN_TTL_MS),
-  activeMemoryEnabled: z.boolean().default(true),
 });
 
 export type PluginConfig = z.infer<typeof DiscordToolStatusConfigSchema>;

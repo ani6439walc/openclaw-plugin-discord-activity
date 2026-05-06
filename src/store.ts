@@ -165,7 +165,3 @@ export function createSessionStore() {
     waitForPendingOp,
   });
 }
-
-const defaultStore = createSessionStore();
-export const rawSessions = defaultStore.sessions;
-export const rawContexts = defaultStore.contexts;

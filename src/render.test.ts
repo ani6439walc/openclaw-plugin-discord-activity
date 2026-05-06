@@ -42,7 +42,7 @@ describe("renderStatusContent", () => {
     expect(result).toContain("♻︎");
   });
 
-  it("renders active-memory group", () => {
+  it("renders active-memory group with completed suffix", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "am1",
@@ -58,9 +58,22 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧠 active-memory");
+    expect(result).toContain("🧠 active-memory: ♻︎");
     expect(result).toContain("memory_search");
     expect(result).toContain("memory_read");
+  });
+
+  it("renders active-memory group with pending suffix", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "active-memory",
+        toolName: "active-memory",
+        params: {},
+        status: "pending",
+      },
+    ];
+    const result = renderStatusContent(entries, false);
+    expect(result).toContain("🧠 active-memory: ←");
   });
 
   it("renders mixed normal and active-memory entries", () => {

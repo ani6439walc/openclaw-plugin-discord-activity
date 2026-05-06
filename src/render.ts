@@ -35,7 +35,7 @@ function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
 
 function renderActiveMemoryGroup(
   group: readonly ToolEntry[],
-  isFinal: boolean,
+  _isFinal: boolean,
 ): string {
   const realEntries = group.filter((e) =>
     e.toolName.startsWith("active-memory:"),
@@ -54,7 +54,10 @@ function renderActiveMemoryGroup(
     return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
   });
 
-  return `🧠 active-memory: ♻︎${
+  const hasPending = group.some((e) => e.status === "pending");
+  const parentSuffix = hasPending ? "←" : "♻︎";
+
+  return `🧠 active-memory: ${parentSuffix}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
   }`;
 }

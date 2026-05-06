@@ -28,11 +28,6 @@
         "minimum": 1,
         "default": 300000,
         "description": "Time in milliseconds before orphaned tool calls are pruned"
-      },
-      "activeMemoryEnabled": {
-        "type": "boolean",
-        "default": true,
-        "description": "Whether to show active-memory indicator in status messages"
       }
     }
   }

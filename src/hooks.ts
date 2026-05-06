@@ -19,6 +19,7 @@ import {
   getActiveMemorySourceSessionKey,
   extractIdFromMetadata,
   extractSenderId,
+  extractAgentIdFromSessionKey,
   parseActiveMemoryToolEntries,
 } from "./parser.js";
 import {
@@ -30,7 +31,7 @@ import {
 const logger = createSubsystemLogger("plugins");
 
 export function createHookHandlers(deps: HookDeps) {
-  const { store, orphans, getToken, config } = deps;
+  const { store, orphans, getToken, config, isActiveMemoryEnabled } = deps;
 
   function logHookEvent(
     hookName: string,
@@ -157,7 +158,11 @@ export function createHookHandlers(deps: HookDeps) {
           );
         });
 
-        if (config.activeMemoryEnabled) {
+        const replacementAgentId = extractAgentIdFromSessionKey(ctx.sessionKey);
+        if (
+          replacementAgentId === undefined ||
+          isActiveMemoryEnabled(replacementAgentId)
+        ) {
           replacement.toolHistory.push({
             toolCallId: "active-memory",
             toolName: "active-memory",
@@ -177,7 +182,8 @@ export function createHookHandlers(deps: HookDeps) {
 
     const session = store.getOrCreateSession(contextKey, ctx.sessionKey);
     if (session && session.toolHistory.length === 0) {
-      if (config.activeMemoryEnabled) {
+      const agentId = extractAgentIdFromSessionKey(ctx.sessionKey);
+      if (agentId === undefined || isActiveMemoryEnabled(agentId)) {
         session.toolHistory.push({
           toolCallId: "active-memory",
           toolName: "active-memory",
@@ -211,7 +217,7 @@ export function createHookHandlers(deps: HookDeps) {
           createdAt: Date.now(),
         });
         logger.debug(
-          `discord-tool-status: before_tool_call: orphaned tool call (no sessionKey).`,
+          `discord-tool-status: before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`,
           {
             subsystem: "plugins",
             toolCallId: event.toolCallId,
@@ -252,6 +258,10 @@ export function createHookHandlers(deps: HookDeps) {
     let isOrphanReconcile = false;
     if (!toolEntry) {
       const orphan = orphans.get(event.toolCallId as string);
+      logger.debug(
+        `discord-tool-status: after_tool_call: lookup orphan id=${event.toolCallId} found=${orphan ? "yes" : "no"}`,
+        { subsystem: "plugins", toolCallId: event.toolCallId },
+      );
       if (orphan) {
         if (Date.now() - orphan.createdAt <= config.orphanTtlMs) {
           toolEntry = {
