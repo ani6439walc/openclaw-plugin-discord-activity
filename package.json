@@ -1,6 +1,6 @@
 {
   "name": "discord-tool-status",
-  "version": "2026.5.5",
+  "version": "2026.5.6",
   "type": "module",
   "openclaw": {
     "extensions": [

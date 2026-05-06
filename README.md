@@ -51,6 +51,7 @@ _(訊息中會帶有 `✓` 表示完成，`←` 表示正在執行中)_
 
 - **Hooks**： 串接了 `before_tool_call`、`after_tool_call` 與 `agent_end` 等多個生命週期鈎子。
 - **Rate Limiting**： 內建 Discord API 速率限制 (429) 處理與重試機制。
+- **Memory Control**： 支援 per-agent 的主動記憶控制 (Active Memory Control)。
 - **Context Mapping**： 能夠根據 `sessionKey` 精準定位對應的 Discord 頻道與訊息。
 
 ---
