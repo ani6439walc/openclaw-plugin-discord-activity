@@ -28,7 +28,7 @@ import {
   updateStatusMessage,
 } from "./session.js";
 
-const logger = createSubsystemLogger("plugins");
+const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export function createHookHandlers(deps: HookDeps) {
   const { store, orphans, getToken, config, isActiveMemoryEnabled } = deps;
@@ -38,13 +38,9 @@ export function createHookHandlers(deps: HookDeps) {
     _event: unknown,
     ctx: { sessionKey?: string },
   ) {
-    logger.debug(
-      `discord-tool-status: ${hookName} ctx: ${JSON.stringify(ctx)}`,
-      {
-        subsystem: "plugins",
-        sessionKey: ctx.sessionKey,
-      },
-    );
+    logger.debug(`${hookName} ctx: ${JSON.stringify(ctx)}`, {
+      sessionKey: ctx.sessionKey,
+    });
   }
 
   function isDiscordContext(ctx: MessageContext): boolean {
@@ -63,13 +59,9 @@ export function createHookHandlers(deps: HookDeps) {
       isActiveMemorySessionKey(ctx.sessionKey) ||
       isSubagentSessionKey(ctx.sessionKey)
     ) {
-      logger.trace(
-        `discord-tool-status: ${hookName}: skip (active-memory/subagent) session.`,
-        {
-          subsystem: "plugins",
-          sessionKey: ctx.sessionKey,
-        },
-      );
+      logger.trace(`${hookName}: skip (active-memory/subagent) session.`, {
+        sessionKey: ctx.sessionKey,
+      });
       return true;
     }
     return false;
@@ -86,6 +78,7 @@ export function createHookHandlers(deps: HookDeps) {
     const session = await store.resolveSession(contextKey, ctx.sessionKey);
     if (!session) return;
     if (requireVisibleState && !store.hasVisibleStatusState(session)) return;
+    session.finalized = true;
     await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
     scheduleSessionCleanup(
       contextKey,
@@ -127,7 +120,12 @@ export function createHookHandlers(deps: HookDeps) {
 
     const activeSession = store.sessions.get(contextKey);
     if (activeSession) {
-      if (ctx.sessionKey && activeSession.ownerSessionKey !== ctx.sessionKey) {
+      if (
+        activeSession.finalized ||
+        (ctx.sessionKey && activeSession.ownerSessionKey !== ctx.sessionKey)
+      ) {
+        const nextOwnerSessionKey =
+          ctx.sessionKey ?? activeSession.ownerSessionKey;
         if (activeSession.clearTimer) {
           clearTimeout(activeSession.clearTimer);
           activeSession.clearTimer = undefined;
@@ -138,8 +136,9 @@ export function createHookHandlers(deps: HookDeps) {
           userMessageId: event.messageId,
           senderId: extractSenderId(event.metadata),
           accountId: ctx.accountId,
-          ownerSessionKey: ctx.sessionKey,
+          ownerSessionKey: nextOwnerSessionKey,
           generation: activeSession.generation + 1,
+          finalized: false,
           toolHistory: [],
         };
         store.sessions.set(contextKey, replacement);
@@ -148,17 +147,14 @@ export function createHookHandlers(deps: HookDeps) {
           "message_received_owner_switch",
           getToken,
         ).catch((err) => {
-          logger.warn(
-            "discord-tool-status: failed to retire old session on owner switch",
-            {
-              subsystem: "plugins",
-              contextKey,
-              error: String(err),
-            },
-          );
+          logger.warn("failed to retire old session on owner switch", {
+            contextKey,
+            error: String(err),
+          });
         });
 
-        const replacementAgentId = extractAgentIdFromSessionKey(ctx.sessionKey);
+        const replacementAgentId =
+          extractAgentIdFromSessionKey(nextOwnerSessionKey);
         if (
           replacementAgentId === undefined ||
           isActiveMemoryEnabled(replacementAgentId)
@@ -227,14 +223,21 @@ export function createHookHandlers(deps: HookDeps) {
           createdAt: Date.now(),
         });
         logger.debug(
-          `discord-tool-status: before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`,
+          `before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`,
           {
-            subsystem: "plugins",
             toolCallId: event.toolCallId,
             toolName: event.toolName,
           },
         );
       }
+      return;
+    }
+
+    if (session.finalized) {
+      logger.debug("before_tool_call: skip finalized session.", {
+        sessionKey: ctx.sessionKey,
+        toolCallId: event.toolCallId,
+      });
       return;
     }
 
@@ -262,6 +265,14 @@ export function createHookHandlers(deps: HookDeps) {
 
     if (!session) return;
 
+    if (session.finalized) {
+      logger.debug("after_tool_call: skip finalized session.", {
+        sessionKey: ctx.sessionKey,
+        toolCallId: event.toolCallId,
+      });
+      return;
+    }
+
     let toolEntry = session.toolHistory.find(
       (t) => t.toolCallId === event.toolCallId,
     );
@@ -269,8 +280,8 @@ export function createHookHandlers(deps: HookDeps) {
     if (!toolEntry) {
       const orphan = orphans.get(event.toolCallId as string);
       logger.debug(
-        `discord-tool-status: after_tool_call: lookup orphan id=${event.toolCallId} found=${orphan ? "yes" : "no"}`,
-        { subsystem: "plugins", toolCallId: event.toolCallId },
+        `after_tool_call: lookup orphan id=${event.toolCallId} found=${orphan ? "yes" : "no"}`,
+        { toolCallId: event.toolCallId },
       );
       if (orphan) {
         if (Date.now() - orphan.createdAt <= config.orphanTtlMs) {
@@ -283,10 +294,9 @@ export function createHookHandlers(deps: HookDeps) {
           isOrphanReconcile = true;
           session.toolHistory.push(toolEntry);
           if (session.toolHistory.length > 10) session.toolHistory.shift();
-          logger.debug(
-            `discord-tool-status: after_tool_call: reconciled orphan tool entry.`,
-            { subsystem: "plugins", toolCallId: event.toolCallId },
-          );
+          logger.debug(`after_tool_call: reconciled orphan tool entry.`, {
+            toolCallId: event.toolCallId,
+          });
         }
         orphans.remove(event.toolCallId as string);
       }
@@ -330,15 +340,9 @@ export function createHookHandlers(deps: HookDeps) {
     if (!contextKey) return undefined;
     const session = await store.resolveSession(contextKey, sessionKey);
     if (!session) return undefined;
+    if (session.finalized) return undefined;
+    session.finalized = true;
     await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
-    scheduleSessionCleanup(
-      contextKey,
-      session,
-      sessionKey,
-      1000,
-      "message_sending",
-      getToken,
-    );
     return undefined;
   }
 
@@ -349,14 +353,21 @@ export function createHookHandlers(deps: HookDeps) {
     if (shouldSkipSession(ctx, "before_agent_reply")) return { handled: false };
     logHookEvent("before_agent_reply", event, ctx);
 
-    await resolveAndFinalize(ctx, 1000, "before_agent_reply", true);
+    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    if (!contextKey) return { handled: false };
+    const session = await store.resolveSession(contextKey, ctx.sessionKey);
+    if (!session) return { handled: false };
+    if (!store.hasVisibleStatusState(session)) return { handled: false };
+    if (session.finalized) return { handled: false };
+
+    session.finalized = true;
+    await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
     return { handled: false };
   }
 
   async function onAgentEnd(event: AgentEndEvent, ctx: AgentContext) {
     if (isSubagentSessionKey(ctx.sessionKey)) {
-      logger.trace("discord-tool-status: agent_end: skip subagent session.", {
-        subsystem: "plugins",
+      logger.trace("agent_end: skip subagent session.", {
         sessionKey: ctx.sessionKey,
       });
       return;

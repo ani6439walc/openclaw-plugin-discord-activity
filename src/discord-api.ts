@@ -1,7 +1,7 @@
 import { createSubsystemLogger } from "../api.js";
 import { MAX_RETRIES, RETRY_FALLBACK_MS } from "./constants.js";
 
-const logger = createSubsystemLogger("plugins");
+const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -71,8 +71,7 @@ export async function discordApiRequest(
 
       if (res.status === 429) {
         const delayMs = await getRetryDelayMs(res);
-        logger.warn(`discord-tool-status: ${operation} hit rate limit.`, {
-          subsystem: "plugins",
+        logger.warn(`${operation} hit rate limit.`, {
           status: res.status,
           retryInMs: delayMs,
           attempt,
@@ -89,15 +88,11 @@ export async function discordApiRequest(
           return res;
         }
         const backoffMs = RETRY_FALLBACK_MS * Math.pow(2, attempt);
-        logger.warn(
-          `discord-tool-status: ${operation} server error, retrying.`,
-          {
-            subsystem: "plugins",
-            status: res.status,
-            retryInMs: backoffMs,
-            attempt,
-          },
-        );
+        logger.warn(`${operation} server error, retrying.`, {
+          status: res.status,
+          retryInMs: backoffMs,
+          attempt,
+        });
         await sleep(backoffMs);
         continue;
       }
@@ -108,20 +103,16 @@ export async function discordApiRequest(
         throw err;
       }
       const backoffMs = RETRY_FALLBACK_MS * Math.pow(2, attempt);
-      logger.warn(
-        `discord-tool-status: ${operation} network error, retrying.`,
-        {
-          subsystem: "plugins",
-          error: String(err),
-          retryInMs: backoffMs,
-          attempt,
-        },
-      );
+      logger.warn(`${operation} network error, retrying.`, {
+        error: String(err),
+        retryInMs: backoffMs,
+        attempt,
+      });
       await sleep(backoffMs);
     }
   }
 
-  throw new Error("discord-tool-status: unexpected retry loop exit");
+  throw new Error("unexpected retry loop exit");
 }
 
 export async function sendMessage(
@@ -147,8 +138,7 @@ export async function sendMessage(
     );
     const data = (await res.json().catch(() => ({}))) as any;
     if (!res.ok) {
-      logger.warn("discord-tool-status: sendMessage failed.", {
-        subsystem: "plugins",
+      logger.warn("sendMessage failed.", {
         status: res.status,
         error: data,
       });
@@ -156,8 +146,7 @@ export async function sendMessage(
     }
     return data.id as string;
   } catch (err) {
-    logger.warn("discord-tool-status: sendMessage threw.", {
-      subsystem: "plugins",
+    logger.warn("sendMessage threw.", {
       error: String(err),
     });
     return undefined;
@@ -185,15 +174,13 @@ export async function editMessage(
     );
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as any;
-      logger.warn("discord-tool-status: editMessage failed.", {
-        subsystem: "plugins",
+      logger.warn("editMessage failed.", {
         status: res.status,
         error: data,
       });
     }
   } catch (err) {
-    logger.warn("discord-tool-status: editMessage threw.", {
-      subsystem: "plugins",
+    logger.warn("editMessage threw.", {
       error: String(err),
     });
   }
@@ -214,16 +201,14 @@ export async function deleteMessage(
       "deleteMessage",
     );
     if (!res.ok) {
-      logger.warn("discord-tool-status: deleteMessage failed.", {
-        subsystem: "plugins",
+      logger.warn("deleteMessage failed.", {
         status: res.status,
       });
       return false;
     }
     return true;
   } catch (err) {
-    logger.warn("discord-tool-status: deleteMessage threw.", {
-      subsystem: "plugins",
+    logger.warn("deleteMessage threw.", {
       error: String(err),
     });
     return false;

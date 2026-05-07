@@ -9,7 +9,7 @@ import { defaultStore, defaultOrphans } from "./session.js";
 import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
 
-const logger = createSubsystemLogger("plugins");
+const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 function buildIsActiveMemoryEnabled(
   openClawConfig: OpenClawConfig,
@@ -62,9 +62,7 @@ export function createPlugin(api: OpenClawPluginApi) {
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
 
-      logger.debug("discord-tool-status: Plugin registered.", {
-        subsystem: "plugins",
-      });
+      logger.debug("Plugin registered.");
     },
   });
 }

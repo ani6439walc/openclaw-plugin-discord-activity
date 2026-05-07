@@ -42,12 +42,12 @@ Enable the extension in your `openclaw.plugin.json` or main configuration:
 
 The extension can be customized via the `config` object in your OpenClaw settings:
 
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `maxToolHistoryLength` | `number` | `10` | Maximum number of tool calls to display in the status message. |
-| `maxStatusMessageLength`| `number` | `1700` | Character limit for the Discord message (Discord's limit is 2000). |
-| `maxDisplayMs` | `number` | `600000` | Force-delete the status message after this duration (ms) to prevent stale indicators. |
-| `orphanTtlMs` | `number` | `300000` | Time to keep "orphaned" tool calls in memory while waiting for a session link. |
+| Property                 | Type     | Default  | Description                                                                           |
+| :----------------------- | :------- | :------- | :------------------------------------------------------------------------------------ |
+| `maxToolHistoryLength`   | `number` | `10`     | Maximum number of tool calls to display in the status message.                        |
+| `maxStatusMessageLength` | `number` | `1700`   | Character limit for the Discord message (Discord's limit is 2000).                    |
+| `maxDisplayMs`           | `number` | `600000` | Force-delete the status message after this duration (ms) to prevent stale indicators. |
+| `orphanTtlMs`            | `number` | `300000` | Time to keep "orphaned" tool calls in memory while waiting for a session link.        |
 
 ## 🏗 Architecture
 
@@ -66,4 +66,4 @@ The extension operates by subscribing to the OpenClaw plugin hook system:
 
 ---
 
-*Developed for the OpenClaw ecosystem.*
+_Developed for the OpenClaw ecosystem._

@@ -3,7 +3,7 @@ import type { ChannelMeta, SessionEntry } from "./types.js";
 import { sleep } from "./discord-api.js";
 import { SESSION_RESOLVE_RETRY_MS } from "./constants.js";
 
-const logger = createSubsystemLogger("plugins");
+const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export function createSessionStore() {
   const sessions = new Map<string, SessionEntry>();
@@ -24,17 +24,11 @@ export function createSessionStore() {
     hookName: string,
   ): Promise<void> {
     if (!session.pendingOp) return;
-    logger.debug(
-      `discord-tool-status: [${hookName}] Waiting for pending op...`,
-      {
-        subsystem: "plugins",
-      },
-    );
+    logger.debug(`[${hookName}] Waiting for pending op...`);
     try {
       await session.pendingOp;
     } catch (err) {
-      logger.warn(`discord-tool-status: [${hookName}] Pending op failed.`, {
-        subsystem: "plugins",
+      logger.warn(`[${hookName}] Pending op failed.`, {
         error: String(err),
       });
     }
@@ -137,6 +131,7 @@ export function createSessionStore() {
       accountId: context.accountId,
       ownerSessionKey,
       generation: 1,
+      finalized: false,
       toolHistory: [],
     };
     sessions.set(contextKey, created);

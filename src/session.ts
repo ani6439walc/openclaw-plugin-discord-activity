@@ -11,7 +11,7 @@ import { createSessionStore } from "./store.js";
 import { createOrphanToolManager } from "./orphans.js";
 import { renderStatusContent } from "./render.js";
 
-const logger = createSubsystemLogger("plugins");
+const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export const defaultStore = createSessionStore();
 export const defaultOrphans = createOrphanToolManager();
@@ -51,6 +51,7 @@ export async function retireSession(
 
   if (!session.statusMessageId) {
     session.toolHistory = [];
+    session.finalized = false;
     return;
   }
 
@@ -66,6 +67,7 @@ export async function retireSession(
     session.statusMessageId = undefined;
   }
   session.toolHistory = [];
+  session.finalized = false;
 }
 
 export function scheduleSessionCleanup(
@@ -105,14 +107,10 @@ export function scheduleSessionCleanup(
 
     clearStatusMessage(session, hookName, getToken)
       .catch((err) => {
-        logger.warn(
-          `discord-tool-status: Failed to clear status message on ${hookName}`,
-          {
-            subsystem: "plugins",
-            contextKey,
-            error: String(err),
-          },
-        );
+        logger.warn(`Failed to clear status message on ${hookName}`, {
+          contextKey,
+          error: String(err),
+        });
       })
       .finally(() => {
         clearSessionState(
@@ -142,16 +140,14 @@ export async function clearStatusMessage(
   const token = getToken(session.accountId);
   if (token) {
     const msgId = session.statusMessageId;
-    logger.debug(
-      `discord-tool-status: [${hookName}] Deleting status message ${msgId}`,
-      { subsystem: "plugins" },
-    );
+    logger.debug(`[${hookName}] Deleting status message ${msgId}`);
     const deleted = await deleteMessage(session.channelId, msgId, token);
     if (deleted) {
       session.statusMessageId = undefined;
     }
   }
   session.toolHistory = [];
+  session.finalized = false;
 }
 
 async function sendMessageWithDmFallback(
@@ -168,6 +164,11 @@ async function sendMessageWithDmFallback(
       session.channelId = dmChannelId;
       return sendMessage(dmChannelId, content, token, replyToId);
     }
+    logger.warn("failed to resolve DM channel before sending status message.", {
+      userId,
+      contextKey: session.contextKey,
+      ownerSessionKey: session.ownerSessionKey,
+    });
     return undefined;
   }
 
@@ -191,20 +192,16 @@ function startMaxDisplayTimer(
     }
 
     logger.warn(
-      `discord-tool-status: Status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
-      { subsystem: "plugins", contextKey, maxDisplayMs },
+      `Status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
+      { contextKey, maxDisplayMs },
     );
 
     clearStatusMessage(session, "max_display_timeout", getToken)
       .catch((err) => {
-        logger.warn(
-          "discord-tool-status: Failed to clear status message on max_display_timeout",
-          {
-            subsystem: "plugins",
-            contextKey,
-            error: String(err),
-          },
-        );
+        logger.warn("Failed to clear status message on max_display_timeout", {
+          contextKey,
+          error: String(err),
+        });
       })
       .finally(() => {
         clearSessionState(contextKey, session);
@@ -221,22 +218,13 @@ export async function updateStatusMessage(
   const priorOp = session.pendingOp;
   const op = (async () => {
     if (priorOp) {
-      logger.debug(
-        "discord-tool-status: [update_status_message] Waiting for pending op...",
-        {
-          subsystem: "plugins",
-        },
-      );
+      logger.debug("[update_status_message] Waiting for pending op...");
       try {
         await priorOp;
       } catch (err) {
-        logger.warn(
-          "discord-tool-status: [update_status_message] Pending op failed.",
-          {
-            subsystem: "plugins",
-            error: String(err),
-          },
-        );
+        logger.warn("[update_status_message] Pending op failed.", {
+          error: String(err),
+        });
       }
     }
 
@@ -253,6 +241,17 @@ export async function updateStatusMessage(
     if (!token) return;
 
     const isNewMessage = !session.statusMessageId;
+
+    if (isNewMessage && session.finalized && !isFinal) {
+      logger.debug(
+        "[update_status_message] Skip non-final create for finalized session.",
+        {
+          contextKey: session.contextKey,
+          ownerSessionKey: session.ownerSessionKey,
+        },
+      );
+      return;
+    }
 
     if (isNewMessage) {
       if (!isCurrentSession(session)) {
@@ -276,12 +275,7 @@ export async function updateStatusMessage(
       }
 
       session.statusMessageId = createdId;
-      logger.debug(
-        `discord-tool-status: Created status message ${session.statusMessageId}`,
-        {
-          subsystem: "plugins",
-        },
-      );
+      logger.debug(`Created status message ${session.statusMessageId}`);
 
       if (maxDisplayMs && maxDisplayMs > 0) {
         startMaxDisplayTimer(
@@ -308,9 +302,7 @@ export async function updateStatusMessage(
       content,
       token,
     );
-    logger.debug("discord-tool-status: Updated status message.", {
-      subsystem: "plugins",
-    });
+    logger.debug("Updated status message.");
   })();
 
   session.pendingOp = op;

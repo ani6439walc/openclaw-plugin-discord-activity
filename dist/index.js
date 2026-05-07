@@ -47710,7 +47710,7 @@ var SESSION_RESOLVE_RETRY_MS = 75;
 var ORPHAN_TTL_MS = 5 * 60 * 1000;
 
 // src/discord-api.ts
-var logger = createSubsystemLogger("plugins");
+var logger = createSubsystemLogger("plugins/discord-tool-status");
 function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -47757,8 +47757,7 @@ async function discordApiRequest(url2, init, operation) {
       }
       if (res.status === 429) {
         const delayMs = await getRetryDelayMs(res);
-        logger.warn(`discord-tool-status: ${operation} hit rate limit.`, {
-          subsystem: "plugins",
+        logger.warn(`${operation} hit rate limit.`, {
           status: res.status,
           retryInMs: delayMs,
           attempt
@@ -47774,8 +47773,7 @@ async function discordApiRequest(url2, init, operation) {
           return res;
         }
         const backoffMs = RETRY_FALLBACK_MS * Math.pow(2, attempt);
-        logger.warn(`discord-tool-status: ${operation} server error, retrying.`, {
-          subsystem: "plugins",
+        logger.warn(`${operation} server error, retrying.`, {
           status: res.status,
           retryInMs: backoffMs,
           attempt
@@ -47789,8 +47787,7 @@ async function discordApiRequest(url2, init, operation) {
         throw err;
       }
       const backoffMs = RETRY_FALLBACK_MS * Math.pow(2, attempt);
-      logger.warn(`discord-tool-status: ${operation} network error, retrying.`, {
-        subsystem: "plugins",
+      logger.warn(`${operation} network error, retrying.`, {
         error: String(err),
         retryInMs: backoffMs,
         attempt
@@ -47798,7 +47795,7 @@ async function discordApiRequest(url2, init, operation) {
       await sleep2(backoffMs);
     }
   }
-  throw new Error("discord-tool-status: unexpected retry loop exit");
+  throw new Error("unexpected retry loop exit");
 }
 async function sendMessage(channelId, content, token, replyToId) {
   try {
@@ -47815,8 +47812,7 @@ async function sendMessage(channelId, content, token, replyToId) {
     }, "sendMessage");
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      logger.warn("discord-tool-status: sendMessage failed.", {
-        subsystem: "plugins",
+      logger.warn("sendMessage failed.", {
         status: res.status,
         error: data
       });
@@ -47824,8 +47820,7 @@ async function sendMessage(channelId, content, token, replyToId) {
     }
     return data.id;
   } catch (err) {
-    logger.warn("discord-tool-status: sendMessage threw.", {
-      subsystem: "plugins",
+    logger.warn("sendMessage threw.", {
       error: String(err)
     });
     return;
@@ -47843,15 +47838,13 @@ async function editMessage(channelId, messageId, content, token) {
     }, "editMessage");
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      logger.warn("discord-tool-status: editMessage failed.", {
-        subsystem: "plugins",
+      logger.warn("editMessage failed.", {
         status: res.status,
         error: data
       });
     }
   } catch (err) {
-    logger.warn("discord-tool-status: editMessage threw.", {
-      subsystem: "plugins",
+    logger.warn("editMessage threw.", {
       error: String(err)
     });
   }
@@ -47863,16 +47856,14 @@ async function deleteMessage(channelId, messageId, token) {
       headers: { Authorization: `Bot ${token}` }
     }, "deleteMessage");
     if (!res.ok) {
-      logger.warn("discord-tool-status: deleteMessage failed.", {
-        subsystem: "plugins",
+      logger.warn("deleteMessage failed.", {
         status: res.status
       });
       return false;
     }
     return true;
   } catch (err) {
-    logger.warn("discord-tool-status: deleteMessage threw.", {
-      subsystem: "plugins",
+    logger.warn("deleteMessage threw.", {
       error: String(err)
     });
     return false;
@@ -47971,7 +47962,7 @@ function parseActiveMemoryToolEntries(event) {
 }
 
 // src/store.ts
-var logger2 = createSubsystemLogger("plugins");
+var logger2 = createSubsystemLogger("plugins/discord-tool-status");
 function createSessionStore() {
   const sessions = new Map;
   const contexts = new Map;
@@ -47984,14 +47975,11 @@ function createSessionStore() {
   async function waitForPendingOp(session, hookName) {
     if (!session.pendingOp)
       return;
-    logger2.debug(`discord-tool-status: [${hookName}] Waiting for pending op...`, {
-      subsystem: "plugins"
-    });
+    logger2.debug(`[${hookName}] Waiting for pending op...`);
     try {
       await session.pendingOp;
     } catch (err) {
-      logger2.warn(`discord-tool-status: [${hookName}] Pending op failed.`, {
-        subsystem: "plugins",
+      logger2.warn(`[${hookName}] Pending op failed.`, {
         error: String(err)
       });
     }
@@ -48047,6 +48035,7 @@ function createSessionStore() {
       accountId: context.accountId,
       ownerSessionKey,
       generation: 1,
+      finalized: false,
       toolHistory: []
     };
     sessions.set(contextKey, created);
@@ -48277,7 +48266,7 @@ function renderStatusContent(toolHistory, isFinal) {
 }
 
 // src/session.ts
-var logger3 = createSubsystemLogger("plugins");
+var logger3 = createSubsystemLogger("plugins/discord-tool-status");
 var defaultStore = createSessionStore();
 var defaultOrphans = createOrphanToolManager();
 var activeSessions = defaultStore.sessions;
@@ -48300,6 +48289,7 @@ async function retireSession(session, hookName, getToken) {
   await waitForPendingOp(session, `${hookName}_retire_wait`);
   if (!session.statusMessageId) {
     session.toolHistory = [];
+    session.finalized = false;
     return;
   }
   const token = getToken(session.accountId);
@@ -48313,6 +48303,7 @@ async function retireSession(session, hookName, getToken) {
     session.statusMessageId = undefined;
   }
   session.toolHistory = [];
+  session.finalized = false;
 }
 function scheduleSessionCleanup(contextKey, session, requestSessionKey, delayMs, hookName, getToken) {
   if (requestSessionKey && session.ownerSessionKey !== requestSessionKey) {
@@ -48333,8 +48324,7 @@ function scheduleSessionCleanup(contextKey, session, requestSessionKey, delayMs,
       session.maxDisplayTimer = undefined;
     }
     clearStatusMessage(session, hookName, getToken).catch((err) => {
-      logger3.warn(`discord-tool-status: Failed to clear status message on ${hookName}`, {
-        subsystem: "plugins",
+      logger3.warn(`Failed to clear status message on ${hookName}`, {
         contextKey,
         error: String(err)
       });
@@ -48354,13 +48344,14 @@ async function clearStatusMessage(session, hookName, getToken) {
   const token = getToken(session.accountId);
   if (token) {
     const msgId = session.statusMessageId;
-    logger3.debug(`discord-tool-status: [${hookName}] Deleting status message ${msgId}`, { subsystem: "plugins" });
+    logger3.debug(`[${hookName}] Deleting status message ${msgId}`);
     const deleted = await deleteMessage(session.channelId, msgId, token);
     if (deleted) {
       session.statusMessageId = undefined;
     }
   }
   session.toolHistory = [];
+  session.finalized = false;
 }
 async function sendMessageWithDmFallback(session, content, token, replyToId) {
   const userId = extractUserIdFromDirectSessionKey(session.ownerSessionKey);
@@ -48370,6 +48361,11 @@ async function sendMessageWithDmFallback(session, content, token, replyToId) {
       session.channelId = dmChannelId;
       return sendMessage(dmChannelId, content, token, replyToId);
     }
+    logger3.warn("failed to resolve DM channel before sending status message.", {
+      userId,
+      contextKey: session.contextKey,
+      ownerSessionKey: session.ownerSessionKey
+    });
     return;
   }
   return sendMessage(session.channelId, content, token, replyToId);
@@ -48383,10 +48379,9 @@ function startMaxDisplayTimer(session, contextKey, maxDisplayMs, getToken) {
     if (!current || current !== session) {
       return;
     }
-    logger3.warn(`discord-tool-status: Status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`, { subsystem: "plugins", contextKey, maxDisplayMs });
+    logger3.warn(`Status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`, { contextKey, maxDisplayMs });
     clearStatusMessage(session, "max_display_timeout", getToken).catch((err) => {
-      logger3.warn("discord-tool-status: Failed to clear status message on max_display_timeout", {
-        subsystem: "plugins",
+      logger3.warn("Failed to clear status message on max_display_timeout", {
         contextKey,
         error: String(err)
       });
@@ -48399,14 +48394,11 @@ async function updateStatusMessage(session, getToken, isFinal = false, maxDispla
   const priorOp = session.pendingOp;
   const op = (async () => {
     if (priorOp) {
-      logger3.debug("discord-tool-status: [update_status_message] Waiting for pending op...", {
-        subsystem: "plugins"
-      });
+      logger3.debug("[update_status_message] Waiting for pending op...");
       try {
         await priorOp;
       } catch (err) {
-        logger3.warn("discord-tool-status: [update_status_message] Pending op failed.", {
-          subsystem: "plugins",
+        logger3.warn("[update_status_message] Pending op failed.", {
           error: String(err)
         });
       }
@@ -48424,6 +48416,13 @@ async function updateStatusMessage(session, getToken, isFinal = false, maxDispla
     if (!token)
       return;
     const isNewMessage = !session.statusMessageId;
+    if (isNewMessage && session.finalized && !isFinal) {
+      logger3.debug("[update_status_message] Skip non-final create for finalized session.", {
+        contextKey: session.contextKey,
+        ownerSessionKey: session.ownerSessionKey
+      });
+      return;
+    }
     if (isNewMessage) {
       if (!isCurrentSession(session)) {
         return;
@@ -48437,9 +48436,7 @@ async function updateStatusMessage(session, getToken, isFinal = false, maxDispla
         return;
       }
       session.statusMessageId = createdId;
-      logger3.debug(`discord-tool-status: Created status message ${session.statusMessageId}`, {
-        subsystem: "plugins"
-      });
+      logger3.debug(`Created status message ${session.statusMessageId}`);
       if (maxDisplayMs && maxDisplayMs > 0) {
         startMaxDisplayTimer(session, session.contextKey, maxDisplayMs, getToken);
       }
@@ -48452,9 +48449,7 @@ async function updateStatusMessage(session, getToken, isFinal = false, maxDispla
       return;
     }
     await editMessage(session.channelId, session.statusMessageId, content, token);
-    logger3.debug("discord-tool-status: Updated status message.", {
-      subsystem: "plugins"
-    });
+    logger3.debug("Updated status message.");
   })();
   session.pendingOp = op;
   try {
@@ -48467,12 +48462,11 @@ async function updateStatusMessage(session, getToken, isFinal = false, maxDispla
 }
 
 // src/hooks.ts
-var logger4 = createSubsystemLogger("plugins");
+var logger4 = createSubsystemLogger("plugins/discord-tool-status");
 function createHookHandlers(deps) {
   const { store, orphans, getToken, config: config2, isActiveMemoryEnabled } = deps;
   function logHookEvent(hookName, _event, ctx) {
-    logger4.debug(`discord-tool-status: ${hookName} ctx: ${JSON.stringify(ctx)}`, {
-      subsystem: "plugins",
+    logger4.debug(`${hookName} ctx: ${JSON.stringify(ctx)}`, {
       sessionKey: ctx.sessionKey
     });
   }
@@ -48481,8 +48475,7 @@ function createHookHandlers(deps) {
   }
   function shouldSkipSession(ctx, hookName) {
     if (isActiveMemorySessionKey(ctx.sessionKey) || isSubagentSessionKey2(ctx.sessionKey)) {
-      logger4.trace(`discord-tool-status: ${hookName}: skip (active-memory/subagent) session.`, {
-        subsystem: "plugins",
+      logger4.trace(`${hookName}: skip (active-memory/subagent) session.`, {
         sessionKey: ctx.sessionKey
       });
       return true;
@@ -48498,6 +48491,7 @@ function createHookHandlers(deps) {
       return;
     if (requireVisibleState && !store.hasVisibleStatusState(session))
       return;
+    session.finalized = true;
     await updateStatusMessage(session, getToken, true, config2.maxDisplayMs);
     scheduleSessionCleanup(contextKey, session, ctx.sessionKey, delayMs, `${hookName}_delayed`, getToken);
   }
@@ -48528,7 +48522,8 @@ function createHookHandlers(deps) {
     });
     const activeSession = store.sessions.get(contextKey);
     if (activeSession) {
-      if (ctx.sessionKey && activeSession.ownerSessionKey !== ctx.sessionKey) {
+      if (activeSession.finalized || ctx.sessionKey && activeSession.ownerSessionKey !== ctx.sessionKey) {
+        const nextOwnerSessionKey = ctx.sessionKey ?? activeSession.ownerSessionKey;
         if (activeSession.clearTimer) {
           clearTimeout(activeSession.clearTimer);
           activeSession.clearTimer = undefined;
@@ -48539,19 +48534,19 @@ function createHookHandlers(deps) {
           userMessageId: event.messageId,
           senderId: extractSenderId(event.metadata),
           accountId: ctx.accountId,
-          ownerSessionKey: ctx.sessionKey,
+          ownerSessionKey: nextOwnerSessionKey,
           generation: activeSession.generation + 1,
+          finalized: false,
           toolHistory: []
         };
         store.sessions.set(contextKey, replacement);
         retireSession(activeSession, "message_received_owner_switch", getToken).catch((err) => {
-          logger4.warn("discord-tool-status: failed to retire old session on owner switch", {
-            subsystem: "plugins",
+          logger4.warn("failed to retire old session on owner switch", {
             contextKey,
             error: String(err)
           });
         });
-        const replacementAgentId = extractAgentIdFromSessionKey(ctx.sessionKey);
+        const replacementAgentId = extractAgentIdFromSessionKey(nextOwnerSessionKey);
         if (replacementAgentId === undefined || isActiveMemoryEnabled(replacementAgentId)) {
           replacement.toolHistory.push({
             toolCallId: "active-memory",
@@ -48597,12 +48592,18 @@ function createHookHandlers(deps) {
           params: event.params ?? {},
           createdAt: Date.now()
         });
-        logger4.debug(`discord-tool-status: before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`, {
-          subsystem: "plugins",
+        logger4.debug(`before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`, {
           toolCallId: event.toolCallId,
           toolName: event.toolName
         });
       }
+      return;
+    }
+    if (session.finalized) {
+      logger4.debug("before_tool_call: skip finalized session.", {
+        sessionKey: ctx.sessionKey,
+        toolCallId: event.toolCallId
+      });
       return;
     }
     if (!event.toolCallId)
@@ -48626,11 +48627,18 @@ function createHookHandlers(deps) {
     const session = contextKey ? await store.resolveSession(contextKey, ctx.sessionKey) : undefined;
     if (!session)
       return;
+    if (session.finalized) {
+      logger4.debug("after_tool_call: skip finalized session.", {
+        sessionKey: ctx.sessionKey,
+        toolCallId: event.toolCallId
+      });
+      return;
+    }
     let toolEntry = session.toolHistory.find((t) => t.toolCallId === event.toolCallId);
     let isOrphanReconcile = false;
     if (!toolEntry) {
       const orphan = orphans.get(event.toolCallId);
-      logger4.debug(`discord-tool-status: after_tool_call: lookup orphan id=${event.toolCallId} found=${orphan ? "yes" : "no"}`, { subsystem: "plugins", toolCallId: event.toolCallId });
+      logger4.debug(`after_tool_call: lookup orphan id=${event.toolCallId} found=${orphan ? "yes" : "no"}`, { toolCallId: event.toolCallId });
       if (orphan) {
         if (Date.now() - orphan.createdAt <= config2.orphanTtlMs) {
           toolEntry = {
@@ -48643,7 +48651,9 @@ function createHookHandlers(deps) {
           session.toolHistory.push(toolEntry);
           if (session.toolHistory.length > 10)
             session.toolHistory.shift();
-          logger4.debug(`discord-tool-status: after_tool_call: reconciled orphan tool entry.`, { subsystem: "plugins", toolCallId: event.toolCallId });
+          logger4.debug(`after_tool_call: reconciled orphan tool entry.`, {
+            toolCallId: event.toolCallId
+          });
         }
         orphans.remove(event.toolCallId);
       }
@@ -48686,21 +48696,33 @@ function createHookHandlers(deps) {
     const session = await store.resolveSession(contextKey, sessionKey);
     if (!session)
       return;
+    if (session.finalized)
+      return;
+    session.finalized = true;
     await updateStatusMessage(session, getToken, true, config2.maxDisplayMs);
-    scheduleSessionCleanup(contextKey, session, sessionKey, 1000, "message_sending", getToken);
     return;
   }
   async function onBeforeAgentReply(event, ctx) {
     if (shouldSkipSession(ctx, "before_agent_reply"))
       return { handled: false };
     logHookEvent("before_agent_reply", event, ctx);
-    await resolveAndFinalize(ctx, 1000, "before_agent_reply", true);
+    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    if (!contextKey)
+      return { handled: false };
+    const session = await store.resolveSession(contextKey, ctx.sessionKey);
+    if (!session)
+      return { handled: false };
+    if (!store.hasVisibleStatusState(session))
+      return { handled: false };
+    if (session.finalized)
+      return { handled: false };
+    session.finalized = true;
+    await updateStatusMessage(session, getToken, true, config2.maxDisplayMs);
     return { handled: false };
   }
   async function onAgentEnd(event, ctx) {
     if (isSubagentSessionKey2(ctx.sessionKey)) {
-      logger4.trace("discord-tool-status: agent_end: skip subagent session.", {
-        subsystem: "plugins",
+      logger4.trace("agent_end: skip subagent session.", {
         sessionKey: ctx.sessionKey
       });
       return;
@@ -48799,7 +48821,7 @@ function resolveConfig(raw) {
 }
 
 // src/plugin.ts
-var logger5 = createSubsystemLogger("plugins");
+var logger5 = createSubsystemLogger("plugins/discord-tool-status");
 function buildIsActiveMemoryEnabled(openClawConfig) {
   return (agentId) => {
     const plugins = openClawConfig.plugins;
@@ -48842,9 +48864,7 @@ function createPlugin(api3) {
       api3.on("message_sending", handlers2.onMessageSending);
       api3.on("before_agent_reply", handlers2.onBeforeAgentReply);
       api3.on("agent_end", handlers2.onAgentEnd);
-      logger5.debug("discord-tool-status: Plugin registered.", {
-        subsystem: "plugins"
-      });
+      logger5.debug("Plugin registered.");
     }
   });
 }

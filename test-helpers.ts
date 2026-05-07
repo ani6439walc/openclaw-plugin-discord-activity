@@ -58,6 +58,7 @@ export function createMockSessionEntry(
     ownerSessionKey: "discord:channel:123456:agent:abc",
     generation: 1,
     statusMessageId: undefined,
+    finalized: false,
     toolHistory: [],
     pendingOp: undefined,
     clearTimer: undefined,

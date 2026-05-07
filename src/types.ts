@@ -44,6 +44,7 @@ export type SessionEntry = {
   ownerSessionKey: string;
   generation: number;
   statusMessageId?: string;
+  finalized?: boolean;
   toolHistory: ToolEntry[];
   pendingOp?: Promise<void>;
   clearTimer?: ReturnType<typeof setTimeout>;
