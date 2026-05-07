@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { defaultStore, updateStatusMessage } from "./session.js";
 import { createMockSessionEntry, createToolEntry } from "../test-helpers.js";
+import { renderStatusContent } from "./render.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -90,5 +91,41 @@ describe("updateStatusMessage", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain("/messages/status_1");
     expect((init as RequestInit | undefined)?.method).toBe("PATCH");
+  });
+
+  it("skips editing when the rendered content is unchanged", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const toolHistory = [createToolEntry({ status: "completed" })];
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory,
+      lastRenderedContent: renderStatusContent(toolHistory, true),
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", true, 60_000);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stores rendered content after a successful edit", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const toolHistory = [createToolEntry({ status: "completed" })];
+    const expectedContent = renderStatusContent(toolHistory, true);
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory,
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", true, 60_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(session.lastRenderedContent).toBe(expectedContent);
   });
 });

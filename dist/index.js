@@ -48035,6 +48035,7 @@ function createSessionStore() {
       accountId: context.accountId,
       ownerSessionKey,
       generation: 1,
+      lastRenderedContent: undefined,
       finalized: false,
       toolHistory: []
     };
@@ -48289,6 +48290,7 @@ async function retireSession(session, hookName, getToken) {
   await waitForPendingOp(session, `${hookName}_retire_wait`);
   if (!session.statusMessageId) {
     session.toolHistory = [];
+    session.lastRenderedContent = undefined;
     session.finalized = false;
     return;
   }
@@ -48303,6 +48305,7 @@ async function retireSession(session, hookName, getToken) {
     session.statusMessageId = undefined;
   }
   session.toolHistory = [];
+  session.lastRenderedContent = undefined;
   session.finalized = false;
 }
 function scheduleSessionCleanup(contextKey, session, requestSessionKey, delayMs, hookName, getToken) {
@@ -48351,6 +48354,7 @@ async function clearStatusMessage(session, hookName, getToken) {
     }
   }
   session.toolHistory = [];
+  session.lastRenderedContent = undefined;
   session.finalized = false;
 }
 async function sendMessageWithDmFallback(session, content, token, replyToId) {
@@ -48440,6 +48444,7 @@ async function updateStatusMessage(session, getToken, isFinal = false, maxDispla
       if (maxDisplayMs && maxDisplayMs > 0) {
         startMaxDisplayTimer(session, session.contextKey, maxDisplayMs, getToken);
       }
+      session.lastRenderedContent = content;
       return;
     }
     if (!isCurrentSession(session)) {
@@ -48448,7 +48453,12 @@ async function updateStatusMessage(session, getToken, isFinal = false, maxDispla
     if (!session.statusMessageId) {
       return;
     }
+    if (session.lastRenderedContent === content) {
+      logger3.debug("Skipped status message edit because content is unchanged.");
+      return;
+    }
     await editMessage(session.channelId, session.statusMessageId, content, token);
+    session.lastRenderedContent = content;
     logger3.debug("Updated status message.");
   })();
   session.pendingOp = op;

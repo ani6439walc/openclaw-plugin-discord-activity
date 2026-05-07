@@ -131,6 +131,7 @@ export function createSessionStore() {
       accountId: context.accountId,
       ownerSessionKey,
       generation: 1,
+      lastRenderedContent: undefined,
       finalized: false,
       toolHistory: [],
     };

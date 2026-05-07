@@ -51,6 +51,7 @@ export async function retireSession(
 
   if (!session.statusMessageId) {
     session.toolHistory = [];
+    session.lastRenderedContent = undefined;
     session.finalized = false;
     return;
   }
@@ -67,6 +68,7 @@ export async function retireSession(
     session.statusMessageId = undefined;
   }
   session.toolHistory = [];
+  session.lastRenderedContent = undefined;
   session.finalized = false;
 }
 
@@ -147,6 +149,7 @@ export async function clearStatusMessage(
     }
   }
   session.toolHistory = [];
+  session.lastRenderedContent = undefined;
   session.finalized = false;
 }
 
@@ -285,6 +288,7 @@ export async function updateStatusMessage(
           getToken,
         );
       }
+      session.lastRenderedContent = content;
       return;
     }
 
@@ -296,12 +300,18 @@ export async function updateStatusMessage(
       return;
     }
 
+    if (session.lastRenderedContent === content) {
+      logger.debug("Skipped status message edit because content is unchanged.");
+      return;
+    }
+
     await editMessage(
       session.channelId,
       session.statusMessageId,
       content,
       token,
     );
+    session.lastRenderedContent = content;
     logger.debug("Updated status message.");
   })();
 

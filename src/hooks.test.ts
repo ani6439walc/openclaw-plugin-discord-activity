@@ -290,7 +290,7 @@ describe("createHookHandlers", () => {
           "PATCH",
           /\/channels\/dm_channel_123\/messages\/status_1$/,
         ),
-      ).toBeGreaterThanOrEqual(3);
+      ).toBe(2);
       expect(
         store.sessions.get("discord:direct:123")?.clearTimer,
       ).toBeDefined();
