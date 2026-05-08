@@ -1,9 +1,18 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import { createHookHandlers } from "./hooks.js";
 import { createOrphanToolManager } from "./orphans.js";
 import { resolveConfig } from "./config.js";
 import { flushPromises } from "../test-helpers.js";
 import { defaultStore } from "./session.js";
+import type { HookDeps } from "./types.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -77,9 +86,9 @@ function countChannelMessagePosts(fetchMock: ReturnType<typeof vi.fn>): number {
 describe("createHookHandlers", () => {
   let store: typeof defaultStore;
   let orphans: ReturnType<typeof createOrphanToolManager>;
-  let getToken: ReturnType<typeof vi.fn>;
+  let getToken: Mock<HookDeps["getToken"]>;
   let config: ReturnType<typeof resolveConfig>;
-  let isActiveMemoryEnabled: ReturnType<typeof vi.fn>;
+  let isActiveMemoryEnabled: Mock<HookDeps["isActiveMemoryEnabled"]>;
   let handlers: ReturnType<typeof createHookHandlers>;
 
   beforeEach(() => {
@@ -87,9 +96,11 @@ describe("createHookHandlers", () => {
     defaultStore.contexts.clear();
     store = defaultStore;
     orphans = createOrphanToolManager();
-    getToken = vi.fn().mockReturnValue("test-token");
+    getToken = vi.fn<HookDeps["getToken"]>().mockReturnValue("test-token");
     config = resolveConfig({});
-    isActiveMemoryEnabled = vi.fn().mockReturnValue(true);
+    isActiveMemoryEnabled = vi
+      .fn<HookDeps["isActiveMemoryEnabled"]>()
+      .mockReturnValue(true);
     handlers = createHookHandlers({
       store,
       orphans,
