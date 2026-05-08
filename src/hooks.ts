@@ -304,10 +304,12 @@ export function createHookHandlers(deps: HookDeps) {
     if (toolEntry) {
       if (event.error) {
         toolEntry.status = "error";
+        toolEntry.error = event.error;
       } else if (isOrphanReconcile) {
         toolEntry.status = "orphan-completed";
       } else {
         toolEntry.status = "completed";
+        toolEntry.error = undefined;
       }
       toolEntry.durationMs = event.durationMs;
       await updateStatusMessage(session, getToken, false, config.maxDisplayMs);
@@ -389,6 +391,9 @@ export function createHookHandlers(deps: HookDeps) {
             session.clearTimer = undefined;
           }
           const entries = parseActiveMemoryToolEntries(event);
+          const preservedPlaceholder = session.toolHistory.find(
+            (t) => t.toolCallId === "active-memory",
+          );
           session.toolHistory = session.toolHistory.filter(
             (t) => t.toolCallId !== "active-memory",
           );
@@ -408,6 +413,15 @@ export function createHookHandlers(deps: HookDeps) {
             while (session.toolHistory.length > 10) {
               session.toolHistory.shift();
             }
+          } else if (event.error || event.success === false) {
+            session.toolHistory.push({
+              toolCallId: "active-memory",
+              toolName: "active-memory",
+              params: preservedPlaceholder?.params ?? {},
+              status: "error",
+              durationMs: event.durationMs,
+              error: event.error,
+            });
           }
           await updateStatusMessage(
             session,

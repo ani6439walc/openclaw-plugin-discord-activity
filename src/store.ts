@@ -15,7 +15,9 @@ export function createSessionStore() {
 
   function hasVisibleStatusState(session: SessionEntry): boolean {
     return session.toolHistory.some(
-      (t) => t.toolCallId !== "init" && t.toolCallId !== "active-memory",
+      (t) =>
+        t.toolCallId !== "init" &&
+        !(t.toolCallId === "active-memory" && t.status === "pending"),
     );
   }
 

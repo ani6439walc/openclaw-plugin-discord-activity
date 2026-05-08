@@ -30,7 +30,8 @@ function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
     typeof t.durationMs === "number"
       ? ` (${t.durationMs.toLocaleString()}ms)`
       : "";
-  return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}`;
+  const errorLine = t.status === "error" && t.error ? `\n   - ${t.error}` : "";
+  return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}${errorLine}`;
 }
 
 function renderActiveMemoryGroup(
@@ -54,12 +55,15 @@ function renderActiveMemoryGroup(
     return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
   });
 
+  const hasError = group.some((e) => e.status === "error");
   const hasPending = group.some((e) => e.status === "pending");
-  const parentSuffix = hasPending ? "←" : "♻︎";
+  const parentSuffix = hasError ? "✘" : hasPending ? "←" : "♻︎";
+  const errorEntry = group.find((e) => e.status === "error" && e.error);
+  const errorLine = errorEntry?.error ? `\n   - ${errorEntry.error}` : "";
 
   return `🧠 active-memory: ${parentSuffix}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
-  }`;
+  }${errorLine}`;
 }
 
 export function renderStatusContent(

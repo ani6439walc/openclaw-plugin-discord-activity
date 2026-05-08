@@ -34,6 +34,20 @@ describe("renderStatusContent", () => {
     expect(result).toContain("✘");
   });
 
+  it("renders normal tool error with error message detail", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          status: "error",
+          error: "permission denied",
+        }),
+      ],
+      false,
+    );
+    expect(result).toContain("bash: ✘");
+    expect(result).toContain("- permission denied");
+  });
+
   it("renders orphan-completed with recycle mark", () => {
     const result = renderStatusContent(
       [makeEntry({ status: "orphan-completed" })],
@@ -74,6 +88,34 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, false);
     expect(result).toContain("🧠 active-memory: ←");
+  });
+
+  it("renders active-memory group with error suffix", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "active-memory",
+        toolName: "active-memory",
+        params: {},
+        status: "error",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain("🧠 active-memory: ✘");
+  });
+
+  it("renders active-memory error with error message detail", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "active-memory",
+        toolName: "active-memory",
+        params: {},
+        status: "error",
+        error: "timed out after 15000ms",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain("🧠 active-memory: ✘");
+    expect(result).toContain("- timed out after 15000ms");
   });
 
   it("renders mixed normal and active-memory entries", () => {

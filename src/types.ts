@@ -12,6 +12,7 @@ export type ToolEntry = {
   params: any;
   status: "pending" | "completed" | "error" | "orphan-completed";
   durationMs?: number;
+  error?: string;
 };
 
 export type AgentMessageContentItem = {

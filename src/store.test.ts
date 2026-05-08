@@ -81,6 +81,18 @@ describe("createSessionStore", () => {
       expect(store.hasVisibleStatusState(session)).toBe(false);
     });
 
+    it("returns true for active-memory error state", () => {
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+      const session = store.getOrCreateSession("discord:channel:123")!;
+      session.toolHistory.push({
+        toolCallId: "active-memory",
+        toolName: "active-memory",
+        params: {},
+        status: "error",
+      });
+      expect(store.hasVisibleStatusState(session)).toBe(true);
+    });
+
     it("returns true for real tool entries", () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       const session = store.getOrCreateSession("discord:channel:123")!;

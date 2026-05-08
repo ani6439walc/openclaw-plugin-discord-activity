@@ -206,6 +206,49 @@ describe("createHookHandlers", () => {
       const session = store.sessions.get("discord:channel:123");
       expect(session?.toolHistory[0].status).toBe("completed");
     });
+
+    it("stores and renders normal tool error details", async () => {
+      const fetchMock = createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", {
+        actualChannelId: "123",
+        accountId: "default",
+      });
+
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: { command: "ls" } },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "bash",
+          toolCallId: "call_1",
+        },
+      );
+
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "bash",
+          params: { command: "ls" },
+          error: "permission denied",
+          durationMs: 100,
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "bash",
+          toolCallId: "call_1",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory[0]).toEqual(
+        expect.objectContaining({
+          status: "error",
+          error: "permission denied",
+        }),
+      );
+      expect(session?.lastRenderedContent).toContain("bash: ✘");
+      expect(session?.lastRenderedContent).toContain("permission denied");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
   });
 
   describe("onAgentEnd", () => {
@@ -356,6 +399,52 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+    });
+
+    it("keeps active-memory visible as error when active-memory agent_end times out before producing tool entries", async () => {
+      const fetchMock = createDiscordFetchMock();
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [],
+          success: false,
+          error: "timed out after 15000ms",
+          durationMs: 15196,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          status: "error",
+          durationMs: 15196,
+          error: "timed out after 15000ms",
+        }),
+      ]);
+      expect(session?.lastRenderedContent).toContain("🧠 active-memory: ✘");
+      expect(session?.lastRenderedContent).toContain("timed out after 15000ms");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
           /\/channels\/dm_channel_123\/messages\/status_1$/,
         ),
       ).toBe(1);
