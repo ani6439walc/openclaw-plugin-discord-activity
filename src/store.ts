@@ -17,7 +17,11 @@ export function createSessionStore() {
     return session.toolHistory.some(
       (t) =>
         t.toolCallId !== "init" &&
-        !(t.toolCallId === "active-memory" && t.status === "pending"),
+        !(
+          (t.toolCallId === "active-memory" ||
+            t.toolCallId === "intention-hint") &&
+          t.status === "pending"
+        ),
     );
   }
 

@@ -81,6 +81,38 @@ describe("createSessionStore", () => {
       expect(store.hasVisibleStatusState(session)).toBe(false);
     });
 
+    it("returns false for intention-hint placeholder only", () => {
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+      const session = store.getOrCreateSession("discord:channel:123")!;
+      session.toolHistory.push({
+        toolCallId: "intention-hint",
+        toolName: "intention-hint",
+        params: {},
+        status: "pending",
+      });
+      expect(store.hasVisibleStatusState(session)).toBe(false);
+    });
+
+    it("returns false for active-memory and intention-hint placeholders only", () => {
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+      const session = store.getOrCreateSession("discord:channel:123")!;
+      session.toolHistory.push(
+        {
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          params: {},
+          status: "pending",
+        },
+        {
+          toolCallId: "intention-hint",
+          toolName: "intention-hint",
+          params: {},
+          status: "pending",
+        },
+      );
+      expect(store.hasVisibleStatusState(session)).toBe(false);
+    });
+
     it("returns true for active-memory error state", () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       const session = store.getOrCreateSession("discord:channel:123")!;

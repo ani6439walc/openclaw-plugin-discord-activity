@@ -51,6 +51,34 @@ function replaceGroupInPlace(
   history.splice(startIdx, endIdx - startIdx, ...replacements);
 }
 
+function buildPendingSubagentEntries(
+  agentId: string | undefined,
+  isActiveMemoryEnabled: (agentId: string) => boolean,
+  isIntentionHintEnabled: (agentId: string) => boolean,
+): ToolEntry[] {
+  const entries: ToolEntry[] = [];
+
+  if (agentId === undefined || isActiveMemoryEnabled(agentId)) {
+    entries.push({
+      toolCallId: "active-memory",
+      toolName: "active-memory",
+      params: {},
+      status: "pending",
+    });
+  }
+
+  if (agentId === undefined || isIntentionHintEnabled(agentId)) {
+    entries.push({
+      toolCallId: "intention-hint",
+      toolName: "intention-hint",
+      params: {},
+      status: "pending",
+    });
+  }
+
+  return entries;
+}
+
 export function createHookHandlers(deps: HookDeps) {
   const {
     store,
@@ -184,33 +212,13 @@ export function createHookHandlers(deps: HookDeps) {
 
         const replacementAgentId =
           extractAgentIdFromSessionKey(nextOwnerSessionKey);
-        if (
-          replacementAgentId === undefined ||
-          isActiveMemoryEnabled(replacementAgentId)
-        ) {
-          replacement.toolHistory.push({
-            toolCallId: "active-memory",
-            toolName: "active-memory",
-            params: {},
-            status: "pending",
-          });
-          await updateStatusMessage(
-            replacement,
-            getToken,
-            false,
-            config.maxDisplayMs,
-          );
-        }
-        if (
-          replacementAgentId === undefined ||
-          isIntentionHintEnabled(replacementAgentId)
-        ) {
-          replacement.toolHistory.push({
-            toolCallId: "intention-hint",
-            toolName: "intention-hint",
-            params: {},
-            status: "pending",
-          });
+        const pendingEntries = buildPendingSubagentEntries(
+          replacementAgentId,
+          isActiveMemoryEnabled,
+          isIntentionHintEnabled,
+        );
+        if (pendingEntries.length > 0) {
+          replacement.toolHistory.push(...pendingEntries);
           await updateStatusMessage(
             replacement,
             getToken,
@@ -230,27 +238,13 @@ export function createHookHandlers(deps: HookDeps) {
     const session = store.getOrCreateSession(contextKey, ctx.sessionKey);
     if (session && session.toolHistory.length === 0) {
       const agentId = extractAgentIdFromSessionKey(ctx.sessionKey);
-      if (agentId === undefined || isActiveMemoryEnabled(agentId)) {
-        session.toolHistory.push({
-          toolCallId: "active-memory",
-          toolName: "active-memory",
-          params: {},
-          status: "pending",
-        });
-        await updateStatusMessage(
-          session,
-          getToken,
-          false,
-          config.maxDisplayMs,
-        );
-      }
-      if (agentId === undefined || isIntentionHintEnabled(agentId)) {
-        session.toolHistory.push({
-          toolCallId: "intention-hint",
-          toolName: "intention-hint",
-          params: {},
-          status: "pending",
-        });
+      const pendingEntries = buildPendingSubagentEntries(
+        agentId,
+        isActiveMemoryEnabled,
+        isIntentionHintEnabled,
+      );
+      if (pendingEntries.length > 0) {
+        session.toolHistory.push(...pendingEntries);
         await updateStatusMessage(
           session,
           getToken,

@@ -165,6 +165,30 @@ describe("createHookHandlers", () => {
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
+    it("inserts active-memory and intention-hint placeholders together in stable order", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
+        "active-memory",
+        "intention-hint",
+      ]);
+      expect(session?.lastRenderedContent).toContain("🧠 active-memory: ←");
+      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ←");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("skips active-memory sessions", async () => {
       await handlers.onMessageReceived(
         { messageId: "msg_1", metadata: {} },
@@ -303,6 +327,33 @@ describe("createHookHandlers", () => {
         { sessionKey: "discord:channel:123:subagent:abc" },
       );
       consoleSpy.mockRestore();
+    });
+
+    it("does not finalize on before_agent_reply when only pending subagent placeholders exist", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      const result = await handlers.onBeforeAgentReply(
+        { cleanedBody: "done" },
+        { sessionKey: "agent:main:discord:direct:123" },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(result).toEqual({ handled: false });
+      expect(session?.finalized).toBeFalsy();
+      expect(session?.lastRenderedContent).toContain("🧠 active-memory: ←");
+      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ←");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
     it("keeps one status message across before_agent_reply, active-memory agent_end, and main agent_end cleanup", async () => {
