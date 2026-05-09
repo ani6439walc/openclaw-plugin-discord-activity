@@ -837,6 +837,122 @@ describe("createHookHandlers", () => {
       expect(finalAmIdx).toBeLessThan(finalIhIdx);
     });
 
+    it("keeps parent order stable across the real subagent lifecycle", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "done" },
+        { sessionKey: "agent:main:discord:direct:123" },
+      );
+
+      const initial = store.sessions.get("discord:direct:123");
+      expect(initial?.toolHistory.map((t) => t.toolCallId)).toEqual([
+        "active-memory",
+        "intention-hint",
+      ]);
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "mem_1",
+                  name: "memory_search",
+                  arguments: { query: "hello" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "mem_1",
+              toolName: "memory_search",
+            },
+            {
+              role: "assistant",
+              content: "NONE",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
+        },
+      );
+
+      const afterActiveMemory = store.sessions.get("discord:direct:123");
+      expect(
+        afterActiveMemory?.toolHistory.some(
+          (t) => t.toolCallId === "active-memory",
+        ),
+      ).toBe(false);
+      expect(afterActiveMemory?.lastRenderedContent).toContain(
+        "🧠 active-memory: ♻︎",
+      );
+      expect(afterActiveMemory?.lastRenderedContent).toContain(
+        "☄️ intention-hint: ←",
+      );
+      expect(
+        afterActiveMemory!.lastRenderedContent!.indexOf("🧠 active-memory"),
+      ).toBeLessThan(
+        afterActiveMemory!.lastRenderedContent!.indexOf("☄️ intention-hint"),
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: "INTENT:CHAT",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:intention-hint:abc",
+        },
+      );
+
+      const afterIntentionHint = store.sessions.get("discord:direct:123");
+      expect(afterIntentionHint?.lastRenderedContent).toContain(
+        "🧠 active-memory: ♻︎",
+      );
+      expect(afterIntentionHint?.lastRenderedContent).toContain(
+        "☄️ intention-hint: ✔",
+      );
+      expect(
+        afterIntentionHint!.lastRenderedContent!.indexOf("🧠 active-memory"),
+      ).toBeLessThan(
+        afterIntentionHint!.lastRenderedContent!.indexOf("☄️ intention-hint"),
+      );
+
+      await handlers.onAgentEnd(
+        { messages: [], success: true },
+        { sessionKey: "agent:main:discord:direct:123" },
+      );
+
+      const final = store.sessions.get("discord:direct:123");
+      expect(final?.lastRenderedContent).toContain("🧠 active-memory: ♻︎");
+      expect(final?.lastRenderedContent).toContain("☄️ intention-hint: ✔");
+      expect(
+        final!.lastRenderedContent!.indexOf("🧠 active-memory"),
+      ).toBeLessThan(final!.lastRenderedContent!.indexOf("☄️ intention-hint"));
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("preserves group order when intention-hint completes before active-memory", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);

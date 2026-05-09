@@ -475,11 +475,7 @@ export function createHookHandlers(deps: HookDeps) {
                 t.toolName === "active-memory" ||
                 t.toolName.startsWith("active-memory:"),
               session.toolHistory
-                .filter(
-                  (t) =>
-                    t.toolName === "active-memory" ||
-                    t.toolName.startsWith("active-memory:"),
-                )
+                .filter((t) => t.toolName.startsWith("active-memory:"))
                 .concat(newEntries),
             );
             while (session.toolHistory.length > 10) {
