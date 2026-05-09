@@ -42,6 +42,16 @@ function renderActiveMemoryGroup(
     e.toolName.startsWith("active-memory:"),
   );
   const subEntryStrs = realEntries.map((entry) => {
+    if (entry.toolName === "active-memory:result") {
+      return formatParams(
+        { result: entry.params?.text },
+        {
+          first: "   - ",
+          rest: "     ",
+        },
+      );
+    }
+
     const strippedName = entry.toolName.replace(/^active-memory:/, "");
     const subSuffix = getSubSuffix(entry.status);
     const dur =

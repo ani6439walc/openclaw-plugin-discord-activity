@@ -77,6 +77,30 @@ describe("renderStatusContent", () => {
     expect(result).toContain("memory_read");
   });
 
+  it("renders active-memory result as the last nested item", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "am1",
+        toolName: "active-memory:memory_search",
+        params: { query: "test" },
+        status: "completed",
+      },
+      {
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: "每日早報重跑已觸發" },
+        status: "completed",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain("memory_search");
+    expect(result).toContain("- result: 每日早報重跑已觸發");
+    expect(result.indexOf("memory_search")).toBeLessThan(
+      result.indexOf("- result: 每日早報重跑已觸發"),
+    );
+  });
+
   it("renders active-memory group with pending suffix", () => {
     const entries: ToolEntry[] = [
       {

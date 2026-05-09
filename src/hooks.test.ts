@@ -461,6 +461,134 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
+    it("renders the final active-memory assistant message as a result item", async () => {
+      const fetchMock = createDiscordFetchMock();
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "mem_1",
+                  name: "memory_search",
+                  arguments: { query: "hello" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "mem_1",
+              toolName: "memory_search",
+            },
+            {
+              role: "assistant",
+              content: "每日早報重跑已觸發 Cron job",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            toolCallId: "active-memory:mem_1",
+            toolName: "active-memory:memory_search",
+            status: "completed",
+          }),
+          expect.objectContaining({
+            toolCallId: "active-memory:result",
+            toolName: "active-memory:result",
+            params: { text: "每日早報重跑已觸發 Cron job" },
+            status: "completed",
+          }),
+        ]),
+      );
+      expect(session?.lastRenderedContent).toContain(
+        "- result: 每日早報重跑已觸發 Cron job",
+      );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+    });
+
+    it("does not reuse earlier assistant text when the final assistant message has only tool calls", async () => {
+      const fetchMock = createDiscordFetchMock();
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: "這是比較早的摘要",
+            },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "mem_1",
+                  name: "memory_search",
+                  arguments: { query: "hello" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "mem_1",
+              toolName: "memory_search",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual(
+        expect.not.arrayContaining([
+          expect.objectContaining({
+            toolCallId: "active-memory:result",
+          }),
+        ]),
+      );
+      expect(session?.lastRenderedContent).not.toContain("- result:");
+      expect(session?.lastRenderedContent).toContain("memory_search");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("ignores late tool events after finalization instead of creating another status message", async () => {
       const fetchMock = createDiscordFetchMock();
 

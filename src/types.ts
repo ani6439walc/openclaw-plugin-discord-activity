@@ -20,11 +20,12 @@ export type AgentMessageContentItem = {
   id?: string;
   name?: string;
   arguments?: unknown;
+  text?: string;
 };
 
 export type AgentEventMessage = {
   role?: string;
-  content?: AgentMessageContentItem[];
+  content?: string | AgentMessageContentItem[];
   toolCallId?: string;
   toolName?: string;
 };

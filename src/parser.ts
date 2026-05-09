@@ -1,5 +1,25 @@
 import type { ToolEntry, AgentEventMessage } from "./types.js";
 
+function extractAssistantText(msg: AgentEventMessage): string | undefined {
+  if (typeof msg.content === "string") {
+    const text = msg.content.trim();
+    return text || undefined;
+  }
+
+  if (!Array.isArray(msg.content)) {
+    return undefined;
+  }
+
+  const text = msg.content
+    .filter((item) => item?.type === "text" && typeof item.text === "string")
+    .map((item) => item.text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  return text || undefined;
+}
+
 export function getDiscordContextKey(
   sessionKey: string | undefined,
 ): string | undefined {
@@ -76,18 +96,20 @@ export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
   const completion = new Set<string>();
 
   for (const msg of messages) {
-    if (msg?.role === "assistant" && Array.isArray(msg.content)) {
-      for (const item of msg.content) {
-        if (item?.type !== "toolCall") continue;
-        if (!item.id || !item.name) continue;
+    if (msg?.role === "assistant") {
+      if (Array.isArray(msg.content)) {
+        for (const item of msg.content) {
+          if (item?.type !== "toolCall") continue;
+          if (!item.id || !item.name) continue;
 
-        const prefixedId = `active-memory:${item.id}`;
-        byToolCallId.set(prefixedId, {
-          toolCallId: prefixedId,
-          toolName: `active-memory:${item.name}`,
-          params: item.arguments ?? {},
-          status: "pending",
-        });
+          const prefixedId = `active-memory:${item.id}`;
+          byToolCallId.set(prefixedId, {
+            toolCallId: prefixedId,
+            toolName: `active-memory:${item.name}`,
+            params: item.arguments ?? {},
+            status: "pending",
+          });
+        }
       }
       continue;
     }
@@ -111,5 +133,22 @@ export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
     }
   }
 
-  return Array.from(byToolCallId.values());
+  const entries = Array.from(byToolCallId.values());
+  const lastAssistantMessage = [...messages]
+    .reverse()
+    .find((msg) => msg?.role === "assistant");
+  const finalAssistantText = lastAssistantMessage
+    ? extractAssistantText(lastAssistantMessage)
+    : undefined;
+
+  if (finalAssistantText) {
+    entries.push({
+      toolCallId: "active-memory:result",
+      toolName: "active-memory:result",
+      params: { text: finalAssistantText },
+      status: "completed",
+    });
+  }
+
+  return entries;
 }
