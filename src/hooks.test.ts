@@ -161,7 +161,7 @@ describe("createHookHandlers", () => {
           status: "pending",
         }),
       ]);
-      expect(session?.lastRenderedContent).toContain("🧭 intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -607,7 +607,7 @@ describe("createHookHandlers", () => {
           }),
         ]),
       );
-      expect(session?.lastRenderedContent).toContain("🧭 intention-hint: ✔");
+      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ✔");
       expect(session?.lastRenderedContent).toContain(
         "- result: INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
       );
@@ -745,6 +745,186 @@ describe("createHookHandlers", () => {
           /\/channels\/dm_channel_123\/messages\/status_1$/,
         ),
       ).toBe(patchCountBefore);
+    });
+
+    it("preserves group order when active-memory completes before intention-hint", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
+        "active-memory",
+        "intention-hint",
+      ]);
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "mem_1",
+                  name: "memory_search",
+                  arguments: { query: "test" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "mem_1",
+              toolName: "memory_search",
+            },
+            { role: "assistant", content: "found result" },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
+        },
+      );
+
+      const afterAm = store.sessions.get("discord:direct:123");
+      const amIdx = afterAm!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "active-memory" ||
+          t.toolName.startsWith("active-memory:"),
+      );
+      const ihIdx = afterAm!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "intention-hint" ||
+          t.toolName.startsWith("intention-hint:"),
+      );
+      expect(amIdx).toBeLessThan(ihIdx);
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: "INTENT:RESEARCH | GOAL: docs",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:intention-hint:xyz",
+        },
+      );
+
+      const final = store.sessions.get("discord:direct:123");
+      const finalAmIdx = final!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "active-memory" ||
+          t.toolName.startsWith("active-memory:"),
+      );
+      const finalIhIdx = final!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "intention-hint" ||
+          t.toolName.startsWith("intention-hint:"),
+      );
+      expect(finalAmIdx).toBeLessThan(finalIhIdx);
+    });
+
+    it("preserves group order when intention-hint completes before active-memory", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:456",
+          accountId: "default",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:456");
+      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
+        "active-memory",
+        "intention-hint",
+      ]);
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: "INTENT:RESEARCH | GOAL: docs",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:456:intention-hint:xyz",
+        },
+      );
+
+      const afterIh = store.sessions.get("discord:direct:456");
+      const amIdx = afterIh!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "active-memory" ||
+          t.toolName.startsWith("active-memory:"),
+      );
+      const ihIdx = afterIh!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "intention-hint" ||
+          t.toolName.startsWith("intention-hint:"),
+      );
+      expect(amIdx).toBeLessThan(ihIdx);
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "mem_1",
+                  name: "memory_search",
+                  arguments: { query: "test" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "mem_1",
+              toolName: "memory_search",
+            },
+            { role: "assistant", content: "found result" },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:456:active-memory:abc",
+        },
+      );
+
+      const final = store.sessions.get("discord:direct:456");
+      const finalAmIdx = final!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "active-memory" ||
+          t.toolName.startsWith("active-memory:"),
+      );
+      const finalIhIdx = final!.toolHistory.findIndex(
+        (t) =>
+          t.toolName === "intention-hint" ||
+          t.toolName.startsWith("intention-hint:"),
+      );
+      expect(finalAmIdx).toBeLessThan(finalIhIdx);
     });
   });
 });

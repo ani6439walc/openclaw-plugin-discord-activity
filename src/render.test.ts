@@ -124,7 +124,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(result).toContain("🧭 intention-hint: ←");
+    expect(result).toContain("☄️ intention-hint: ←");
   });
 
   it("renders intention-hint result as nested item", () => {
@@ -137,7 +137,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧭 intention-hint: ✔");
+    expect(result).toContain("☄️ intention-hint: ✔");
     expect(result).toContain("- result: INTENT:RESEARCH | GOAL: docs");
   });
 
@@ -184,6 +184,58 @@ describe("renderStatusContent", () => {
     expect(result).toContain("web_search");
     expect(result).toContain("active-memory");
     expect(result).toContain("read");
+  });
+
+  it("renders active-memory group before intention-hint group preserving array order", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "active-memory:mem1",
+        toolName: "active-memory:memory_search",
+        params: { query: "test" },
+        status: "completed",
+      },
+      {
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: "result" },
+        status: "completed",
+      },
+      {
+        toolCallId: "intention-hint:result",
+        toolName: "intention-hint:result",
+        params: { text: "INTENT:RESEARCH" },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    const amPos = result.indexOf("active-memory");
+    const ihPos = result.indexOf("intention-hint");
+    expect(amPos).toBeLessThan(ihPos);
+    expect(amPos).toBeGreaterThanOrEqual(0);
+    expect(ihPos).toBeGreaterThanOrEqual(0);
+  });
+
+  it("renders intention-hint group before active-memory group preserving array order", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint:result",
+        toolName: "intention-hint:result",
+        params: { text: "INTENT:RESEARCH" },
+        status: "completed",
+      },
+      {
+        toolCallId: "active-memory:mem1",
+        toolName: "active-memory:memory_search",
+        params: { query: "test" },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    const ihPos = result.indexOf("intention-hint");
+    const amPos = result.indexOf("active-memory");
+    expect(ihPos).toBeLessThan(amPos);
+    expect(ihPos).toBeGreaterThanOrEqual(0);
+    expect(amPos).toBeGreaterThanOrEqual(0);
   });
 });
 

@@ -1,6 +1,7 @@
 import { createSubsystemLogger } from "../api.js";
 import type {
   SessionEntry,
+  ToolEntry,
   HookDeps,
   MessageReceivedEvent,
   MessageContext,
@@ -32,6 +33,23 @@ import {
 } from "./session.js";
 
 const logger = createSubsystemLogger("plugins/discord-tool-status");
+
+function replaceGroupInPlace(
+  history: ToolEntry[],
+  predicate: (t: ToolEntry) => boolean,
+  replacements: ToolEntry[],
+): void {
+  const startIdx = history.findIndex(predicate);
+  if (startIdx === -1) {
+    history.push(...replacements);
+    return;
+  }
+  let endIdx = startIdx;
+  while (endIdx < history.length && predicate(history[endIdx])) {
+    endIdx++;
+  }
+  history.splice(startIdx, endIdx - startIdx, ...replacements);
+}
 
 export function createHookHandlers(deps: HookDeps) {
   const {
@@ -436,10 +454,9 @@ export function createHookHandlers(deps: HookDeps) {
           const preservedPlaceholder = session.toolHistory.find(
             (t) => t.toolCallId === "active-memory",
           );
-          session.toolHistory = session.toolHistory.filter(
-            (t) => t.toolCallId !== "active-memory",
-          );
+
           if (entries.length > 0) {
+            const newEntries: ToolEntry[] = [];
             for (const entry of entries) {
               const existing = session.toolHistory.find(
                 (t) => t.toolCallId === entry.toolCallId,
@@ -449,21 +466,42 @@ export function createHookHandlers(deps: HookDeps) {
                 existing.params = entry.params;
                 existing.toolName = entry.toolName;
               } else {
-                session.toolHistory.push(entry);
+                newEntries.push(entry);
               }
             }
+            replaceGroupInPlace(
+              session.toolHistory,
+              (t) =>
+                t.toolName === "active-memory" ||
+                t.toolName.startsWith("active-memory:"),
+              session.toolHistory
+                .filter(
+                  (t) =>
+                    t.toolName === "active-memory" ||
+                    t.toolName.startsWith("active-memory:"),
+                )
+                .concat(newEntries),
+            );
             while (session.toolHistory.length > 10) {
               session.toolHistory.shift();
             }
           } else if (event.error || event.success === false) {
-            session.toolHistory.push({
-              toolCallId: "active-memory",
-              toolName: "active-memory",
-              params: preservedPlaceholder?.params ?? {},
-              status: "error",
-              durationMs: event.durationMs,
-              error: event.error,
-            });
+            replaceGroupInPlace(
+              session.toolHistory,
+              (t) =>
+                t.toolName === "active-memory" ||
+                t.toolName.startsWith("active-memory:"),
+              [
+                {
+                  toolCallId: "active-memory",
+                  toolName: "active-memory",
+                  params: preservedPlaceholder?.params ?? {},
+                  status: "error",
+                  durationMs: event.durationMs,
+                  error: event.error,
+                },
+              ],
+            );
           }
           await updateStatusMessage(
             session,
@@ -488,31 +526,35 @@ export function createHookHandlers(deps: HookDeps) {
             session.clearTimer = undefined;
           }
           const resultEntry = parseIntentionHintResultEntry(event);
-          session.toolHistory = session.toolHistory.filter(
+          const ihReplacements: ToolEntry[] = resultEntry
+            ? [resultEntry]
+            : event.error || event.success === false
+              ? [
+                  {
+                    toolCallId: "intention-hint",
+                    toolName: "intention-hint",
+                    params: {},
+                    status: "error" as const,
+                    durationMs: event.durationMs,
+                    error: event.error,
+                  },
+                ]
+              : [
+                  {
+                    toolCallId: "intention-hint",
+                    toolName: "intention-hint",
+                    params: {},
+                    status: "completed" as const,
+                    durationMs: event.durationMs,
+                  },
+                ];
+          replaceGroupInPlace(
+            session.toolHistory,
             (t) =>
-              t.toolCallId !== "intention-hint" &&
-              t.toolCallId !== "intention-hint:result",
+              t.toolName === "intention-hint" ||
+              t.toolName.startsWith("intention-hint:"),
+            ihReplacements,
           );
-          if (resultEntry) {
-            session.toolHistory.push(resultEntry);
-          } else if (event.error || event.success === false) {
-            session.toolHistory.push({
-              toolCallId: "intention-hint",
-              toolName: "intention-hint",
-              params: {},
-              status: "error",
-              durationMs: event.durationMs,
-              error: event.error,
-            });
-          } else {
-            session.toolHistory.push({
-              toolCallId: "intention-hint",
-              toolName: "intention-hint",
-              params: {},
-              status: "completed",
-              durationMs: event.durationMs,
-            });
-          }
           while (session.toolHistory.length > 10) {
             session.toolHistory.shift();
           }
