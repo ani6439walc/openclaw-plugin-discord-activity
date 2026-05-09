@@ -1,6 +1,5 @@
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
-  if (n.startsWith("努力翻找")) return "🧩";
   if (n.includes("web_search")) return "🔎";
   if (n.includes("web_fetch")) return "🗳️";
   if (n.includes("browser")) return "🌎";
@@ -42,7 +41,7 @@ export function getToolIcon(name: string): string {
   if (n.includes("sessions_spawn")) return "🐣";
   if (n.includes("sessions_yield")) return "🏁";
   if (n.includes("agents_list") || n.includes("subagents")) return "👥";
-  return "💡";
+  return "⚙️";
 }
 
 export function formatParams(

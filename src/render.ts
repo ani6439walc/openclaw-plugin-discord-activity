@@ -71,7 +71,7 @@ function renderActiveMemoryGroup(
   const errorEntry = group.find((e) => e.status === "error" && e.error);
   const errorLine = errorEntry?.error ? `\n   - ${errorEntry.error}` : "";
 
-  return `🧠 active-memory: ${parentSuffix}${
+  return `🧩 active-memory: ${parentSuffix}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
   }${errorLine}`;
 }
@@ -110,7 +110,7 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
   const errorEntry = group.find((e) => e.status === "error" && e.error);
   const errorLine = errorEntry?.error ? `\n   - ${errorEntry.error}` : "";
 
-  return `☄️ intention-hint: ${parentSuffix}${
+  return `💡 intention-hint: ${parentSuffix}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
   }${errorLine}`;
 }
