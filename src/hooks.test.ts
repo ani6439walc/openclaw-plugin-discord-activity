@@ -957,9 +957,9 @@ describe("createHookHandlers", () => {
         "☄️ intention-hint: ←",
       );
       expect(
-        afterActiveMemory!.lastRenderedContent!.indexOf("🧠 active-memory"),
-      ).toBeLessThan(
         afterActiveMemory!.lastRenderedContent!.indexOf("☄️ intention-hint"),
+      ).toBeLessThan(
+        afterActiveMemory!.lastRenderedContent!.indexOf("🧠 active-memory"),
       );
 
       await handlers.onAgentEnd(
@@ -985,9 +985,9 @@ describe("createHookHandlers", () => {
         "☄️ intention-hint: ✔",
       );
       expect(
-        afterIntentionHint!.lastRenderedContent!.indexOf("🧠 active-memory"),
-      ).toBeLessThan(
         afterIntentionHint!.lastRenderedContent!.indexOf("☄️ intention-hint"),
+      ).toBeLessThan(
+        afterIntentionHint!.lastRenderedContent!.indexOf("🧠 active-memory"),
       );
 
       await handlers.onAgentEnd(
@@ -999,8 +999,8 @@ describe("createHookHandlers", () => {
       expect(final?.lastRenderedContent).toContain("🧠 active-memory: ♻︎");
       expect(final?.lastRenderedContent).toContain("☄️ intention-hint: ✔");
       expect(
-        final!.lastRenderedContent!.indexOf("🧠 active-memory"),
-      ).toBeLessThan(final!.lastRenderedContent!.indexOf("☄️ intention-hint"));
+        final!.lastRenderedContent!.indexOf("☄️ intention-hint"),
+      ).toBeLessThan(final!.lastRenderedContent!.indexOf("🧠 active-memory"));
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 

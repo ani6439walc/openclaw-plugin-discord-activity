@@ -115,48 +115,62 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
   }${errorLine}`;
 }
 
+function getSubagentGroupEntries(
+  toolHistory: readonly ToolEntry[],
+): Array<{ name: "active-memory" | "intention-hint"; entries: ToolEntry[] }> {
+  const groups: Array<{
+    name: "active-memory" | "intention-hint";
+    entries: ToolEntry[];
+  }> = [];
+
+  const activeMemoryEntries = toolHistory.filter(
+    (t) =>
+      t.toolName === "active-memory" || t.toolName.startsWith("active-memory:"),
+  );
+  if (activeMemoryEntries.length > 0) {
+    groups.push({ name: "active-memory", entries: activeMemoryEntries });
+  }
+
+  const intentionHintEntries = toolHistory.filter(
+    (t) =>
+      t.toolName === "intention-hint" ||
+      t.toolName.startsWith("intention-hint:"),
+  );
+  if (intentionHintEntries.length > 0) {
+    groups.push({ name: "intention-hint", entries: intentionHintEntries });
+  }
+
+  return groups.sort((a, b) => b.name.localeCompare(a.name));
+}
+
 export function renderStatusContent(
   toolHistory: readonly ToolEntry[],
   isFinal: boolean,
 ): string {
   const contentParts: string[] = [];
-  let i = 0;
+  const subagentGroups = getSubagentGroupEntries(toolHistory);
 
-  while (i < toolHistory.length) {
-    const t = toolHistory[i];
-    if (
-      t.toolName === "active-memory" ||
-      t.toolName.startsWith("active-memory:")
-    ) {
-      const group: ToolEntry[] = [];
-      while (
-        i < toolHistory.length &&
-        (toolHistory[i].toolName === "active-memory" ||
-          toolHistory[i].toolName.startsWith("active-memory:"))
-      ) {
-        group.push(toolHistory[i]);
-        i++;
-      }
-      contentParts.push(renderActiveMemoryGroup(group, isFinal));
-    } else if (
-      t.toolName === "intention-hint" ||
-      t.toolName.startsWith("intention-hint:")
-    ) {
-      const group: ToolEntry[] = [];
-      while (
-        i < toolHistory.length &&
-        (toolHistory[i].toolName === "intention-hint" ||
-          toolHistory[i].toolName.startsWith("intention-hint:"))
-      ) {
-        group.push(toolHistory[i]);
-        i++;
-      }
-      contentParts.push(renderIntentionHintGroup(group));
+  for (const group of subagentGroups) {
+    if (group.name === "active-memory") {
+      contentParts.push(renderActiveMemoryGroup(group.entries, isFinal));
     } else {
-      const isLast = i === toolHistory.length - 1;
-      contentParts.push(renderEntry(t, isLast, isFinal));
-      i++;
+      contentParts.push(renderIntentionHintGroup(group.entries));
     }
+  }
+
+  const normalEntries = toolHistory.filter(
+    (t) =>
+      !(
+        t.toolName === "active-memory" ||
+        t.toolName.startsWith("active-memory:") ||
+        t.toolName === "intention-hint" ||
+        t.toolName.startsWith("intention-hint:")
+      ),
+  );
+
+  for (const [index, entry] of normalEntries.entries()) {
+    const isLast = index === normalEntries.length - 1;
+    contentParts.push(renderEntry(entry, isLast, isFinal));
   }
 
   return "```yaml\n" + contentParts.join("\n\n") + "\n```";

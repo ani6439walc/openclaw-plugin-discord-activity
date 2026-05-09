@@ -186,8 +186,9 @@ describe("renderStatusContent", () => {
     expect(result).toContain("read");
   });
 
-  it("renders active-memory group before intention-hint group preserving array order", () => {
+  it("renders subagent groups first sorted by descending name", () => {
     const entries: ToolEntry[] = [
+      makeEntry({ toolName: "read", status: "pending" }),
       {
         toolCallId: "active-memory:mem1",
         toolName: "active-memory:memory_search",
@@ -210,32 +211,39 @@ describe("renderStatusContent", () => {
     const result = renderStatusContent(entries, true);
     const amPos = result.indexOf("active-memory");
     const ihPos = result.indexOf("intention-hint");
-    expect(amPos).toBeLessThan(ihPos);
+    const readPos = result.indexOf("read");
+    expect(ihPos).toBeLessThan(amPos);
+    expect(amPos).toBeLessThan(readPos);
     expect(amPos).toBeGreaterThanOrEqual(0);
     expect(ihPos).toBeGreaterThanOrEqual(0);
+    expect(readPos).toBeGreaterThanOrEqual(0);
   });
 
-  it("renders intention-hint group before active-memory group preserving array order", () => {
+  it("renders subagent groups first sorted by descending name regardless of input order", () => {
     const entries: ToolEntry[] = [
-      {
-        toolCallId: "intention-hint:result",
-        toolName: "intention-hint:result",
-        params: { text: "INTENT:RESEARCH" },
-        status: "completed",
-      },
+      makeEntry({ toolName: "bash", status: "completed" }),
       {
         toolCallId: "active-memory:mem1",
         toolName: "active-memory:memory_search",
         params: { query: "test" },
         status: "completed",
       },
+      {
+        toolCallId: "intention-hint:result",
+        toolName: "intention-hint:result",
+        params: { text: "INTENT:RESEARCH" },
+        status: "completed",
+      },
     ];
     const result = renderStatusContent(entries, true);
     const ihPos = result.indexOf("intention-hint");
     const amPos = result.indexOf("active-memory");
+    const bashPos = result.indexOf("bash");
     expect(ihPos).toBeLessThan(amPos);
+    expect(amPos).toBeLessThan(bashPos);
     expect(ihPos).toBeGreaterThanOrEqual(0);
     expect(amPos).toBeGreaterThanOrEqual(0);
+    expect(bashPos).toBeGreaterThanOrEqual(0);
   });
 });
 
