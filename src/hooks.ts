@@ -15,12 +15,15 @@ import type {
 import {
   getDiscordContextKey,
   isActiveMemorySessionKey,
+  isIntentionHintSessionKey,
   isSubagentSessionKey,
   getActiveMemorySourceSessionKey,
+  getIntentionHintSourceSessionKey,
   extractIdFromMetadata,
   extractSenderId,
   extractAgentIdFromSessionKey,
   parseActiveMemoryToolEntries,
+  parseIntentionHintResultEntry,
 } from "./parser.js";
 import {
   retireSession,
@@ -31,7 +34,14 @@ import {
 const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export function createHookHandlers(deps: HookDeps) {
-  const { store, orphans, getToken, config, isActiveMemoryEnabled } = deps;
+  const {
+    store,
+    orphans,
+    getToken,
+    config,
+    isActiveMemoryEnabled,
+    isIntentionHintEnabled,
+  } = deps;
 
   function logHookEvent(
     hookName: string,
@@ -57,6 +67,7 @@ export function createHookHandlers(deps: HookDeps) {
   ): boolean {
     if (
       isActiveMemorySessionKey(ctx.sessionKey) ||
+      isIntentionHintSessionKey(ctx.sessionKey) ||
       isSubagentSessionKey(ctx.sessionKey)
     ) {
       logger.trace(`${hookName}: skip (active-memory/subagent) session.`, {
@@ -172,6 +183,23 @@ export function createHookHandlers(deps: HookDeps) {
             config.maxDisplayMs,
           );
         }
+        if (
+          replacementAgentId === undefined ||
+          isIntentionHintEnabled(replacementAgentId)
+        ) {
+          replacement.toolHistory.push({
+            toolCallId: "intention-hint",
+            toolName: "intention-hint",
+            params: {},
+            status: "pending",
+          });
+          await updateStatusMessage(
+            replacement,
+            getToken,
+            false,
+            config.maxDisplayMs,
+          );
+        }
         return;
       }
 
@@ -188,6 +216,20 @@ export function createHookHandlers(deps: HookDeps) {
         session.toolHistory.push({
           toolCallId: "active-memory",
           toolName: "active-memory",
+          params: {},
+          status: "pending",
+        });
+        await updateStatusMessage(
+          session,
+          getToken,
+          false,
+          config.maxDisplayMs,
+        );
+      }
+      if (agentId === undefined || isIntentionHintEnabled(agentId)) {
+        session.toolHistory.push({
+          toolCallId: "intention-hint",
+          toolName: "intention-hint",
           params: {},
           status: "pending",
         });
@@ -422,6 +464,57 @@ export function createHookHandlers(deps: HookDeps) {
               durationMs: event.durationMs,
               error: event.error,
             });
+          }
+          await updateStatusMessage(
+            session,
+            getToken,
+            true,
+            config.maxDisplayMs,
+          );
+        }
+        return;
+      }
+
+      if (isIntentionHintSessionKey(ctx.sessionKey)) {
+        const sourceSessionKey = getIntentionHintSourceSessionKey(
+          ctx.sessionKey,
+        );
+        const session = sourceSessionKey
+          ? store.getOrCreateSession(contextKey, sourceSessionKey)
+          : undefined;
+        if (session) {
+          if (session.clearTimer) {
+            clearTimeout(session.clearTimer);
+            session.clearTimer = undefined;
+          }
+          const resultEntry = parseIntentionHintResultEntry(event);
+          session.toolHistory = session.toolHistory.filter(
+            (t) =>
+              t.toolCallId !== "intention-hint" &&
+              t.toolCallId !== "intention-hint:result",
+          );
+          if (resultEntry) {
+            session.toolHistory.push(resultEntry);
+          } else if (event.error || event.success === false) {
+            session.toolHistory.push({
+              toolCallId: "intention-hint",
+              toolName: "intention-hint",
+              params: {},
+              status: "error",
+              durationMs: event.durationMs,
+              error: event.error,
+            });
+          } else {
+            session.toolHistory.push({
+              toolCallId: "intention-hint",
+              toolName: "intention-hint",
+              params: {},
+              status: "completed",
+              durationMs: event.durationMs,
+            });
+          }
+          while (session.toolHistory.length > 10) {
+            session.toolHistory.shift();
           }
           await updateStatusMessage(
             session,

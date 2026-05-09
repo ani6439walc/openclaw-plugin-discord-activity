@@ -93,6 +93,7 @@ export type HookDeps = {
   getToken: GetTokenFn;
   config: PluginConfig;
   isActiveMemoryEnabled: (agentId: string) => boolean;
+  isIntentionHintEnabled: (agentId: string) => boolean;
 };
 
 export type StatusRenderResult = {

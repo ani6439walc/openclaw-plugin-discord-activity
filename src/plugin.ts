@@ -30,6 +30,27 @@ function buildIsActiveMemoryEnabled(
   };
 }
 
+function buildIsIntentionHintEnabled(
+  openClawConfig: OpenClawConfig,
+): (agentId: string) => boolean {
+  return (agentId: string): boolean => {
+    const plugins = openClawConfig.plugins;
+    if (!plugins) return false;
+    if (plugins.deny?.includes("intention-hint")) return false;
+    if (plugins.allow && !plugins.allow.includes("intention-hint")) {
+      return false;
+    }
+
+    const entry = plugins.entries?.["intention-hint"];
+    if (!entry?.enabled) return false;
+
+    const agents = entry.config?.agents;
+    if (!Array.isArray(agents)) return false;
+
+    return agents.includes(agentId);
+  };
+}
+
 export function createPlugin(api: OpenClawPluginApi) {
   const config = resolveConfig(
     api.config.plugins?.entries?.["discord-tool-status"] ?? {},
@@ -38,6 +59,7 @@ export function createPlugin(api: OpenClawPluginApi) {
     resolveDiscordToken(api.config, { accountId }).token;
 
   const isActiveMemoryEnabled = buildIsActiveMemoryEnabled(api.config);
+  const isIntentionHintEnabled = buildIsIntentionHintEnabled(api.config);
 
   const store = defaultStore;
   const orphans = defaultOrphans;
@@ -47,6 +69,7 @@ export function createPlugin(api: OpenClawPluginApi) {
     getToken,
     config,
     isActiveMemoryEnabled,
+    isIntentionHintEnabled,
   });
 
   return definePluginEntry({

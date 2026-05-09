@@ -76,6 +76,45 @@ function renderActiveMemoryGroup(
   }${errorLine}`;
 }
 
+function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
+  const realEntries = group.filter((e) =>
+    e.toolName.startsWith("intention-hint:"),
+  );
+  const subEntryStrs = realEntries.map((entry) => {
+    if (entry.toolName === "intention-hint:result") {
+      return formatParams(
+        { result: entry.params?.text },
+        {
+          first: "   - ",
+          rest: "     ",
+        },
+      );
+    }
+
+    const strippedName = entry.toolName.replace(/^intention-hint:/, "");
+    const subSuffix = getSubSuffix(entry.status);
+    const dur =
+      typeof entry.durationMs === "number"
+        ? ` (${entry.durationMs.toLocaleString()}ms)`
+        : "";
+    const pStr = formatParams(entry.params, {
+      first: "     - ",
+      rest: "       ",
+    });
+    return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
+  });
+
+  const hasError = group.some((e) => e.status === "error");
+  const hasPending = group.some((e) => e.status === "pending");
+  const parentSuffix = hasError ? "✘" : hasPending ? "←" : "✔";
+  const errorEntry = group.find((e) => e.status === "error" && e.error);
+  const errorLine = errorEntry?.error ? `\n   - ${errorEntry.error}` : "";
+
+  return `☄️ intention-hint: ${parentSuffix}${
+    subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
+  }${errorLine}`;
+}
+
 export function renderStatusContent(
   toolHistory: readonly ToolEntry[],
   isFinal: boolean,
@@ -99,6 +138,20 @@ export function renderStatusContent(
         i++;
       }
       contentParts.push(renderActiveMemoryGroup(group, isFinal));
+    } else if (
+      t.toolName === "intention-hint" ||
+      t.toolName.startsWith("intention-hint:")
+    ) {
+      const group: ToolEntry[] = [];
+      while (
+        i < toolHistory.length &&
+        (toolHistory[i].toolName === "intention-hint" ||
+          toolHistory[i].toolName.startsWith("intention-hint:"))
+      ) {
+        group.push(toolHistory[i]);
+        i++;
+      }
+      contentParts.push(renderIntentionHintGroup(group));
     } else {
       const isLast = i === toolHistory.length - 1;
       contentParts.push(renderEntry(t, isLast, isFinal));

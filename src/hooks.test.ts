@@ -89,6 +89,7 @@ describe("createHookHandlers", () => {
   let getToken: Mock<HookDeps["getToken"]>;
   let config: ReturnType<typeof resolveConfig>;
   let isActiveMemoryEnabled: Mock<HookDeps["isActiveMemoryEnabled"]>;
+  let isIntentionHintEnabled: Mock<HookDeps["isIntentionHintEnabled"]>;
   let handlers: ReturnType<typeof createHookHandlers>;
 
   beforeEach(() => {
@@ -101,12 +102,16 @@ describe("createHookHandlers", () => {
     isActiveMemoryEnabled = vi
       .fn<HookDeps["isActiveMemoryEnabled"]>()
       .mockReturnValue(true);
+    isIntentionHintEnabled = vi
+      .fn<HookDeps["isIntentionHintEnabled"]>()
+      .mockReturnValue(false);
     handlers = createHookHandlers({
       store,
       orphans,
       getToken,
       config,
       isActiveMemoryEnabled,
+      isIntentionHintEnabled,
     });
   });
 
@@ -132,6 +137,32 @@ describe("createHookHandlers", () => {
         { channelId: "discord", sessionKey: "discord:channel:123:thread:x" },
       );
       expect(store.contexts.size).toBe(1);
+    });
+
+    it("shows pending intention-hint status when enabled", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "intention-hint",
+          toolName: "intention-hint",
+          status: "pending",
+        }),
+      ]);
+      expect(session?.lastRenderedContent).toContain("🧭 intention-hint: ←");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
     it("skips active-memory sessions", async () => {
@@ -522,6 +553,63 @@ describe("createHookHandlers", () => {
       );
       expect(session?.lastRenderedContent).toContain(
         "- result: 每日早報重跑已觸發 Cron job",
+      );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+    });
+
+    it("renders the final intention-hint assistant message as a result item", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content:
+                "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:intention-hint:abc",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            toolCallId: "intention-hint:result",
+            toolName: "intention-hint:result",
+            params: {
+              text: "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
+            },
+            status: "completed",
+          }),
+        ]),
+      );
+      expect(session?.lastRenderedContent).toContain("🧭 intention-hint: ✔");
+      expect(session?.lastRenderedContent).toContain(
+        "- result: INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
       );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(

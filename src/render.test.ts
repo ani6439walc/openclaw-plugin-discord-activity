@@ -114,6 +114,33 @@ describe("renderStatusContent", () => {
     expect(result).toContain("🧠 active-memory: ←");
   });
 
+  it("renders intention-hint group with pending suffix", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint",
+        toolName: "intention-hint",
+        params: {},
+        status: "pending",
+      },
+    ];
+    const result = renderStatusContent(entries, false);
+    expect(result).toContain("🧭 intention-hint: ←");
+  });
+
+  it("renders intention-hint result as nested item", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint:result",
+        toolName: "intention-hint:result",
+        params: { text: "INTENT:RESEARCH | GOAL: docs" },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain("🧭 intention-hint: ✔");
+    expect(result).toContain("- result: INTENT:RESEARCH | GOAL: docs");
+  });
+
   it("renders active-memory group with error suffix", () => {
     const entries: ToolEntry[] = [
       {
