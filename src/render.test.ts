@@ -45,7 +45,7 @@ describe("renderStatusContent", () => {
       false,
     );
     expect(result).toContain("bash: ✘");
-    expect(result).toContain("- permission denied");
+    expect(result).toContain("- error: permission denied");
   });
 
   it("renders orphan-completed with recycle mark", () => {
@@ -72,7 +72,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧠 active-memory: ♻︎");
+    expect(result).toContain("🧩 active-memory: ♻︎");
     expect(result).toContain("memory_search");
     expect(result).toContain("memory_read");
   });
@@ -111,7 +111,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(result).toContain("🧠 active-memory: ←");
+    expect(result).toContain("🧩 active-memory: ←");
   });
 
   it("renders intention-hint group with pending suffix", () => {
@@ -124,7 +124,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(result).toContain("☄️ intention-hint: ←");
+    expect(result).toContain("💡 intention-hint: ←");
   });
 
   it("renders intention-hint result as nested item", () => {
@@ -137,7 +137,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("☄️ intention-hint: ✔");
+    expect(result).toContain("💡 intention-hint: ✔");
     expect(result).toContain("- result: INTENT:RESEARCH | GOAL: docs");
   });
 
@@ -151,7 +151,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧠 active-memory: ✘");
+    expect(result).toContain("🧩 active-memory: ✘");
   });
 
   it("renders active-memory error with error message detail", () => {
@@ -165,8 +165,8 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧠 active-memory: ✘");
-    expect(result).toContain("- timed out after 15000ms");
+    expect(result).toContain("🧩 active-memory: ✘");
+    expect(result).toContain("- error: timed out after 15000ms");
   });
 
   it("renders mixed normal and active-memory entries", () => {
