@@ -1,7 +1,4 @@
 # Discord Tool Status Extension for OpenClaw
-[![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://github.com/openclaw/openclaw)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 
 [![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://github.com/openclaw/openclaw)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -69,4 +66,4 @@ The extension operates by subscribing to the OpenClaw plugin hook system:
 
 ---
 
-_Developed for the OpenClaw ecosystem._
+_🌸　Powered by Ａni | [OpenClaw Plugin] © 2026_
