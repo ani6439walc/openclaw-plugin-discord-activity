@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { Mock } from "vitest";
 import type {
   SessionEntry,
   ChannelMeta,
@@ -9,9 +10,9 @@ import type {
 export type Handler = (event: any, ctx: any) => Promise<any>;
 
 export const mockLogger = {
-  trace: vi.fn(),
-  debug: vi.fn(),
-  warn: vi.fn(),
+  trace: vi.fn() as Mock<(message?: string, ...args: unknown[]) => void>,
+  debug: vi.fn() as Mock<(message?: string, ...args: unknown[]) => void>,
+  warn: vi.fn() as Mock<(message?: string, ...args: unknown[]) => void>,
 };
 
 export async function flushPromises(): Promise<void> {
@@ -79,7 +80,12 @@ export function createMockChannelMeta(
   };
 }
 
-export function createMockDiscordApi() {
+export function createMockDiscordApi(): {
+  sendMessage: Mock<() => Promise<string>>;
+  editMessage: Mock<() => Promise<undefined>>;
+  deleteMessage: Mock<() => Promise<boolean>>;
+  resolveDmChannel: Mock<() => Promise<string>>;
+} {
   return {
     sendMessage: vi.fn().mockResolvedValue("msg_status_001"),
     editMessage: vi.fn().mockResolvedValue(undefined),
@@ -88,7 +94,9 @@ export function createMockDiscordApi() {
   };
 }
 
-export function createMockTokenResolver(token = "test-bot-token") {
+export function createMockTokenResolver(
+  token = "test-bot-token",
+): Mock<() => string> {
   return vi.fn().mockReturnValue(token);
 }
 

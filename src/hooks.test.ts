@@ -161,7 +161,7 @@ describe("createHookHandlers", () => {
           status: "pending",
         }),
       ]);
-      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -184,8 +184,8 @@ describe("createHookHandlers", () => {
         "active-memory",
         "intention-hint",
       ]);
-      expect(session?.lastRenderedContent).toContain("🧠 active-memory: ←");
-      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("🧩 active-memory: ←");
+      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -351,8 +351,8 @@ describe("createHookHandlers", () => {
       const session = store.sessions.get("discord:direct:123");
       expect(result).toEqual({ handled: false });
       expect(session?.finalized).toBeFalsy();
-      expect(session?.lastRenderedContent).toContain("🧠 active-memory: ←");
-      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("🧩 active-memory: ←");
+      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -531,7 +531,7 @@ describe("createHookHandlers", () => {
           error: "timed out after 15000ms",
         }),
       ]);
-      expect(session?.lastRenderedContent).toContain("🧠 active-memory: ✘");
+      expect(session?.lastRenderedContent).toContain("🧩 active-memory: ✘");
       expect(session?.lastRenderedContent).toContain("timed out after 15000ms");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
@@ -658,7 +658,7 @@ describe("createHookHandlers", () => {
           }),
         ]),
       );
-      expect(session?.lastRenderedContent).toContain("☄️ intention-hint: ✔");
+      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
       expect(session?.lastRenderedContent).toContain(
         "- result: INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
       );
@@ -951,15 +951,15 @@ describe("createHookHandlers", () => {
         ),
       ).toBe(false);
       expect(afterActiveMemory?.lastRenderedContent).toContain(
-        "🧠 active-memory: ♻︎",
+        "🧩 active-memory: ♻︎",
       );
       expect(afterActiveMemory?.lastRenderedContent).toContain(
-        "☄️ intention-hint: ←",
+        "💡 intention-hint: ←",
       );
       expect(
-        afterActiveMemory!.lastRenderedContent!.indexOf("☄️ intention-hint"),
+        afterActiveMemory!.lastRenderedContent!.indexOf("💡 intention-hint"),
       ).toBeLessThan(
-        afterActiveMemory!.lastRenderedContent!.indexOf("🧠 active-memory"),
+        afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
       );
 
       await handlers.onAgentEnd(
@@ -979,15 +979,15 @@ describe("createHookHandlers", () => {
 
       const afterIntentionHint = store.sessions.get("discord:direct:123");
       expect(afterIntentionHint?.lastRenderedContent).toContain(
-        "🧠 active-memory: ♻︎",
+        "🧩 active-memory: ♻︎",
       );
       expect(afterIntentionHint?.lastRenderedContent).toContain(
-        "☄️ intention-hint: ✔",
+        "💡 intention-hint: ✔",
       );
       expect(
-        afterIntentionHint!.lastRenderedContent!.indexOf("☄️ intention-hint"),
+        afterIntentionHint!.lastRenderedContent!.indexOf("💡 intention-hint"),
       ).toBeLessThan(
-        afterIntentionHint!.lastRenderedContent!.indexOf("🧠 active-memory"),
+        afterIntentionHint!.lastRenderedContent!.indexOf("🧩 active-memory"),
       );
 
       await handlers.onAgentEnd(
@@ -996,11 +996,11 @@ describe("createHookHandlers", () => {
       );
 
       const final = store.sessions.get("discord:direct:123");
-      expect(final?.lastRenderedContent).toContain("🧠 active-memory: ♻︎");
-      expect(final?.lastRenderedContent).toContain("☄️ intention-hint: ✔");
+      expect(final?.lastRenderedContent).toContain("🧩 active-memory: ♻︎");
+      expect(final?.lastRenderedContent).toContain("💡 intention-hint: ✔");
       expect(
-        final!.lastRenderedContent!.indexOf("☄️ intention-hint"),
-      ).toBeLessThan(final!.lastRenderedContent!.indexOf("🧠 active-memory"));
+        final!.lastRenderedContent!.indexOf("💡 intention-hint"),
+      ).toBeLessThan(final!.lastRenderedContent!.indexOf("🧩 active-memory"));
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
