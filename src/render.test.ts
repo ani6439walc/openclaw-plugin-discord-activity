@@ -127,7 +127,7 @@ describe("renderStatusContent", () => {
     expect(result).toContain("💡 intention-hint: ←");
   });
 
-  it("renders intention-hint result as nested item", () => {
+  it("renders intention-hint result flattened when single entry", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "intention-hint:result",
@@ -138,7 +138,8 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(result).toContain("💡 intention-hint: ✔");
-    expect(result).toContain("- result: INTENT:RESEARCH | GOAL: docs");
+    expect(result).toContain("INTENT:RESEARCH | GOAL: docs");
+    expect(result).not.toContain("- result:");
   });
 
   it("renders active-memory group with error suffix", () => {
@@ -186,7 +187,7 @@ describe("renderStatusContent", () => {
     expect(result).toContain("read");
   });
 
-  it("renders subagent groups first sorted by descending name", () => {
+  it("renders subagent groups first sorted by ascending name", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "read", status: "pending" }),
       {
@@ -212,14 +213,14 @@ describe("renderStatusContent", () => {
     const amPos = result.indexOf("active-memory");
     const ihPos = result.indexOf("intention-hint");
     const readPos = result.indexOf("read");
-    expect(ihPos).toBeLessThan(amPos);
-    expect(amPos).toBeLessThan(readPos);
+    expect(amPos).toBeLessThan(ihPos);
+    expect(ihPos).toBeLessThan(readPos);
     expect(amPos).toBeGreaterThanOrEqual(0);
     expect(ihPos).toBeGreaterThanOrEqual(0);
     expect(readPos).toBeGreaterThanOrEqual(0);
   });
 
-  it("renders subagent groups first sorted by descending name regardless of input order", () => {
+  it("renders subagent groups first sorted by ascending name regardless of input order", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "bash", status: "completed" }),
       {
@@ -236,13 +237,13 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    const ihPos = result.indexOf("intention-hint");
     const amPos = result.indexOf("active-memory");
+    const ihPos = result.indexOf("intention-hint");
     const bashPos = result.indexOf("bash");
-    expect(ihPos).toBeLessThan(amPos);
-    expect(amPos).toBeLessThan(bashPos);
-    expect(ihPos).toBeGreaterThanOrEqual(0);
+    expect(amPos).toBeLessThan(ihPos);
+    expect(ihPos).toBeLessThan(bashPos);
     expect(amPos).toBeGreaterThanOrEqual(0);
+    expect(ihPos).toBeGreaterThanOrEqual(0);
     expect(bashPos).toBeGreaterThanOrEqual(0);
   });
 });

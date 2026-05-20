@@ -660,8 +660,9 @@ describe("createHookHandlers", () => {
       );
       expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
       expect(session?.lastRenderedContent).toContain(
-        "- result: INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
+        "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
       );
+      expect(session?.lastRenderedContent).not.toContain("- result:");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
         countCalls(
@@ -957,9 +958,9 @@ describe("createHookHandlers", () => {
         "💡 intention-hint: ←",
       );
       expect(
-        afterActiveMemory!.lastRenderedContent!.indexOf("💡 intention-hint"),
-      ).toBeLessThan(
         afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      ).toBeLessThan(
+        afterActiveMemory!.lastRenderedContent!.indexOf("intention-hint"),
       );
 
       await handlers.onAgentEnd(
@@ -985,9 +986,9 @@ describe("createHookHandlers", () => {
         "💡 intention-hint: ✔",
       );
       expect(
-        afterIntentionHint!.lastRenderedContent!.indexOf("💡 intention-hint"),
-      ).toBeLessThan(
         afterIntentionHint!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      ).toBeLessThan(
+        afterIntentionHint!.lastRenderedContent!.indexOf("intention-hint"),
       );
 
       await handlers.onAgentEnd(
@@ -997,10 +998,10 @@ describe("createHookHandlers", () => {
 
       const final = store.sessions.get("discord:direct:123");
       expect(final?.lastRenderedContent).toContain("🧩 active-memory: ♻︎");
-      expect(final?.lastRenderedContent).toContain("💡 intention-hint: ✔");
+      expect(final?.lastRenderedContent).toContain("intention-hint");
       expect(
-        final!.lastRenderedContent!.indexOf("💡 intention-hint"),
-      ).toBeLessThan(final!.lastRenderedContent!.indexOf("🧩 active-memory"));
+        final!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      ).toBeLessThan(final!.lastRenderedContent!.indexOf("intention-hint"));
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 

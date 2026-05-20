@@ -83,6 +83,38 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
   const realEntries = group.filter((e) =>
     e.toolName.startsWith("intention-hint:"),
   );
+
+  if (
+    realEntries.length === 1 &&
+    realEntries[0].toolName === "intention-hint:result"
+  ) {
+    const resultEntry = realEntries[0];
+    const resultText = resultEntry.params?.text ?? "";
+    const dur =
+      typeof resultEntry.durationMs === "number"
+        ? ` (${resultEntry.durationMs.toLocaleString()}ms)`
+        : "";
+    const hasError = group.some((e) => e.status === "error");
+    const parentSuffix = hasError ? "✘" : "✔";
+    const errorEntry = group.find((e) => e.status === "error" && e.error);
+    const errorLine = errorEntry?.error
+      ? `\n   - error: ${errorEntry.error}`
+      : "";
+
+    const lines = resultText
+      .split("\n")
+      .map((line: string) => line.trim())
+      .filter(Boolean);
+    const flatParams = lines
+      .map((line: string, index: number) => {
+        const prefix = index === 0 ? "   - " : "     ";
+        return `${prefix}${line}`;
+      })
+      .join("\n");
+
+    return `💡 intention-hint: ${parentSuffix}${dur}${flatParams ? "\n" + flatParams : ""}${errorLine}`;
+  }
+
   const subEntryStrs = realEntries.map((entry) => {
     if (entry.toolName === "intention-hint:result") {
       return formatParams(
@@ -145,7 +177,7 @@ function getSubagentGroupEntries(
     groups.push({ name: "intention-hint", entries: intentionHintEntries });
   }
 
-  return groups.sort((a, b) => b.name.localeCompare(a.name));
+  return groups.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function renderStatusContent(
