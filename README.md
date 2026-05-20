@@ -49,6 +49,16 @@ The extension can be customized via the `config` object in your OpenClaw setting
 | `maxDisplayMs`           | `number` | `600000` | Force-delete the status message after this duration (ms) to prevent stale indicators. |
 | `orphanTtlMs`            | `number` | `300000` | Time to keep "orphaned" tool calls in memory while waiting for a session link.        |
 
+## Companion X/Twitter workflows
+
+Discord Tool Status makes long-running OpenClaw tool calls visible in Discord. If those calls include public X/Twitter automation, install [TweetClaw](https://github.com/Xquik-dev/tweetclaw) beside it:
+
+```bash
+openclaw plugins install @xquik/tweetclaw
+```
+
+Use Discord Tool Status to show live progress for TweetClaw tool calls such as search tweets, search tweet replies, follower export, user lookup, media upload/download, monitor tweets, webhooks, and giveaway draws. For visible actions such as post tweets, post tweet replies, and direct messages, keep the status message visible while OpenClaw collects approval. Keep Discord credentials in this extension's config or OpenClaw secret store; keep TweetClaw/Xquik credentials in TweetClaw's plugin config or host environment.
+
 ## 🏗 Architecture
 
 The extension operates by subscribing to the OpenClaw plugin hook system:
