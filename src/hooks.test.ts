@@ -952,7 +952,7 @@ describe("createHookHandlers", () => {
         ),
       ).toBe(false);
       expect(afterActiveMemory?.lastRenderedContent).toContain(
-        "🧩 active-memory: ♻︎",
+        "🧩 active-memory: ✔",
       );
       expect(afterActiveMemory?.lastRenderedContent).toContain(
         "💡 intention-hint: ←",
@@ -980,7 +980,7 @@ describe("createHookHandlers", () => {
 
       const afterIntentionHint = store.sessions.get("discord:direct:123");
       expect(afterIntentionHint?.lastRenderedContent).toContain(
-        "🧩 active-memory: ♻︎",
+        "🧩 active-memory: ✔",
       );
       expect(afterIntentionHint?.lastRenderedContent).toContain(
         "💡 intention-hint: ✔",
@@ -997,7 +997,7 @@ describe("createHookHandlers", () => {
       );
 
       const final = store.sessions.get("discord:direct:123");
-      expect(final?.lastRenderedContent).toContain("🧩 active-memory: ♻︎");
+      expect(final?.lastRenderedContent).toContain("🧩 active-memory: ✔");
       expect(final?.lastRenderedContent).toContain("intention-hint");
       expect(
         final!.lastRenderedContent!.indexOf("🧩 active-memory"),

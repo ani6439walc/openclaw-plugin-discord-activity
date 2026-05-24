@@ -45,7 +45,7 @@ describe("renderStatusContent", () => {
       false,
     );
     expect(result).toContain("bash: ✘");
-    expect(result).toContain("- error: permission denied");
+    expect(result).toContain("error: permission denied");
   });
 
   it("renders orphan-completed with recycle mark", () => {
@@ -72,7 +72,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧩 active-memory: ♻︎");
+    expect(result).toContain("🧩 active-memory: ✔");
     expect(result).toContain("memory_search");
     expect(result).toContain("memory_read");
   });
@@ -167,7 +167,7 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(result).toContain("🧩 active-memory: ✘");
-    expect(result).toContain("- error: timed out after 15000ms");
+    expect(result).toContain("error: timed out after 15000ms");
   });
 
   it("renders mixed normal and active-memory entries", () => {

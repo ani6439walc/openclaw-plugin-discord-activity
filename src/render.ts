@@ -31,7 +31,7 @@ function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
       ? ` (${t.durationMs.toLocaleString()}ms)`
       : "";
   const errorLine =
-    t.status === "error" && t.error ? `\n   - error: ${t.error}` : "";
+    t.status === "error" && t.error ? `\n     error: ${t.error}` : "";
   return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}${errorLine}`;
 }
 
@@ -68,10 +68,10 @@ function renderActiveMemoryGroup(
 
   const hasError = group.some((e) => e.status === "error");
   const hasPending = group.some((e) => e.status === "pending");
-  const parentSuffix = hasError ? "✘" : hasPending ? "←" : "♻︎";
+  const parentSuffix = hasError ? "✘" : hasPending ? "←" : "✔";
   const errorEntry = group.find((e) => e.status === "error" && e.error);
   const errorLine = errorEntry?.error
-    ? `\n   - error: ${errorEntry.error}`
+    ? `\n     error: ${errorEntry.error}`
     : "";
 
   return `🧩 active-memory: ${parentSuffix}${
@@ -98,7 +98,7 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
     const parentSuffix = hasError ? "✘" : "✔";
     const errorEntry = group.find((e) => e.status === "error" && e.error);
     const errorLine = errorEntry?.error
-      ? `\n   - error: ${errorEntry.error}`
+      ? `\n     error: ${errorEntry.error}`
       : "";
 
     const lines = resultText
@@ -144,7 +144,7 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
   const parentSuffix = hasError ? "✘" : hasPending ? "←" : "✔";
   const errorEntry = group.find((e) => e.status === "error" && e.error);
   const errorLine = errorEntry?.error
-    ? `\n   - error: ${errorEntry.error}`
+    ? `\n     error: ${errorEntry.error}`
     : "";
 
   return `💡 intention-hint: ${parentSuffix}${
