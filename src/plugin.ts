@@ -1,5 +1,4 @@
 import {
-  createSubsystemLogger,
   definePluginEntry,
   type OpenClawPluginApi,
   type OpenClawConfig,
@@ -8,8 +7,6 @@ import { resolveDiscordToken } from "../token.js";
 import { defaultStore, defaultOrphans } from "./session.js";
 import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
-
-const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 function buildIsActiveMemoryEnabled(
   openClawConfig: OpenClawConfig,
@@ -84,8 +81,6 @@ export function createPlugin(api: OpenClawPluginApi) {
       api.on("message_sending", handlers.onMessageSending);
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
-
-      logger.debug("Plugin registered.");
     },
   });
 }

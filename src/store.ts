@@ -1,9 +1,7 @@
-import { createSubsystemLogger } from "../api.js";
+import { logger } from "../api.js";
 import type { ChannelMeta, SessionEntry } from "./types.js";
 import { sleep } from "./discord-api.js";
 import { SESSION_RESOLVE_RETRY_MS } from "./constants.js";
-
-const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export function createSessionStore() {
   const sessions = new Map<string, SessionEntry>();
@@ -30,11 +28,11 @@ export function createSessionStore() {
     hookName: string,
   ): Promise<void> {
     if (!session.pendingOp) return;
-    logger.debug(`[${hookName}] Waiting for pending op...`);
+    logger.debug(`[${hookName}] waiting for pending op...`);
     try {
       await session.pendingOp;
     } catch (err) {
-      logger.warn(`[${hookName}] Pending op failed.`, {
+      logger.warn(`[${hookName}] pending op failed.`, {
         error: String(err),
       });
     }

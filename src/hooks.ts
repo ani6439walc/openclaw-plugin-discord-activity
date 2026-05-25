@@ -1,4 +1,4 @@
-import { createSubsystemLogger } from "../api.js";
+import { logger } from "../api.js";
 import type {
   SessionEntry,
   ToolEntry,
@@ -31,8 +31,6 @@ import {
   scheduleSessionCleanup,
   updateStatusMessage,
 } from "./session.js";
-
-const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 function replaceGroupInPlace(
   history: ToolEntry[],
@@ -204,7 +202,7 @@ export function createHookHandlers(deps: HookDeps) {
           "message_received_owner_switch",
           getToken,
         ).catch((err) => {
-          logger.warn("failed to retire old session on owner switch", {
+          logger.warn("failed to retire old session on owner switch.", {
             contextKey,
             error: String(err),
           });

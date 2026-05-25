@@ -1,4 +1,4 @@
-import { createSubsystemLogger } from "../api.js";
+import { logger } from "../api.js";
 import type { ChannelMeta, SessionEntry } from "./types.js";
 import {
   deleteMessage,
@@ -10,8 +10,6 @@ import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { createSessionStore } from "./store.js";
 import { createOrphanToolManager } from "./orphans.js";
 import { renderStatusContent } from "./render.js";
-
-const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export const defaultStore = createSessionStore();
 export const defaultOrphans = createOrphanToolManager();
@@ -109,7 +107,7 @@ export function scheduleSessionCleanup(
 
     clearStatusMessage(session, hookName, getToken)
       .catch((err) => {
-        logger.warn(`Failed to clear status message on ${hookName}`, {
+        logger.warn(`failed to clear status message on ${hookName}.`, {
           contextKey,
           error: String(err),
         });
@@ -142,7 +140,7 @@ export async function clearStatusMessage(
   const token = getToken(session.accountId);
   if (token) {
     const msgId = session.statusMessageId;
-    logger.debug(`[${hookName}] Deleting status message ${msgId}`);
+    logger.debug(`[${hookName}] deleting status message ${msgId}.`);
     const deleted = await deleteMessage(session.channelId, msgId, token);
     if (deleted) {
       session.statusMessageId = undefined;
@@ -195,13 +193,13 @@ function startMaxDisplayTimer(
     }
 
     logger.warn(
-      `Status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
+      `status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
       { contextKey, maxDisplayMs },
     );
 
     clearStatusMessage(session, "max_display_timeout", getToken)
       .catch((err) => {
-        logger.warn("Failed to clear status message on max_display_timeout", {
+        logger.warn("failed to clear status message on max_display_timeout.", {
           contextKey,
           error: String(err),
         });
@@ -221,11 +219,11 @@ export async function updateStatusMessage(
   const priorOp = session.pendingOp;
   const op = (async () => {
     if (priorOp) {
-      logger.debug("[update_status_message] Waiting for pending op...");
+      logger.debug("[update_status_message] waiting for pending op...");
       try {
         await priorOp;
       } catch (err) {
-        logger.warn("[update_status_message] Pending op failed.", {
+        logger.warn("[update_status_message] pending op failed.", {
           error: String(err),
         });
       }
@@ -247,7 +245,7 @@ export async function updateStatusMessage(
 
     if (isNewMessage && session.finalized && !isFinal) {
       logger.debug(
-        "[update_status_message] Skip non-final create for finalized session.",
+        "[update_status_message] skip non-final create for finalized session.",
         {
           contextKey: session.contextKey,
           ownerSessionKey: session.ownerSessionKey,
@@ -278,7 +276,7 @@ export async function updateStatusMessage(
       }
 
       session.statusMessageId = createdId;
-      logger.debug(`Created status message ${session.statusMessageId}`);
+      logger.debug(`created status message ${session.statusMessageId}.`);
 
       if (maxDisplayMs && maxDisplayMs > 0) {
         startMaxDisplayTimer(
@@ -301,7 +299,7 @@ export async function updateStatusMessage(
     }
 
     if (session.lastRenderedContent === content) {
-      logger.debug("Skipped status message edit because content is unchanged.");
+      logger.debug("skipped status message edit because content is unchanged.");
       return;
     }
 
@@ -312,7 +310,7 @@ export async function updateStatusMessage(
       token,
     );
     session.lastRenderedContent = content;
-    logger.debug("Updated status message.");
+    logger.debug("updated status message.");
   })();
 
   session.pendingOp = op;

@@ -1,7 +1,5 @@
-import { createSubsystemLogger } from "../api.js";
+import { logger } from "../api.js";
 import { MAX_RETRIES, RETRY_FALLBACK_MS } from "./constants.js";
-
-const logger = createSubsystemLogger("plugins/discord-tool-status");
 
 export function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -146,7 +144,7 @@ export async function sendMessage(
     }
     return data.id as string;
   } catch (err) {
-    logger.warn("sendMessage threw.", {
+    logger.warn("sendMessage error.", {
       error: String(err),
     });
     return undefined;
@@ -180,7 +178,7 @@ export async function editMessage(
       });
     }
   } catch (err) {
-    logger.warn("editMessage threw.", {
+    logger.warn("editMessage error.", {
       error: String(err),
     });
   }
@@ -208,7 +206,7 @@ export async function deleteMessage(
     }
     return true;
   } catch (err) {
-    logger.warn("deleteMessage threw.", {
+    logger.warn("deleteMessage error.", {
       error: String(err),
     });
     return false;
