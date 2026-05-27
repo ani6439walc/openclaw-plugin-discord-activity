@@ -155,7 +155,7 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(result).toContain("💡 intention-hint: ✔");
-    expect(result).toContain('- intent: "RESEARCH"');
+    expect(result).toContain("- intent: RESEARCH");
     expect(result).toContain("     confidence: 0.9");
   });
 

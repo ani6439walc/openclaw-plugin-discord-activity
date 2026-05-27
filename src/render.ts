@@ -101,26 +101,20 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
       ? `\n     error: ${errorEntry.error}`
       : "";
 
-    const lines = resultText
-      .split("\n")
-      .map((line: string) => line.trim())
-      .filter(Boolean);
-    const flatParams = lines
-      .map((line: string, index: number) => {
-        const prefix = index === 0 ? "   - " : "     ";
-        return `${prefix}${line}`;
-      })
-      .join("\n");
+    let cleanText = resultText;
+    const fenceMatch = resultText.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
+    if (fenceMatch) {
+      cleanText = fenceMatch[1].trim();
+    }
 
-    // Try to parse as JSON object for structured display
     const parsed = (() => {
       try {
-        const obj = JSON.parse(resultText);
+        const obj = JSON.parse(cleanText);
         if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
           return Object.entries(obj)
             .map(
               ([key, value], i) =>
-                `${i === 0 ? "   - " : "     "}${key}: ${JSON.stringify(value)}`,
+                `${i === 0 ? "   - " : "     "}${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
             )
             .join("\n");
         }
@@ -128,8 +122,17 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
       return null;
     })();
 
-    const contentStr = parsed ?? (flatParams ? "\n" + flatParams : "");
-    return `💡 intention-hint: ${parentSuffix}${dur}${contentStr}${errorLine}`;
+    const contentStr =
+      parsed ??
+      cleanText
+        .split("\n")
+        .map((line: string, index: number) => {
+          const prefix = index === 0 ? "   - " : "     ";
+          return `${prefix}${line}`;
+        })
+        .join("\n");
+
+    return `💡 intention-hint: ${parentSuffix}${dur}${parsed ? "\n" + contentStr : contentStr ? "\n" + contentStr : ""}${errorLine}`;
   }
 
   const subEntryStrs = realEntries.map((entry) => {
