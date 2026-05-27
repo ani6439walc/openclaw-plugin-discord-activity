@@ -112,7 +112,24 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
       })
       .join("\n");
 
-    return `💡 intention-hint: ${parentSuffix}${dur}${flatParams ? "\n" + flatParams : ""}${errorLine}`;
+    // Try to parse as JSON object for structured display
+    const parsed = (() => {
+      try {
+        const obj = JSON.parse(resultText);
+        if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
+          return Object.entries(obj)
+            .map(
+              ([key, value], i) =>
+                `${i === 0 ? "   - " : "     "}${key}: ${JSON.stringify(value)}`,
+            )
+            .join("\n");
+        }
+      } catch {}
+      return null;
+    })();
+
+    const contentStr = parsed ?? (flatParams ? "\n" + flatParams : "");
+    return `💡 intention-hint: ${parentSuffix}${dur}${contentStr}${errorLine}`;
   }
 
   const subEntryStrs = realEntries.map((entry) => {

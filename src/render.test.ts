@@ -142,6 +142,23 @@ describe("renderStatusContent", () => {
     expect(result).not.toContain("- result:");
   });
 
+  it("renders intention-hint result as key-value when JSON object", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint:result",
+        toolName: "intention-hint:result",
+        params: {
+          text: JSON.stringify({ intent: "RESEARCH", confidence: 0.9 }),
+        },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain("💡 intention-hint: ✔");
+    expect(result).toContain('- intent: "RESEARCH"');
+    expect(result).toContain("     confidence: 0.9");
+  });
+
   it("renders active-memory group with error suffix", () => {
     const entries: ToolEntry[] = [
       {
