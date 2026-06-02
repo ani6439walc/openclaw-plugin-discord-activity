@@ -142,4 +142,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
+cache
 .sisyphus
+.codegraph
+.omg
