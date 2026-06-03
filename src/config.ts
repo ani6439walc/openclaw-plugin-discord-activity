@@ -1,31 +1,47 @@
-import { z } from "openclaw/plugin-sdk/zod";
+import { z } from "zod";
+import {
+  DEFAULT_MAX_TOOL_HISTORY_LENGTH,
+  DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
+  DEFAULT_ORPHAN_TTL_MS,
+  DEFAULT_MAX_DISPLAY_MS,
+} from "./constants.js";
+export {
+  DEFAULT_MAX_TOOL_HISTORY_LENGTH,
+  DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
+  DEFAULT_ORPHAN_TTL_MS,
+  DEFAULT_CLEANUP_DELAY_MS,
+  DEFAULT_AGENT_END_DELAY_MS,
+  DEFAULT_MAX_DISPLAY_MS,
+} from "./constants.js";
 
-export const DEFAULT_MAX_TOOL_HISTORY_LENGTH = 10;
-export const DEFAULT_MAX_STATUS_MESSAGE_LENGTH = 1700;
-export const DEFAULT_ORPHAN_TTL_MS = 5 * 60 * 1000;
-export const DEFAULT_CLEANUP_DELAY_MS = 1000;
-export const DEFAULT_AGENT_END_DELAY_MS = 1500;
-export const DEFAULT_MAX_DISPLAY_MS = 10 * 60 * 1000;
+const DEFAULT_CONFIG = {
+  maxToolHistoryLength: DEFAULT_MAX_TOOL_HISTORY_LENGTH,
+  maxStatusMessageLength: DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
+  orphanTtlMs: DEFAULT_ORPHAN_TTL_MS,
+  maxDisplayMs: DEFAULT_MAX_DISPLAY_MS,
+};
 
-const DiscordToolStatusConfigSchema = z.object({
-  maxToolHistoryLength: z
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .default(DEFAULT_MAX_TOOL_HISTORY_LENGTH),
-  maxStatusMessageLength: z
-    .number()
-    .int()
-    .min(100)
-    .max(4000)
-    .default(DEFAULT_MAX_STATUS_MESSAGE_LENGTH),
-  orphanTtlMs: z.number().int().positive().default(DEFAULT_ORPHAN_TTL_MS),
-  maxDisplayMs: z.number().int().positive().default(DEFAULT_MAX_DISPLAY_MS),
-});
+const DiscordToolStatusConfigSchema = z
+  .object({
+    maxToolHistoryLength: z
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .catch(DEFAULT_MAX_TOOL_HISTORY_LENGTH),
+    maxStatusMessageLength: z
+      .number()
+      .int()
+      .min(100)
+      .max(4000)
+      .catch(DEFAULT_MAX_STATUS_MESSAGE_LENGTH),
+    orphanTtlMs: z.number().int().positive().catch(DEFAULT_ORPHAN_TTL_MS),
+    maxDisplayMs: z.number().int().min(1000).catch(DEFAULT_MAX_DISPLAY_MS),
+  })
+  .catch(DEFAULT_CONFIG);
 
 export type PluginConfig = z.infer<typeof DiscordToolStatusConfigSchema>;
 
 export function resolveConfig(raw: unknown): PluginConfig {
-  return DiscordToolStatusConfigSchema.parse(raw ?? {});
+  return DiscordToolStatusConfigSchema.parse(raw);
 }

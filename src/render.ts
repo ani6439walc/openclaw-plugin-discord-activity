@@ -9,6 +9,47 @@ function getSubSuffix(status: ToolEntry["status"]): string {
   return "←";
 }
 
+function formatDuration(entry: ToolEntry): string {
+  return typeof entry.durationMs === "number"
+    ? ` (${entry.durationMs.toLocaleString()}ms)`
+    : "";
+}
+
+function formatErrorLine(entry: ToolEntry | undefined): string {
+  return entry?.status === "error" && entry.error
+    ? `\n     error: ${entry.error}`
+    : "";
+}
+
+function getParentSuffix(group: readonly ToolEntry[]): string {
+  const hasError = group.some((entry) => entry.status === "error");
+  const hasPending = group.some((entry) => entry.status === "pending");
+  return hasError ? "✘" : hasPending ? "←" : "✔";
+}
+
+function isSubagentToolEntry(entry: ToolEntry, prefix: string): boolean {
+  return entry.toolName === prefix || entry.toolName.startsWith(`${prefix}:`);
+}
+
+function renderNestedToolEntry(entry: ToolEntry, prefix: string): string {
+  if (entry.toolName === `${prefix}:result`) {
+    return formatParams(
+      { result: entry.params?.text },
+      {
+        first: "   - ",
+        rest: "     ",
+      },
+    );
+  }
+
+  const strippedName = entry.toolName.slice(prefix.length + 1);
+  const pStr = formatParams(entry.params, {
+    first: "     - ",
+    rest: "       ",
+  });
+  return `   - ${strippedName}: ${getSubSuffix(entry.status)}${formatDuration(entry)}${pStr ? "\n" + pStr : ""}`;
+}
+
 function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
   const icon = getToolIcon(t.toolName);
   const pStr = formatParams(t.params);
@@ -26,12 +67,8 @@ function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
   } else {
     suffix = "←";
   }
-  const dur =
-    typeof t.durationMs === "number"
-      ? ` (${t.durationMs.toLocaleString()}ms)`
-      : "";
-  const errorLine =
-    t.status === "error" && t.error ? `\n     error: ${t.error}` : "";
+  const dur = formatDuration(t);
+  const errorLine = formatErrorLine(t);
   return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}${errorLine}`;
 }
 
@@ -42,37 +79,12 @@ function renderActiveMemoryGroup(
   const realEntries = group.filter((e) =>
     e.toolName.startsWith("active-memory:"),
   );
-  const subEntryStrs = realEntries.map((entry) => {
-    if (entry.toolName === "active-memory:result") {
-      return formatParams(
-        { result: entry.params?.text },
-        {
-          first: "   - ",
-          rest: "     ",
-        },
-      );
-    }
-
-    const strippedName = entry.toolName.replace(/^active-memory:/, "");
-    const subSuffix = getSubSuffix(entry.status);
-    const dur =
-      typeof entry.durationMs === "number"
-        ? ` (${entry.durationMs.toLocaleString()}ms)`
-        : "";
-    const pStr = formatParams(entry.params, {
-      first: "     - ",
-      rest: "       ",
-    });
-    return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
-  });
-
-  const hasError = group.some((e) => e.status === "error");
-  const hasPending = group.some((e) => e.status === "pending");
-  const parentSuffix = hasError ? "✘" : hasPending ? "←" : "✔";
+  const subEntryStrs = realEntries.map((entry) =>
+    renderNestedToolEntry(entry, "active-memory"),
+  );
+  const parentSuffix = getParentSuffix(group);
   const errorEntry = group.find((e) => e.status === "error" && e.error);
-  const errorLine = errorEntry?.error
-    ? `\n     error: ${errorEntry.error}`
-    : "";
+  const errorLine = formatErrorLine(errorEntry);
 
   return `🧩 active-memory: ${parentSuffix}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
@@ -90,16 +102,11 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
   ) {
     const resultEntry = realEntries[0];
     const resultText = resultEntry.params?.text ?? "";
-    const dur =
-      typeof resultEntry.durationMs === "number"
-        ? ` (${resultEntry.durationMs.toLocaleString()}ms)`
-        : "";
+    const dur = formatDuration(resultEntry);
     const hasError = group.some((e) => e.status === "error");
     const parentSuffix = hasError ? "✘" : "✔";
     const errorEntry = group.find((e) => e.status === "error" && e.error);
-    const errorLine = errorEntry?.error
-      ? `\n     error: ${errorEntry.error}`
-      : "";
+    const errorLine = formatErrorLine(errorEntry);
 
     let cleanText = resultText;
     const fenceMatch = resultText.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
@@ -135,37 +142,12 @@ function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
     return `💡 intention-hint: ${parentSuffix}${dur}${parsed ? "\n" + contentStr : contentStr ? "\n" + contentStr : ""}${errorLine}`;
   }
 
-  const subEntryStrs = realEntries.map((entry) => {
-    if (entry.toolName === "intention-hint:result") {
-      return formatParams(
-        { result: entry.params?.text },
-        {
-          first: "   - ",
-          rest: "     ",
-        },
-      );
-    }
-
-    const strippedName = entry.toolName.replace(/^intention-hint:/, "");
-    const subSuffix = getSubSuffix(entry.status);
-    const dur =
-      typeof entry.durationMs === "number"
-        ? ` (${entry.durationMs.toLocaleString()}ms)`
-        : "";
-    const pStr = formatParams(entry.params, {
-      first: "     - ",
-      rest: "       ",
-    });
-    return `   - ${strippedName}: ${subSuffix}${dur}${pStr ? "\n" + pStr : ""}`;
-  });
-
-  const hasError = group.some((e) => e.status === "error");
-  const hasPending = group.some((e) => e.status === "pending");
-  const parentSuffix = hasError ? "✘" : hasPending ? "←" : "✔";
+  const subEntryStrs = realEntries.map((entry) =>
+    renderNestedToolEntry(entry, "intention-hint"),
+  );
+  const parentSuffix = getParentSuffix(group);
   const errorEntry = group.find((e) => e.status === "error" && e.error);
-  const errorLine = errorEntry?.error
-    ? `\n     error: ${errorEntry.error}`
-    : "";
+  const errorLine = formatErrorLine(errorEntry);
 
   return `💡 intention-hint: ${parentSuffix}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
@@ -180,18 +162,15 @@ function getSubagentGroupEntries(
     entries: ToolEntry[];
   }> = [];
 
-  const activeMemoryEntries = toolHistory.filter(
-    (t) =>
-      t.toolName === "active-memory" || t.toolName.startsWith("active-memory:"),
+  const activeMemoryEntries = toolHistory.filter((t) =>
+    isSubagentToolEntry(t, "active-memory"),
   );
   if (activeMemoryEntries.length > 0) {
     groups.push({ name: "active-memory", entries: activeMemoryEntries });
   }
 
-  const intentionHintEntries = toolHistory.filter(
-    (t) =>
-      t.toolName === "intention-hint" ||
-      t.toolName.startsWith("intention-hint:"),
+  const intentionHintEntries = toolHistory.filter((t) =>
+    isSubagentToolEntry(t, "intention-hint"),
   );
   if (intentionHintEntries.length > 0) {
     groups.push({ name: "intention-hint", entries: intentionHintEntries });
@@ -218,10 +197,8 @@ export function renderStatusContent(
   const normalEntries = toolHistory.filter(
     (t) =>
       !(
-        t.toolName === "active-memory" ||
-        t.toolName.startsWith("active-memory:") ||
-        t.toolName === "intention-hint" ||
-        t.toolName.startsWith("intention-hint:")
+        isSubagentToolEntry(t, "active-memory") ||
+        isSubagentToolEntry(t, "intention-hint")
       ),
   );
 

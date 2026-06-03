@@ -31,6 +31,9 @@ import {
   scheduleSessionCleanup,
   updateStatusMessage,
 } from "./session.js";
+import { AGENT_END_DELAY_MS } from "./constants.js";
+
+type SubagentToolName = "active-memory" | "intention-hint";
 
 function replaceGroupInPlace(
   history: ToolEntry[],
@@ -47,6 +50,34 @@ function replaceGroupInPlace(
     endIdx++;
   }
   history.splice(startIdx, endIdx - startIdx, ...replacements);
+}
+
+function isSubagentToolEntry(
+  entry: ToolEntry,
+  toolName: SubagentToolName,
+): boolean {
+  return (
+    entry.toolName === toolName || entry.toolName.startsWith(`${toolName}:`)
+  );
+}
+
+function isSubagentChildEntry(
+  entry: ToolEntry,
+  toolName: SubagentToolName,
+): boolean {
+  return entry.toolName.startsWith(`${toolName}:`);
+}
+
+function replaceSubagentGroup(
+  history: ToolEntry[],
+  toolName: SubagentToolName,
+  replacements: ToolEntry[],
+): void {
+  replaceGroupInPlace(
+    history,
+    (entry) => isSubagentToolEntry(entry, toolName),
+    replacements,
+  );
 }
 
 function buildPendingSubagentEntries(
@@ -105,6 +136,42 @@ export function createHookHandlers(deps: HookDeps) {
     );
   }
 
+  function trimToolHistory(history: ToolEntry[]): void {
+    while (history.length > config.maxToolHistoryLength) {
+      history.shift();
+    }
+  }
+
+  async function updateSessionStatus(
+    session: SessionEntry,
+    isFinal: boolean,
+  ): Promise<void> {
+    await updateStatusMessage(
+      session,
+      getToken,
+      isFinal,
+      config.maxDisplayMs,
+      config.maxStatusMessageLength,
+    );
+  }
+
+  async function showPendingSubagentEntries(
+    session: SessionEntry,
+    ownerSessionKey: string | undefined,
+  ): Promise<void> {
+    const agentId = extractAgentIdFromSessionKey(ownerSessionKey);
+    const pendingEntries = buildPendingSubagentEntries(
+      agentId,
+      isActiveMemoryEnabled,
+      isIntentionHintEnabled,
+    );
+    if (pendingEntries.length === 0) return;
+
+    session.toolHistory.push(...pendingEntries);
+    trimToolHistory(session.toolHistory);
+    await updateSessionStatus(session, false);
+  }
+
   function shouldSkipSession(
     ctx: { sessionKey?: string },
     hookName: string,
@@ -134,7 +201,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return;
     if (requireVisibleState && !store.hasVisibleStatusState(session)) return;
     session.finalized = true;
-    await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
+    await updateSessionStatus(session, true);
     scheduleSessionCleanup(
       contextKey,
       session,
@@ -208,22 +275,7 @@ export function createHookHandlers(deps: HookDeps) {
           });
         });
 
-        const replacementAgentId =
-          extractAgentIdFromSessionKey(nextOwnerSessionKey);
-        const pendingEntries = buildPendingSubagentEntries(
-          replacementAgentId,
-          isActiveMemoryEnabled,
-          isIntentionHintEnabled,
-        );
-        if (pendingEntries.length > 0) {
-          replacement.toolHistory.push(...pendingEntries);
-          await updateStatusMessage(
-            replacement,
-            getToken,
-            false,
-            config.maxDisplayMs,
-          );
-        }
+        await showPendingSubagentEntries(replacement, nextOwnerSessionKey);
         return;
       }
 
@@ -235,21 +287,7 @@ export function createHookHandlers(deps: HookDeps) {
 
     const session = store.getOrCreateSession(contextKey, ctx.sessionKey);
     if (session && session.toolHistory.length === 0) {
-      const agentId = extractAgentIdFromSessionKey(ctx.sessionKey);
-      const pendingEntries = buildPendingSubagentEntries(
-        agentId,
-        isActiveMemoryEnabled,
-        isIntentionHintEnabled,
-      );
-      if (pendingEntries.length > 0) {
-        session.toolHistory.push(...pendingEntries);
-        await updateStatusMessage(
-          session,
-          getToken,
-          false,
-          config.maxDisplayMs,
-        );
-      }
+      await showPendingSubagentEntries(session, ctx.sessionKey);
     }
   }
 
@@ -301,8 +339,8 @@ export function createHookHandlers(deps: HookDeps) {
       status: "pending",
     });
 
-    if (session.toolHistory.length > 10) session.toolHistory.shift();
-    await updateStatusMessage(session, getToken, false, config.maxDisplayMs);
+    trimToolHistory(session.toolHistory);
+    await updateSessionStatus(session, false);
   }
 
   async function onAfterToolCall(event: AfterToolCallEvent, ctx: ToolContext) {
@@ -345,7 +383,7 @@ export function createHookHandlers(deps: HookDeps) {
           };
           isOrphanReconcile = true;
           session.toolHistory.push(toolEntry);
-          if (session.toolHistory.length > 10) session.toolHistory.shift();
+          trimToolHistory(session.toolHistory);
           logger.debug(`after_tool_call: reconciled orphan tool entry.`, {
             toolCallId: event.toolCallId,
           });
@@ -364,7 +402,7 @@ export function createHookHandlers(deps: HookDeps) {
         toolEntry.error = undefined;
       }
       toolEntry.durationMs = event.durationMs;
-      await updateStatusMessage(session, getToken, false, config.maxDisplayMs);
+      await updateSessionStatus(session, false);
     }
   }
 
@@ -396,7 +434,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return undefined;
     if (session.finalized) return undefined;
     session.finalized = true;
-    await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
+    await updateSessionStatus(session, true);
     return undefined;
   }
 
@@ -415,7 +453,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (session.finalized) return { handled: false };
 
     session.finalized = true;
-    await updateStatusMessage(session, getToken, true, config.maxDisplayMs);
+    await updateSessionStatus(session, true);
     return { handled: false };
   }
 
@@ -461,42 +499,27 @@ export function createHookHandlers(deps: HookDeps) {
                 newEntries.push(entry);
               }
             }
-            replaceGroupInPlace(
+            replaceSubagentGroup(
               session.toolHistory,
-              (t) =>
-                t.toolName === "active-memory" ||
-                t.toolName.startsWith("active-memory:"),
+              "active-memory",
               session.toolHistory
-                .filter((t) => t.toolName.startsWith("active-memory:"))
+                .filter((t) => isSubagentChildEntry(t, "active-memory"))
                 .concat(newEntries),
             );
-            while (session.toolHistory.length > 10) {
-              session.toolHistory.shift();
-            }
+            trimToolHistory(session.toolHistory);
           } else if (event.error || event.success === false) {
-            replaceGroupInPlace(
-              session.toolHistory,
-              (t) =>
-                t.toolName === "active-memory" ||
-                t.toolName.startsWith("active-memory:"),
-              [
-                {
-                  toolCallId: "active-memory",
-                  toolName: "active-memory",
-                  params: preservedPlaceholder?.params ?? {},
-                  status: "error",
-                  durationMs: event.durationMs,
-                  error: event.error,
-                },
-              ],
-            );
+            replaceSubagentGroup(session.toolHistory, "active-memory", [
+              {
+                toolCallId: "active-memory",
+                toolName: "active-memory",
+                params: preservedPlaceholder?.params ?? {},
+                status: "error",
+                durationMs: event.durationMs,
+                error: event.error,
+              },
+            ]);
           }
-          await updateStatusMessage(
-            session,
-            getToken,
-            true,
-            config.maxDisplayMs,
-          );
+          await updateSessionStatus(session, true);
         }
         return;
       }
@@ -536,27 +559,18 @@ export function createHookHandlers(deps: HookDeps) {
                     durationMs: event.durationMs,
                   },
                 ];
-          replaceGroupInPlace(
+          replaceSubagentGroup(
             session.toolHistory,
-            (t) =>
-              t.toolName === "intention-hint" ||
-              t.toolName.startsWith("intention-hint:"),
+            "intention-hint",
             ihReplacements,
           );
-          while (session.toolHistory.length > 10) {
-            session.toolHistory.shift();
-          }
-          await updateStatusMessage(
-            session,
-            getToken,
-            true,
-            config.maxDisplayMs,
-          );
+          trimToolHistory(session.toolHistory);
+          await updateSessionStatus(session, true);
         }
         return;
       }
 
-      await resolveAndFinalize(ctx, 1500, "agent_end");
+      await resolveAndFinalize(ctx, AGENT_END_DELAY_MS, "agent_end");
     }
   }
 

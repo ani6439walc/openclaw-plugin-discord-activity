@@ -228,6 +228,37 @@ describe("createHookHandlers", () => {
       expect(session?.toolHistory.length).toBe(1);
       expect(session?.toolHistory[0].toolName).toBe("bash");
     });
+
+    it("trims tool history using configured maxToolHistoryLength", async () => {
+      getToken.mockReturnValue("");
+      config = resolveConfig({ maxToolHistoryLength: 2 });
+      handlers = createHookHandlers({
+        store,
+        orphans,
+        getToken,
+        config,
+        isActiveMemoryEnabled,
+        isIntentionHintEnabled,
+      });
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+
+      for (const toolCallId of ["call_1", "call_2", "call_3"]) {
+        await handlers.onBeforeToolCall(
+          { toolCallId, toolName: "bash", params: {} },
+          {
+            sessionKey: "discord:channel:123:thread:x",
+            toolName: "bash",
+            toolCallId,
+          },
+        );
+      }
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
+        "call_2",
+        "call_3",
+      ]);
+    });
   });
 
   describe("onAfterToolCall", () => {
@@ -252,6 +283,7 @@ describe("createHookHandlers", () => {
     });
 
     it("marks tool as completed", async () => {
+      createDiscordFetchMock();
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       await handlers.onBeforeToolCall(
         { toolCallId: "call_1", toolName: "bash", params: {} },

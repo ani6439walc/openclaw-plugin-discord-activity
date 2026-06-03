@@ -10,6 +10,10 @@ import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { createSessionStore } from "./store.js";
 import { createOrphanToolManager } from "./orphans.js";
 import { renderStatusContent } from "./render.js";
+import {
+  DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
+  STATUS_MAX_ENTRIES,
+} from "./constants.js";
 
 export const defaultStore = createSessionStore();
 export const defaultOrphans = createOrphanToolManager();
@@ -215,6 +219,7 @@ export async function updateStatusMessage(
   getToken: (accountId?: string) => string,
   isFinal = false,
   maxDisplayMs?: number,
+  maxStatusMessageLength = DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
 ) {
   const priorOp = session.pendingOp;
   const op = (async () => {
@@ -232,7 +237,12 @@ export async function updateStatusMessage(
     let content = "";
     while (session.toolHistory.length > 0) {
       content = renderStatusContent(session.toolHistory, isFinal);
-      if (content.length <= 1700 && session.toolHistory.length <= 6) break;
+      if (
+        content.length <= maxStatusMessageLength &&
+        session.toolHistory.length <= STATUS_MAX_ENTRIES
+      ) {
+        break;
+      }
       session.toolHistory.shift();
     }
 

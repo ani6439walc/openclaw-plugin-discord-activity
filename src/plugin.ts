@@ -8,37 +8,17 @@ import { defaultStore, defaultOrphans } from "./session.js";
 import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
 
-function buildIsActiveMemoryEnabled(
+export function buildIsPluginEnabledForAgent(
   openClawConfig: OpenClawConfig,
+  pluginId: string,
 ): (agentId: string) => boolean {
   return (agentId: string): boolean => {
     const plugins = openClawConfig.plugins;
     if (!plugins) return false;
-    if (plugins.deny?.includes("active-memory")) return false;
-    if (plugins.allow && !plugins.allow.includes("active-memory")) return false;
+    if (plugins.deny?.includes(pluginId)) return false;
+    if (plugins.allow && !plugins.allow.includes(pluginId)) return false;
 
-    const entry = plugins.entries?.["active-memory"];
-    if (!entry?.enabled) return false;
-
-    const agents = entry.config?.agents;
-    if (!Array.isArray(agents)) return false;
-
-    return agents.includes(agentId);
-  };
-}
-
-function buildIsIntentionHintEnabled(
-  openClawConfig: OpenClawConfig,
-): (agentId: string) => boolean {
-  return (agentId: string): boolean => {
-    const plugins = openClawConfig.plugins;
-    if (!plugins) return false;
-    if (plugins.deny?.includes("intention-hint")) return false;
-    if (plugins.allow && !plugins.allow.includes("intention-hint")) {
-      return false;
-    }
-
-    const entry = plugins.entries?.["intention-hint"];
+    const entry = plugins.entries?.[pluginId];
     if (!entry?.enabled) return false;
 
     const agents = entry.config?.agents;
@@ -49,14 +29,18 @@ function buildIsIntentionHintEnabled(
 }
 
 export function createPlugin(api: OpenClawPluginApi) {
-  const config = resolveConfig(
-    api.config.plugins?.entries?.["discord-tool-status"] ?? {},
-  );
+  const config = resolveConfig(api.pluginConfig ?? {});
   const getToken = (accountId?: string) =>
     resolveDiscordToken(api.config, { accountId }).token;
 
-  const isActiveMemoryEnabled = buildIsActiveMemoryEnabled(api.config);
-  const isIntentionHintEnabled = buildIsIntentionHintEnabled(api.config);
+  const isActiveMemoryEnabled = buildIsPluginEnabledForAgent(
+    api.config,
+    "active-memory",
+  );
+  const isIntentionHintEnabled = buildIsPluginEnabledForAgent(
+    api.config,
+    "intention-hint",
+  );
 
   const store = defaultStore;
   const orphans = defaultOrphans;

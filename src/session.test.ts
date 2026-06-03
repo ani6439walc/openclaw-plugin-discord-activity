@@ -128,4 +128,32 @@ describe("updateStatusMessage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(session.lastRenderedContent).toBe(expectedContent);
   });
+
+  it("trims rendered status content using the configured max length", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: [
+        createToolEntry({
+          toolCallId: "call_drop",
+          params: { command: "x".repeat(180) },
+        }),
+        createToolEntry({
+          toolCallId: "call_keep",
+          params: { command: "ok" },
+        }),
+      ],
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", true, 60_000, 120);
+
+    expect(session.toolHistory.map((entry) => entry.toolCallId)).toEqual([
+      "call_keep",
+    ]);
+    expect(session.lastRenderedContent?.length).toBeLessThanOrEqual(120);
+  });
 });
