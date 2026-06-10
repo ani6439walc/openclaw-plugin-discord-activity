@@ -28,7 +28,9 @@ export function buildIsPluginEnabledForAgent(
   };
 }
 
-export function createPlugin(api: OpenClawPluginApi) {
+export function createPlugin(
+  api: OpenClawPluginApi,
+): ReturnType<typeof definePluginEntry> {
   const config = resolveConfig(api.pluginConfig ?? {});
   const getToken = (accountId?: string) =>
     resolveDiscordToken(api.config, { accountId }).token;
