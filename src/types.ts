@@ -114,6 +114,7 @@ export type MessageContext = {
   messageId?: string;
   senderId?: string;
   messageProvider?: string;
+  trigger?: string;
 };
 
 export type BeforeToolCallEvent = {

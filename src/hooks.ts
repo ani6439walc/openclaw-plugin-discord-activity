@@ -129,6 +129,7 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   function isDiscordContext(ctx: MessageContext): boolean {
+    if (ctx.trigger && ctx.trigger !== "user") return false;
     return (
       ctx.channelId === "discord" ||
       ctx.messageProvider === "discord" ||
@@ -181,9 +182,12 @@ export function createHookHandlers(deps: HookDeps) {
       isIntentionHintSessionKey(ctx.sessionKey) ||
       isSubagentSessionKey(ctx.sessionKey)
     ) {
-      logger.trace(`${hookName}: skip (active-memory/subagent) session.`, {
-        sessionKey: ctx.sessionKey,
-      });
+      logger.trace(
+        `${hookName}: skip (active-memory/intention-hint/subagent) session.`,
+        {
+          sessionKey: ctx.sessionKey,
+        },
+      );
       return true;
     }
     return false;
