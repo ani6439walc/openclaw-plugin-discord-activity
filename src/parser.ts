@@ -1,5 +1,17 @@
 import type { ToolEntry, AgentEventMessage } from "./types.js";
 
+/**
+ * Strip fenced code blocks (```json ... ```) from text,
+ * keeping only the inner content. Prevents nested code blocks
+ * from breaking Discord markdown rendering when multiple entries
+ * are concatenated.
+ */
+function stripFencedCodeBlocks(text: string): string {
+  return text.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, inner: string) =>
+    inner.trim(),
+  );
+}
+
 function extractAssistantText(msg: AgentEventMessage): string | undefined {
   if (typeof msg.content === "string") {
     const text = msg.content.trim();
@@ -196,7 +208,7 @@ export function parseIntentionHintResultEntry(
   return {
     toolCallId: "intention-hint:result",
     toolName: "intention-hint:result",
-    params: { text: finalAssistantText },
+    params: { text: stripFencedCodeBlocks(finalAssistantText) },
     status: "completed",
   };
 }
