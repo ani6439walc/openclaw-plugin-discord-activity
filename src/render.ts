@@ -17,7 +17,7 @@ function formatDuration(entry: ToolEntry): string {
 
 function formatErrorLine(entry: ToolEntry | undefined): string {
   return entry?.status === "error" && entry.error
-    ? `\n     error: ${entry.error}`
+    ? `\n   - error: ${entry.error}`
     : "";
 }
 

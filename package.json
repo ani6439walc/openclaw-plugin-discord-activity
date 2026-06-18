@@ -2,7 +2,7 @@
   "name": "discord-tool-status",
   "displayName": "Discord Tool Status",
   "description": "Shows live tool-call status as a Discord message that is updated and deleted when the agent finishes.",
-  "version": "2026.6.5",
+  "version": "2026.6.8",
   "type": "module",
   "license": "MIT",
   "author": "Ani <ani6439walc@gmail.com>",
@@ -34,31 +34,30 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.6.5",
-      "minGatewayVersion": "2026.6.5"
+      "pluginApi": ">=2026.6.8",
+      "minGatewayVersion": "2026.6.8"
     },
     "build": {
-      "openclawVersion": "2026.6.5",
-      "pluginSdkVersion": "2026.6.5"
+      "openclawVersion": "2026.6.8",
+      "pluginSdkVersion": "2026.6.8"
     }
   },
   "scripts": {
-    "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run typecheck && pnpm run test:unit",
-    "test:unit": "vitest run",
-    "format": "prettier --write '**/*.md' '**/*.json' '**/*.ts'"
+    "format": "prettier --write '**/*.md' '**/*.json' '**/*.ts'",
+    "test": "vitest run",
+    "build": "tsc"
   },
   "dependencies": {
     "zod": "4.4.3"
   },
   "peerDependencies": {
-    "openclaw": "2026.6.5",
+    "openclaw": "2026.6.8",
     "typebox": "1.1.39"
   },
   "devDependencies": {
-    "prettier": "3.8.4",
     "typescript": "6.0.3",
-    "vitest": "4.1.7"
+    "prettier": "3.8.4",
+    "vitest": "4.1.8"
   }
 }
