@@ -541,28 +541,28 @@ export function createHookHandlers(deps: HookDeps) {
             session.clearTimer = undefined;
           }
           const resultEntry = parseIntentionHintResultEntry(event);
-          const ihReplacements: ToolEntry[] = resultEntry
-            ? [resultEntry]
+          const newEntry: ToolEntry = resultEntry
+            ? resultEntry
             : event.error || event.success === false
-              ? [
-                  {
-                    toolCallId: "intention-hint",
-                    toolName: "intention-hint",
-                    params: {},
-                    status: "error" as const,
-                    durationMs: event.durationMs,
-                    error: event.error,
-                  },
-                ]
-              : [
-                  {
-                    toolCallId: "intention-hint",
-                    toolName: "intention-hint",
-                    params: {},
-                    status: "completed" as const,
-                    durationMs: event.durationMs,
-                  },
-                ];
+              ? {
+                  toolCallId: "intention-hint",
+                  toolName: "intention-hint",
+                  params: {},
+                  status: "error" as const,
+                  durationMs: event.durationMs,
+                  error: event.error,
+                }
+              : {
+                  toolCallId: "intention-hint",
+                  toolName: "intention-hint",
+                  params: {},
+                  status: "completed" as const,
+                  durationMs: event.durationMs,
+                };
+          const existingIhEntries = session.toolHistory.filter((t) =>
+            isSubagentToolEntry(t, "intention-hint"),
+          );
+          const ihReplacements = [...existingIhEntries, newEntry].slice(-3);
           replaceSubagentGroup(
             session.toolHistory,
             "intention-hint",
