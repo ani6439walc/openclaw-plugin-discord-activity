@@ -51,13 +51,7 @@ function renderIntentionHintResult(entry: ToolEntry): string {
     }
   } catch {}
 
-  return formatParams(
-    { result: cleanText },
-    {
-      first: "   - ",
-      rest: "     ",
-    },
-  );
+  return formatParams({ result: cleanText }, { first: "   - ", rest: "     " });
 }
 
 function renderNestedToolEntry(

@@ -692,9 +692,6 @@ describe("createHookHandlers", () => {
       );
       expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
       expect(session?.lastRenderedContent).toContain(
-        "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
-      );
-      expect(session?.lastRenderedContent).toContain(
         "- result: INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
       );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
