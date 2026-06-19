@@ -159,6 +159,48 @@ describe("renderStatusContent", () => {
     expect(result).toContain("     confidence: 0.9");
   });
 
+  it("renders multiple intention-hint JSON results without result wrappers", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint:result:1",
+        toolName: "intention-hint:result",
+        params: {
+          text: JSON.stringify({
+            keywords: ["收巡", "codex"],
+            topic: "user requesting to check or review codex",
+            topicChanged: true,
+            topicChangeReason: "keyword_delta",
+            complexity: "low",
+          }),
+        },
+        status: "completed",
+      },
+      {
+        toolCallId: "intention-hint:result:2",
+        toolName: "intention-hint:result",
+        params: {
+          text: JSON.stringify({
+            intent: "code-review",
+            reason: "User is asking to check or review codex.",
+            confidence: 0.75,
+            complexity: "low",
+          }),
+        },
+        status: "completed",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain("💡 intention-hint: ✔");
+    expect(result).toContain('- keywords: ["收巡","codex"]');
+    expect(result).toContain(
+      "     topic: user requesting to check or review codex",
+    );
+    expect(result).toContain("- intent: code-review");
+    expect(result).toContain("     confidence: 0.75");
+    expect(result).not.toContain("- result:");
+  });
+
   it("renders active-memory group with error suffix", () => {
     const entries: ToolEntry[] = [
       {

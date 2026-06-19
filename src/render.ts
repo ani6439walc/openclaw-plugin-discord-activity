@@ -31,8 +31,44 @@ function isSubagentToolEntry(entry: ToolEntry, prefix: string): boolean {
   return entry.toolName === prefix || entry.toolName.startsWith(`${prefix}:`);
 }
 
-function renderNestedToolEntry(entry: ToolEntry, prefix: string): string {
+function renderIntentionHintResult(entry: ToolEntry): string {
+  const resultText = entry.params?.text ?? "";
+  let cleanText = resultText;
+  const fenceMatch = resultText.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
+  if (fenceMatch) {
+    cleanText = fenceMatch[1].trim();
+  }
+
+  try {
+    const obj = JSON.parse(cleanText);
+    if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
+      return Object.entries(obj)
+        .map(
+          ([key, value], i) =>
+            `${i === 0 ? "   - " : "     "}${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
+        )
+        .join("\n");
+    }
+  } catch {}
+
+  return cleanText
+    .split("\n")
+    .map((line: string, index: number) => {
+      const prefix = index === 0 ? "   - " : "     ";
+      return `${prefix}${line}`;
+    })
+    .join("\n");
+}
+
+function renderNestedToolEntry(
+  entry: ToolEntry,
+  prefix: string,
+  renderResult?: (entry: ToolEntry) => string,
+): string {
   if (entry.toolName === `${prefix}:result`) {
+    if (renderResult) {
+      return renderResult(entry);
+    }
     return formatParams(
       { result: entry.params?.text },
       {
@@ -48,6 +84,29 @@ function renderNestedToolEntry(entry: ToolEntry, prefix: string): string {
     rest: "       ",
   });
   return `   - ${strippedName}: ${getSubSuffix(entry.status)}${formatDuration(entry)}${pStr ? "\n" + pStr : ""}`;
+}
+
+function renderSubagentGroup(
+  icon: string,
+  prefix: string,
+  group: readonly ToolEntry[],
+  renderResult?: (entry: ToolEntry) => string,
+): string {
+  const realEntries = group.filter((e) => e.toolName.startsWith(`${prefix}:`));
+  const subEntryStrs = realEntries.map((entry) =>
+    renderNestedToolEntry(entry, prefix, renderResult),
+  );
+  const parentSuffix = group.some((entry) => entry.status === "error")
+    ? "✘"
+    : realEntries.length
+      ? getParentSuffix(realEntries)
+      : getParentSuffix(group);
+  const errorEntry = group.find((e) => e.status === "error" && e.error);
+  const errorLine = formatErrorLine(errorEntry);
+
+  return `${icon} ${prefix}: ${parentSuffix}${
+    subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
+  }${errorLine}`;
 }
 
 function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
@@ -76,82 +135,16 @@ function renderActiveMemoryGroup(
   group: readonly ToolEntry[],
   _isFinal: boolean,
 ): string {
-  const realEntries = group.filter((e) =>
-    e.toolName.startsWith("active-memory:"),
-  );
-  const subEntryStrs = realEntries.map((entry) =>
-    renderNestedToolEntry(entry, "active-memory"),
-  );
-  const parentSuffix = getParentSuffix(group);
-  const errorEntry = group.find((e) => e.status === "error" && e.error);
-  const errorLine = formatErrorLine(errorEntry);
-
-  return `🧩 active-memory: ${parentSuffix}${
-    subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
-  }${errorLine}`;
+  return renderSubagentGroup("🧩", "active-memory", group);
 }
 
 function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
-  const realEntries = group.filter((e) =>
-    e.toolName.startsWith("intention-hint:"),
+  return renderSubagentGroup(
+    "💡",
+    "intention-hint",
+    group,
+    renderIntentionHintResult,
   );
-
-  if (
-    realEntries.length === 1 &&
-    realEntries[0].toolName === "intention-hint:result"
-  ) {
-    const resultEntry = realEntries[0];
-    const resultText = resultEntry.params?.text ?? "";
-    const dur = formatDuration(resultEntry);
-    const hasError = group.some((e) => e.status === "error");
-    const parentSuffix = hasError ? "✘" : "✔";
-    const errorEntry = group.find((e) => e.status === "error" && e.error);
-    const errorLine = formatErrorLine(errorEntry);
-
-    let cleanText = resultText;
-    const fenceMatch = resultText.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
-    if (fenceMatch) {
-      cleanText = fenceMatch[1].trim();
-    }
-
-    const parsed = (() => {
-      try {
-        const obj = JSON.parse(cleanText);
-        if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-          return Object.entries(obj)
-            .map(
-              ([key, value], i) =>
-                `${i === 0 ? "   - " : "     "}${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
-            )
-            .join("\n");
-        }
-      } catch {}
-      return null;
-    })();
-
-    const contentStr =
-      parsed ??
-      cleanText
-        .split("\n")
-        .map((line: string, index: number) => {
-          const prefix = index === 0 ? "   - " : "     ";
-          return `${prefix}${line}`;
-        })
-        .join("\n");
-
-    return `💡 intention-hint: ${parentSuffix}${dur}${parsed ? "\n" + contentStr : contentStr ? "\n" + contentStr : ""}${errorLine}`;
-  }
-
-  const subEntryStrs = realEntries.map((entry) =>
-    renderNestedToolEntry(entry, "intention-hint"),
-  );
-  const parentSuffix = getParentSuffix(group);
-  const errorEntry = group.find((e) => e.status === "error" && e.error);
-  const errorLine = formatErrorLine(errorEntry);
-
-  return `💡 intention-hint: ${parentSuffix}${
-    subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
-  }${errorLine}`;
 }
 
 function getSubagentGroupEntries(
