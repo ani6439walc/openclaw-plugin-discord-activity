@@ -51,13 +51,13 @@ function renderIntentionHintResult(entry: ToolEntry): string {
     }
   } catch {}
 
-  return cleanText
-    .split("\n")
-    .map((line: string, index: number) => {
-      const prefix = index === 0 ? "   - " : "     ";
-      return `${prefix}${line}`;
-    })
-    .join("\n");
+  return formatParams(
+    { result: cleanText },
+    {
+      first: "   - ",
+      rest: "     ",
+    },
+  );
 }
 
 function renderNestedToolEntry(

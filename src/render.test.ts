@@ -127,7 +127,7 @@ describe("renderStatusContent", () => {
     expect(result).toContain("💡 intention-hint: ←");
   });
 
-  it("renders intention-hint result flattened when single entry", () => {
+  it("renders intention-hint plain text result with a result label", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "intention-hint:result",
@@ -139,7 +139,7 @@ describe("renderStatusContent", () => {
     const result = renderStatusContent(entries, true);
     expect(result).toContain("💡 intention-hint: ✔");
     expect(result).toContain("INTENT:RESEARCH | GOAL: docs");
-    expect(result).not.toContain("- result:");
+    expect(result).toContain("- result: INTENT:RESEARCH | GOAL: docs");
   });
 
   it("renders intention-hint result as key-value when JSON object", () => {
