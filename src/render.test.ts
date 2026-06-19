@@ -138,7 +138,6 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(result).toContain("💡 intention-hint: ✔");
-    expect(result).toContain("INTENT:RESEARCH | GOAL: docs");
     expect(result).toContain("- result: INTENT:RESEARCH | GOAL: docs");
   });
 
