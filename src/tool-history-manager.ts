@@ -67,7 +67,7 @@ export class ToolHistoryManager {
   updateEntry(history: ToolEntry[], toolCallId: string, updates: Partial<ToolEntry>): boolean {
     const index = history.findIndex(t => t.toolCallId === toolCallId);
     if (index !== -1) {
-      history[index] = { ...history[index], ...updates };
+      Object.assign(history[index], updates);
       return true;
     }
     return false;

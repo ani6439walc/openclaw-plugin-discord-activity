@@ -42,14 +42,15 @@ export class DiscordMessageOperations {
     messageId: string,
     content: string,
     accountId?: string
-  ): Promise<void> {
+  ): Promise<boolean> {
     const token = this.tokenResolver(accountId);
     if (!token) {
       logger.warn("DiscordMessageOperations.edit: no token available", { channelId, messageId });
-      return;
+      return false;
     }
 
     await editDiscordMessage(channelId, messageId, content, token);
+    return true;
   }
 
   /**

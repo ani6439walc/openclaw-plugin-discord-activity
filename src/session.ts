@@ -277,23 +277,16 @@ export async function updateStatusMessage(
       return;
     }
 
-    // Check token before edit to avoid state desync if edit silently aborts
-    const token = getToken(session.accountId);
-    if (!token) {
-      logger.warn("skipped status message edit: no token available.", {
-        accountId: session.accountId,
-      });
-      return;
-    }
-
-    await operations.edit(
+    const edited = await operations.edit(
       session.channelId,
       session.statusMessageId,
       content,
       session.accountId,
     );
-    session.lastRenderedContent = content;
-    logger.debug("updated status message.");
+    if (edited) {
+      session.lastRenderedContent = content;
+      logger.debug("updated status message.");
+    }
   })();
 
   session.pendingOp = op;
