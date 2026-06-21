@@ -2,10 +2,11 @@ import { logger } from "../api.js";
 import type { ChannelMeta, SessionEntry } from "./types.js";
 import {
   deleteMessage,
-  sendMessage,
   editMessage,
   resolveDmChannel,
+  sendMessage as sendDiscordMessage,
 } from "./discord-api.js";
+import { DiscordMessageOperations } from "./discord-message-operations.js";
 import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { createSessionStore } from "./store.js";
 import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
@@ -66,14 +67,9 @@ export async function retireSession(
     return;
   }
 
-  const token = getToken(session.accountId);
-  if (!token) {
-    resetSessionState(session);
-    return;
-  }
-
+  const operations = new DiscordMessageOperations(getToken);
   const staleMsgId = session.statusMessageId;
-  const deleted = await deleteMessage(session.channelId, staleMsgId, token);
+  const deleted = await operations.delete(session.channelId, staleMsgId, session.accountId);
   if (deleted && session.statusMessageId === staleMsgId) {
     session.statusMessageId = undefined;
   }
@@ -138,20 +134,19 @@ export async function clearStatusMessage(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
-  await waitForPendingOp(session, hookName);
+  await waitForPendingOp(session, `${hookName}_wait`);
 
   clearTimers(session);
 
   if (!session.statusMessageId) return;
 
-  const token = getToken(session.accountId);
-  if (token) {
-    const msgId = session.statusMessageId;
-    logger.debug(`[${hookName}] deleting status message ${msgId}.`);
-    const deleted = await deleteMessage(session.channelId, msgId, token);
-    if (deleted) {
-      session.statusMessageId = undefined;
-    }
+  const operations = new DiscordMessageOperations(getToken);
+  const msgId = session.statusMessageId;
+  logger.debug(`[${hookName}] deleting status message ${msgId}.`);
+  
+  const deleted = await operations.delete(session.channelId, msgId, session.accountId);
+  if (deleted) {
+    session.statusMessageId = undefined;
   }
   resetSessionState(session);
 }
@@ -168,7 +163,7 @@ async function sendMessageWithDmFallback(
     const dmChannelId = await resolveDmChannel(userId, token);
     if (dmChannelId) {
       session.channelId = dmChannelId;
-      return sendMessage(dmChannelId, content, token, replyToId);
+      return sendDiscordMessage(dmChannelId, content, token, replyToId);
     }
     logger.warn("failed to resolve DM channel before sending status message.", {
       userId,
@@ -178,7 +173,7 @@ async function sendMessageWithDmFallback(
     return undefined;
   }
 
-  return sendMessage(session.channelId, content, token, replyToId);
+  return sendDiscordMessage(session.channelId, content, token, replyToId);
 }
 
 function startMaxDisplayTimer(
@@ -249,8 +244,7 @@ export async function updateStatusMessage(
 
     if (!content) return;
 
-    const token = getToken(session.accountId);
-    if (!token) return;
+    const operations = new DiscordMessageOperations(getToken);
 
     const isNewMessage = !session.statusMessageId;
 
@@ -270,10 +264,9 @@ export async function updateStatusMessage(
         return;
       }
 
-      const createdId = await sendMessageWithDmFallback(
+      const createdId = await operations.sendWithDmFallback(
         session,
         content,
-        token,
         session.userMessageId,
       );
 
@@ -282,7 +275,7 @@ export async function updateStatusMessage(
       }
 
       if (!isCurrentSession(session)) {
-        await deleteMessage(session.channelId, createdId, token);
+        await operations.delete(session.channelId, createdId, session.accountId);
         return;
       }
 
@@ -314,11 +307,11 @@ export async function updateStatusMessage(
       return;
     }
 
-    await editMessage(
+    await operations.edit(
       session.channelId,
       session.statusMessageId,
       content,
-      token,
+      session.accountId,
     );
     session.lastRenderedContent = content;
     logger.debug("updated status message.");
