@@ -448,17 +448,25 @@ export function createHookHandlers(deps: HookDeps) {
           if (entries.length > 0) {
             const newEntries: ToolEntry[] = [];
             for (const entry of entries) {
-              const existing = session.toolHistory.find(
+              const existingInHistory = session.toolHistory.find(
                 (t) => t.toolCallId === entry.toolCallId,
               );
-              if (existing) {
+              if (existingInHistory) {
                 toolHistoryManager.updateEntry(session.toolHistory, entry.toolCallId, {
                   status: entry.status,
                   params: entry.params,
                   toolName: entry.toolName,
                 });
               } else {
-                newEntries.push(entry);
+                const existingInNew = newEntries.find(
+                  (t) => t.toolCallId === entry.toolCallId,
+                );
+                if (existingInNew) {
+                  const idx = newEntries.indexOf(existingInNew);
+                  newEntries[idx] = { ...newEntries[idx], status: entry.status, params: entry.params, toolName: entry.toolName };
+                } else {
+                  newEntries.push(entry);
+                }
               }
             }
             toolHistoryManager.replaceSubagentGroup(

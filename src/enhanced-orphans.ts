@@ -76,6 +76,11 @@ export function createEnhancedOrphanManager(ttlMs: number = ORPHAN_TTL_MS): Enha
     // STUB: Context-based matching is not yet implemented
     // Returns empty array to prevent cross-context data leakage
     // TODO: Implement proper filtering based on channelId, accountId, etc.
+    console.warn(
+      "EnhancedOrphanManager.findMatching() is not implemented. " +
+      "This method currently returns an empty array to prevent data leakage. " +
+      "Future versions should implement context-based filtering."
+    );
     return [];
   }
 

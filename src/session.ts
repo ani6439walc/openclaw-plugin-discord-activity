@@ -1,13 +1,6 @@
 import { logger } from "../api.js";
 import type { ChannelMeta, SessionEntry } from "./types.js";
-import {
-  deleteMessage,
-  editMessage,
-  resolveDmChannel,
-  sendMessage as sendDiscordMessage,
-} from "./discord-api.js";
 import { DiscordMessageOperations } from "./discord-message-operations.js";
-import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { createSessionStore } from "./store.js";
 import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
 import { renderStatusContent } from "./render.js";
