@@ -73,10 +73,9 @@ export function createEnhancedOrphanManager(ttlMs: number = ORPHAN_TTL_MS): Enha
   }
 
   function findMatching(context: MessageContext): OrphanEntry[] {
-    // TODO: Implement proper context-based matching for orphan entries
-    // Currently returning all entries as matching, but this should be refined
-    // based on actual context matching requirements
-    // For example, matching based on channelId, accountId, etc.
+    // STUB: Context-based matching is not yet implemented
+    // TODO: Implement proper filtering based on channelId, accountId, etc.
+    // For now, returns all entries as a fallback behavior
     return Array.from(entries.values());
   }
 
