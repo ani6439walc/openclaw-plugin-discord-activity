@@ -128,4 +128,4 @@ Runtime flow:
 
 ---
 
-_🌸 Powered by Ani | [OpenClaw Plugin] © 2026_
+_🌸 Powered by Ani, Wan Jiun Wei © 2026_
