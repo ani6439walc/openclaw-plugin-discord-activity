@@ -122,8 +122,7 @@ export function createHookHandlers(deps: HookDeps) {
     );
     if (pendingEntries.length === 0) return;
 
-    session.toolHistory.push(...pendingEntries);
-    toolHistoryManager.trim(session.toolHistory);
+    toolHistoryManager.addEntries(session.toolHistory, pendingEntries);
     await updateSessionStatus(session, false);
   }
 

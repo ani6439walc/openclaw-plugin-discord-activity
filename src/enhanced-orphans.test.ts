@@ -74,7 +74,7 @@ describe("EnhancedOrphanManager", () => {
     expect(freshRetrieved).toEqual(freshEntry);
   });
 
-  it("should find matching entries by context", () => {
+  it("should return empty array from findMatching (stub implementation)", () => {
     const entry1: OrphanEntry = {
       toolCallId: "call_1",
       toolName: "web_search",
@@ -92,8 +92,7 @@ describe("EnhancedOrphanManager", () => {
     orphans.add(entry1);
     orphans.add(entry2);
 
-    // For now, findMatching returns all entries since we don't have 
-    // a more specific matching criteria
+    // findMatching is a stub that returns empty array to prevent cross-context data leakage
     const context = {
       channelId: "test_channel",
       sessionKey: "test_session",
@@ -101,9 +100,7 @@ describe("EnhancedOrphanManager", () => {
 
     const matching = orphans.findMatching(context);
 
-    expect(matching).toHaveLength(2);
-    expect(matching).toContainEqual(entry1);
-    expect(matching).toContainEqual(entry2);
+    expect(matching).toHaveLength(0);
   });
 
   it("should find entries by predicate", () => {
