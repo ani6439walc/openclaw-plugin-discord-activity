@@ -8,7 +8,7 @@ import {
   type Mock,
 } from "vitest";
 import { createHookHandlers } from "./hooks.js";
-import { createOrphanToolManager } from "./orphans.js";
+import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
 import { resolveConfig } from "./config.js";
 import { flushPromises } from "../test-helpers.js";
 import { defaultStore } from "./session.js";
@@ -85,7 +85,7 @@ function countChannelMessagePosts(fetchMock: ReturnType<typeof vi.fn>): number {
 
 describe("createHookHandlers", () => {
   let store: typeof defaultStore;
-  let orphans: ReturnType<typeof createOrphanToolManager>;
+  let orphans: ReturnType<typeof createEnhancedOrphanManager>;
   let getToken: Mock<HookDeps["getToken"]>;
   let config: ReturnType<typeof resolveConfig>;
   let isActiveMemoryEnabled: Mock<HookDeps["isActiveMemoryEnabled"]>;
@@ -96,7 +96,7 @@ describe("createHookHandlers", () => {
     defaultStore.sessions.clear();
     defaultStore.contexts.clear();
     store = defaultStore;
-    orphans = createOrphanToolManager();
+    orphans = createEnhancedOrphanManager();
     getToken = vi.fn<HookDeps["getToken"]>().mockReturnValue("test-token");
     config = resolveConfig({});
     isActiveMemoryEnabled = vi

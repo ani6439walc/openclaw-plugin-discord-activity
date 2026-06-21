@@ -1,22 +1,27 @@
 import { logger } from "../api.js";
 import type { ChannelMeta, SessionEntry } from "./types.js";
-import {
-  deleteMessage,
-  sendMessage,
-  editMessage,
-  resolveDmChannel,
-} from "./discord-api.js";
-import { extractUserIdFromDirectSessionKey } from "./parser.js";
+import { DiscordMessageOperations } from "./discord-message-operations.js";
 import { createSessionStore } from "./store.js";
-import { createOrphanToolManager } from "./orphans.js";
+import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
 import { renderStatusContent } from "./render.js";
+import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   STATUS_MAX_ENTRIES,
 } from "./constants.js";
 
 export const defaultStore = createSessionStore();
-export const defaultOrphans = createOrphanToolManager();
+export const defaultOrphans = createEnhancedOrphanManager();
+
+function clearTimers(session: SessionEntry) {
+  clearAllSessionTimers(session);
+}
+
+function resetSessionState(session: SessionEntry) {
+  session.toolHistory = [];
+  session.lastRenderedContent = undefined;
+  session.finalized = false;
+}
 
 // Backward-compat re-exports during transition
 export const activeSessions = defaultStore.sessions;
@@ -40,38 +45,22 @@ export async function retireSession(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
-  if (session.clearTimer) {
-    clearTimeout(session.clearTimer);
-    session.clearTimer = undefined;
-  }
-  if (session.maxDisplayTimer) {
-    clearTimeout(session.maxDisplayTimer);
-    session.maxDisplayTimer = undefined;
-  }
+  clearTimers(session);
 
   await waitForPendingOp(session, `${hookName}_retire_wait`);
 
   if (!session.statusMessageId) {
-    session.toolHistory = [];
-    session.lastRenderedContent = undefined;
-    session.finalized = false;
+    resetSessionState(session);
     return;
   }
 
-  const token = getToken(session.accountId);
-  if (!token) {
-    session.toolHistory = [];
-    return;
-  }
-
+  const operations = new DiscordMessageOperations(getToken);
   const staleMsgId = session.statusMessageId;
-  const deleted = await deleteMessage(session.channelId, staleMsgId, token);
+  const deleted = await operations.delete(session.channelId, staleMsgId, session.accountId);
   if (deleted && session.statusMessageId === staleMsgId) {
     session.statusMessageId = undefined;
   }
-  session.toolHistory = [];
-  session.lastRenderedContent = undefined;
-  session.finalized = false;
+  resetSessionState(session);
 }
 
 export function scheduleSessionCleanup(
@@ -132,8 +121,9 @@ export async function clearStatusMessage(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
-  await waitForPendingOp(session, hookName);
+  await waitForPendingOp(session, `${hookName}_wait`);
 
+  // Only clear the maxDisplayTimer, not the session cleanup timer
   if (session.maxDisplayTimer) {
     clearTimeout(session.maxDisplayTimer);
     session.maxDisplayTimer = undefined;
@@ -141,43 +131,15 @@ export async function clearStatusMessage(
 
   if (!session.statusMessageId) return;
 
-  const token = getToken(session.accountId);
-  if (token) {
-    const msgId = session.statusMessageId;
-    logger.debug(`[${hookName}] deleting status message ${msgId}.`);
-    const deleted = await deleteMessage(session.channelId, msgId, token);
-    if (deleted) {
-      session.statusMessageId = undefined;
-    }
+  const operations = new DiscordMessageOperations(getToken);
+  const msgId = session.statusMessageId;
+  logger.debug(`[${hookName}] deleting status message ${msgId}.`);
+  
+  const deleted = await operations.delete(session.channelId, msgId, session.accountId);
+  if (deleted) {
+    session.statusMessageId = undefined;
   }
-  session.toolHistory = [];
-  session.lastRenderedContent = undefined;
-  session.finalized = false;
-}
-
-async function sendMessageWithDmFallback(
-  session: SessionEntry,
-  content: string,
-  token: string,
-  replyToId?: string,
-): Promise<string | undefined> {
-  // Preemptively resolve DM channel for direct-message sessions
-  const userId = extractUserIdFromDirectSessionKey(session.ownerSessionKey);
-  if (userId && userId === session.channelId) {
-    const dmChannelId = await resolveDmChannel(userId, token);
-    if (dmChannelId) {
-      session.channelId = dmChannelId;
-      return sendMessage(dmChannelId, content, token, replyToId);
-    }
-    logger.warn("failed to resolve DM channel before sending status message.", {
-      userId,
-      contextKey: session.contextKey,
-      ownerSessionKey: session.ownerSessionKey,
-    });
-    return undefined;
-  }
-
-  return sendMessage(session.channelId, content, token, replyToId);
+  resetSessionState(session);
 }
 
 function startMaxDisplayTimer(
@@ -248,8 +210,7 @@ export async function updateStatusMessage(
 
     if (!content) return;
 
-    const token = getToken(session.accountId);
-    if (!token) return;
+    const operations = new DiscordMessageOperations(getToken);
 
     const isNewMessage = !session.statusMessageId;
 
@@ -269,10 +230,9 @@ export async function updateStatusMessage(
         return;
       }
 
-      const createdId = await sendMessageWithDmFallback(
+      const createdId = await operations.sendWithDmFallback(
         session,
         content,
-        token,
         session.userMessageId,
       );
 
@@ -281,7 +241,7 @@ export async function updateStatusMessage(
       }
 
       if (!isCurrentSession(session)) {
-        await deleteMessage(session.channelId, createdId, token);
+        await operations.delete(session.channelId, createdId, session.accountId);
         return;
       }
 
@@ -313,14 +273,16 @@ export async function updateStatusMessage(
       return;
     }
 
-    await editMessage(
+    const edited = await operations.edit(
       session.channelId,
       session.statusMessageId,
       content,
-      token,
+      session.accountId,
     );
-    session.lastRenderedContent = content;
-    logger.debug("updated status message.");
+    if (edited) {
+      session.lastRenderedContent = content;
+      logger.debug("updated status message.");
+    }
   })();
 
   session.pendingOp = op;

@@ -2,6 +2,7 @@ import { logger } from "../api.js";
 import type { ChannelMeta, SessionEntry } from "./types.js";
 import { sleep } from "./discord-api.js";
 import { SESSION_RESOLVE_RETRY_MS } from "./constants.js";
+import { clearSessionTimer } from "./helpers.js";
 
 export function createSessionStore() {
   const sessions = new Map<string, SessionEntry>();
@@ -64,11 +65,8 @@ export function createSessionStore() {
         return;
       }
     }
-
-    if (session?.clearTimer) {
-      clearTimeout(session.clearTimer);
-      session.clearTimer = undefined;
-    }
+    clearSessionTimer(session);
+    // Always clean up maps to prevent memory leaks if they get out of sync
     sessions.delete(contextKey);
     contexts.delete(contextKey);
   }
