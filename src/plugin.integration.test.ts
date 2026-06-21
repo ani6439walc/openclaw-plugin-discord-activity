@@ -8,23 +8,29 @@ describe("plugin", () => {
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    
+
     mockApi = {
       on: vi.fn(),
       config: {
         channels: {
           discord: {
-            token: "test-token"
-          }
+            token: "test-token",
+          },
         },
         plugins: {
           entries: {
-            "active-memory": { enabled: true, config: { agents: ["test-agent"] } },
-            "intention-hint": { enabled: true, config: { agents: ["test-agent"] } }
-          }
-        }
+            "active-memory": {
+              enabled: true,
+              config: { agents: ["test-agent"] },
+            },
+            "intention-hint": {
+              enabled: true,
+              config: { agents: ["test-agent"] },
+            },
+          },
+        },
       },
-      pluginConfig: {}
+      pluginConfig: {},
     };
   });
 
@@ -44,11 +50,26 @@ describe("plugin", () => {
     plugin.register(mockApi);
 
     expect(mockApi.on).toHaveBeenCalledTimes(6);
-    expect(mockApi.on).toHaveBeenCalledWith("message_received", expect.any(Function));
-    expect(mockApi.on).toHaveBeenCalledWith("before_tool_call", expect.any(Function));
-    expect(mockApi.on).toHaveBeenCalledWith("after_tool_call", expect.any(Function));
-    expect(mockApi.on).toHaveBeenCalledWith("message_sending", expect.any(Function));
-    expect(mockApi.on).toHaveBeenCalledWith("before_agent_reply", expect.any(Function));
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "message_received",
+      expect.any(Function),
+    );
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "before_tool_call",
+      expect.any(Function),
+    );
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "after_tool_call",
+      expect.any(Function),
+    );
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "message_sending",
+      expect.any(Function),
+    );
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "before_agent_reply",
+      expect.any(Function),
+    );
     expect(mockApi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
   });
 });

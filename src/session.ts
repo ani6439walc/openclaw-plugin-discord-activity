@@ -56,7 +56,11 @@ export async function retireSession(
 
   const operations = new DiscordMessageOperations(getToken);
   const staleMsgId = session.statusMessageId;
-  const deleted = await operations.delete(session.channelId, staleMsgId, session.accountId);
+  const deleted = await operations.delete(
+    session.channelId,
+    staleMsgId,
+    session.accountId,
+  );
   if (deleted && session.statusMessageId === staleMsgId) {
     session.statusMessageId = undefined;
   }
@@ -134,8 +138,12 @@ export async function clearStatusMessage(
   const operations = new DiscordMessageOperations(getToken);
   const msgId = session.statusMessageId;
   logger.debug(`[${hookName}] deleting status message ${msgId}.`);
-  
-  const deleted = await operations.delete(session.channelId, msgId, session.accountId);
+
+  const deleted = await operations.delete(
+    session.channelId,
+    msgId,
+    session.accountId,
+  );
   if (deleted) {
     session.statusMessageId = undefined;
   }
@@ -241,7 +249,11 @@ export async function updateStatusMessage(
       }
 
       if (!isCurrentSession(session)) {
-        await operations.delete(session.channelId, createdId, session.accountId);
+        await operations.delete(
+          session.channelId,
+          createdId,
+          session.accountId,
+        );
         return;
       }
 

@@ -122,7 +122,7 @@ describe("EnhancedOrphanManager", () => {
     orphans.add(entry2);
 
     // Find entries with toolName containing 'web'
-    const webEntries = orphans.find(entry => entry.toolName.includes('web'));
+    const webEntries = orphans.find((entry) => entry.toolName.includes("web"));
 
     expect(webEntries).toHaveLength(1);
     expect(webEntries[0]).toEqual(entry1);

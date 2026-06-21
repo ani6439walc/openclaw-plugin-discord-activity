@@ -212,7 +212,10 @@ describe("ToolHistoryManager", () => {
       },
     ];
 
-    const subagentEntries = manager.findSubagentEntries(history, "active-memory");
+    const subagentEntries = manager.findSubagentEntries(
+      history,
+      "active-memory",
+    );
 
     expect(subagentEntries).toHaveLength(2);
     expect(subagentEntries[0].toolName).toBe("active-memory");
@@ -247,7 +250,10 @@ describe("ToolHistoryManager", () => {
       },
     ];
 
-    const childEntries = manager.findSubagentChildEntries(history, "active-memory");
+    const childEntries = manager.findSubagentChildEntries(
+      history,
+      "active-memory",
+    );
 
     expect(childEntries).toHaveLength(2);
     expect(childEntries[0].toolName).toBe("active-memory:result");

@@ -13,9 +13,7 @@ import type {
   AgentContext,
   AgentEndEvent,
 } from "./types.js";
-import {
-  clearSessionTimer,
-} from "./helpers.js";
+import { clearSessionTimer } from "./helpers.js";
 import {
   getDiscordContextKey,
   isActiveMemorySessionKey,
@@ -446,25 +444,33 @@ export function createHookHandlers(deps: HookDeps) {
           );
 
           if (entries.length > 0) {
-            const newEntries = toolHistoryManager.upsertEntries(session.toolHistory, entries);
+            const newEntries = toolHistoryManager.upsertEntries(
+              session.toolHistory,
+              entries,
+            );
             toolHistoryManager.replaceSubagentGroup(
               session.toolHistory,
               "active-memory",
-              toolHistoryManager.findSubagentChildEntries(session.toolHistory, "active-memory")
+              toolHistoryManager
+                .findSubagentChildEntries(session.toolHistory, "active-memory")
                 .concat(newEntries),
             );
             toolHistoryManager.trim(session.toolHistory);
           } else if (event.error || event.success === false) {
-            toolHistoryManager.replaceSubagentGroup(session.toolHistory, "active-memory", [
-              {
-                toolCallId: "active-memory",
-                toolName: "active-memory",
-                params: preservedPlaceholder?.params ?? {},
-                status: "error",
-                durationMs: event.durationMs,
-                error: event.error,
-              },
-            ]);
+            toolHistoryManager.replaceSubagentGroup(
+              session.toolHistory,
+              "active-memory",
+              [
+                {
+                  toolCallId: "active-memory",
+                  toolName: "active-memory",
+                  params: preservedPlaceholder?.params ?? {},
+                  status: "error",
+                  durationMs: event.durationMs,
+                  error: event.error,
+                },
+              ],
+            );
           }
           await updateSessionStatus(session, true);
         }
@@ -499,7 +505,10 @@ export function createHookHandlers(deps: HookDeps) {
                   status: "completed" as const,
                   durationMs: event.durationMs,
                 };
-          const existingIhEntries = toolHistoryManager.findSubagentEntries(session.toolHistory, "intention-hint");
+          const existingIhEntries = toolHistoryManager.findSubagentEntries(
+            session.toolHistory,
+            "intention-hint",
+          );
           const ihReplacements = [...existingIhEntries, newEntry].slice(-3);
           toolHistoryManager.replaceSubagentGroup(
             session.toolHistory,

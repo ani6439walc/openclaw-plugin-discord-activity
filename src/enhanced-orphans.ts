@@ -1,8 +1,14 @@
-import type { OrphanEntry, MessageContext, EnhancedOrphanManager } from "./types.js";
+import type {
+  OrphanEntry,
+  MessageContext,
+  EnhancedOrphanManager,
+} from "./types.js";
 import { ORPHAN_TTL_MS } from "./constants.js";
 import { logger } from "../api.js";
 
-export function createEnhancedOrphanManager(ttlMs: number = ORPHAN_TTL_MS): EnhancedOrphanManager {
+export function createEnhancedOrphanManager(
+  ttlMs: number = ORPHAN_TTL_MS,
+): EnhancedOrphanManager {
   const entries = new Map<string, OrphanEntry>();
 
   function add(entry: OrphanEntry): void {
@@ -32,8 +38,8 @@ export function createEnhancedOrphanManager(ttlMs: number = ORPHAN_TTL_MS): Enha
     // TODO: Implement proper filtering based on channelId, accountId, etc.
     logger.warn(
       "EnhancedOrphanManager.findMatching() is not implemented. " +
-      "This method currently returns an empty array to prevent data leakage. " +
-      "Future versions should implement context-based filtering."
+        "This method currently returns an empty array to prevent data leakage. " +
+        "Future versions should implement context-based filtering.",
     );
     return [];
   }

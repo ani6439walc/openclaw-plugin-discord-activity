@@ -65,7 +65,9 @@ export function createSessionStore() {
         return;
       }
     }
-    clearSessionTimer(session);
+    if (session) {
+      clearSessionTimer(session);
+    }
     // Always clean up maps to prevent memory leaks if they get out of sync
     sessions.delete(contextKey);
     contexts.delete(contextKey);

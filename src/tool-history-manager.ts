@@ -64,8 +64,12 @@ export class ToolHistoryManager {
   /**
    * Updates an existing tool entry by toolCallId
    */
-  updateEntry(history: ToolEntry[], toolCallId: string, updates: Partial<ToolEntry>): boolean {
-    const index = history.findIndex(t => t.toolCallId === toolCallId);
+  updateEntry(
+    history: ToolEntry[],
+    toolCallId: string,
+    updates: Partial<ToolEntry>,
+  ): boolean {
+    const index = history.findIndex((t) => t.toolCallId === toolCallId);
     if (index !== -1) {
       Object.assign(history[index], updates);
       return true;
@@ -76,14 +80,20 @@ export class ToolHistoryManager {
   /**
    * Finds a tool entry by toolCallId
    */
-  findByToolCallId(history: ToolEntry[], toolCallId: string): ToolEntry | undefined {
-    return history.find(t => t.toolCallId === toolCallId);
+  findByToolCallId(
+    history: ToolEntry[],
+    toolCallId: string,
+  ): ToolEntry | undefined {
+    return history.find((t) => t.toolCallId === toolCallId);
   }
 
   /**
    * Finds all entries matching a given predicate
    */
-  find(history: ToolEntry[], predicate: (entry: ToolEntry) => boolean): ToolEntry[] {
+  find(
+    history: ToolEntry[],
+    predicate: (entry: ToolEntry) => boolean,
+  ): ToolEntry[] {
     return history.filter(predicate);
   }
 
@@ -100,9 +110,7 @@ export class ToolHistoryManager {
    * Checks if an entry is a subagent tool entry (either base or child)
    */
   isSubagentEntry(entry: ToolEntry, prefix: SubagentToolName): boolean {
-    return (
-      entry.toolName === prefix || entry.toolName.startsWith(`${prefix}:`)
-    );
+    return entry.toolName === prefix || entry.toolName.startsWith(`${prefix}:`);
   }
 
   /**
@@ -115,22 +123,36 @@ export class ToolHistoryManager {
   /**
    * Finds all subagent entries for a given prefix
    */
-  findSubagentEntries(history: ToolEntry[], prefix: SubagentToolName): ToolEntry[] {
-    return history.filter(entry => this.isSubagentEntry(entry, prefix));
+  findSubagentEntries(
+    history: ToolEntry[],
+    prefix: SubagentToolName,
+  ): ToolEntry[] {
+    return history.filter((entry) => this.isSubagentEntry(entry, prefix));
   }
 
   /**
    * Finds only the child entries of a subagent
    */
-  findSubagentChildEntries(history: ToolEntry[], prefix: SubagentToolName): ToolEntry[] {
-    return history.filter(entry => this.isSubagentChildEntry(entry, prefix));
+  findSubagentChildEntries(
+    history: ToolEntry[],
+    prefix: SubagentToolName,
+  ): ToolEntry[] {
+    return history.filter((entry) => this.isSubagentChildEntry(entry, prefix));
   }
 
   /**
    * Replaces a subagent group with new entries
    */
-  replaceSubagentGroup(history: ToolEntry[], prefix: SubagentToolName, replacements: ToolEntry[]): void {
-    this.replaceGroupInPlace(history, (entry) => this.isSubagentEntry(entry, prefix), replacements);
+  replaceSubagentGroup(
+    history: ToolEntry[],
+    prefix: SubagentToolName,
+    replacements: ToolEntry[],
+  ): void {
+    this.replaceGroupInPlace(
+      history,
+      (entry) => this.isSubagentEntry(entry, prefix),
+      replacements,
+    );
   }
 
   /**
@@ -139,7 +161,7 @@ export class ToolHistoryManager {
   private replaceGroupInPlace(
     history: ToolEntry[],
     predicate: (t: ToolEntry) => boolean,
-    replacements: ToolEntry[]
+    replacements: ToolEntry[],
   ): void {
     const startIdx = history.findIndex(predicate);
     if (startIdx === -1) {
@@ -164,20 +186,23 @@ export class ToolHistoryManager {
    * Gets the count of pending tool entries
    */
   getPendingCount(history: ToolEntry[]): number {
-    return history.filter(entry => entry.status === 'pending').length;
+    return history.filter((entry) => entry.status === "pending").length;
   }
 
   /**
    * Gets the count of completed tool entries
    */
   getCompletedCount(history: ToolEntry[]): number {
-    return history.filter(entry => entry.status === 'completed' || entry.status === 'orphan-completed').length;
+    return history.filter(
+      (entry) =>
+        entry.status === "completed" || entry.status === "orphan-completed",
+    ).length;
   }
 
   /**
    * Gets the count of errored tool entries
    */
   getErrorCount(history: ToolEntry[]): number {
-    return history.filter(entry => entry.status === 'error').length;
+    return history.filter((entry) => entry.status === "error").length;
   }
 }

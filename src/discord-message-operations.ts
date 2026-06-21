@@ -23,11 +23,13 @@ export class DiscordMessageOperations {
     channelId: string,
     content: string,
     accountId?: string,
-    replyToId?: string
+    replyToId?: string,
   ): Promise<string | undefined> {
     const token = this.tokenResolver(accountId);
     if (!token) {
-      logger.warn("DiscordMessageOperations.send: no token available", { channelId });
+      logger.warn("DiscordMessageOperations.send: no token available", {
+        channelId,
+      });
       return undefined;
     }
 
@@ -41,11 +43,14 @@ export class DiscordMessageOperations {
     channelId: string,
     messageId: string,
     content: string,
-    accountId?: string
+    accountId?: string,
   ): Promise<boolean> {
     const token = this.tokenResolver(accountId);
     if (!token) {
-      logger.warn("DiscordMessageOperations.edit: no token available", { channelId, messageId });
+      logger.warn("DiscordMessageOperations.edit: no token available", {
+        channelId,
+        messageId,
+      });
       return false;
     }
 
@@ -59,11 +64,14 @@ export class DiscordMessageOperations {
   async delete(
     channelId: string,
     messageId: string,
-    accountId?: string
+    accountId?: string,
   ): Promise<boolean> {
     const token = this.tokenResolver(accountId);
     if (!token) {
-      logger.warn("DiscordMessageOperations.delete: no token available", { channelId, messageId });
+      logger.warn("DiscordMessageOperations.delete: no token available", {
+        channelId,
+        messageId,
+      });
       return false;
     }
 
@@ -76,14 +84,17 @@ export class DiscordMessageOperations {
   async sendWithDmFallback(
     session: SessionEntry,
     content: string,
-    replyToId?: string
+    replyToId?: string,
   ): Promise<string | undefined> {
     const token = this.tokenResolver(session.accountId);
     if (!token) {
-      logger.warn("DiscordMessageOperations.sendWithDmFallback: no token available", {
-        contextKey: session.contextKey,
-        channelId: session.channelId,
-      });
+      logger.warn(
+        "DiscordMessageOperations.sendWithDmFallback: no token available",
+        {
+          contextKey: session.contextKey,
+          channelId: session.channelId,
+        },
+      );
       return undefined;
     }
 
@@ -95,14 +106,22 @@ export class DiscordMessageOperations {
         session.channelId = dmChannelId;
         return await sendDiscordMessage(dmChannelId, content, token, replyToId);
       }
-      logger.warn("failed to resolve DM channel before sending status message.", {
-        userId,
-        contextKey: session.contextKey,
-        ownerSessionKey: session.ownerSessionKey,
-      });
+      logger.warn(
+        "failed to resolve DM channel before sending status message.",
+        {
+          userId,
+          contextKey: session.contextKey,
+          ownerSessionKey: session.ownerSessionKey,
+        },
+      );
       return undefined;
     }
 
-    return await sendDiscordMessage(session.channelId, content, token, replyToId);
+    return await sendDiscordMessage(
+      session.channelId,
+      content,
+      token,
+      replyToId,
+    );
   }
 }
