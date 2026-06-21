@@ -81,7 +81,7 @@ Status messages are rendered as YAML code blocks. Normal tools appear after inte
      reason: User asked for a review
      confidence: 0.92
 
-🔎 web_search: ✔ (450ms)
+🔍 web_search: ✔ (450ms)
    - query: OpenClaw plugin SDK
 ```
 

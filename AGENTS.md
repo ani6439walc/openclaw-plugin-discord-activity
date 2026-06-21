@@ -68,6 +68,7 @@ Important behavior to preserve:
 - Per-session Discord operations must remain serialized through `pendingOp` to avoid create/edit/delete races.
 - DM sessions may need `resolveDmChannel()` before sending.
 - Missing Discord token or Discord API failures should fail open by logging and skipping status updates, not by blocking the agent flow.
+- Status messages are limited to `STATUS_MAX_ENTRIES` (6 entries) and `STATUS_MAX_LENGTH` (1700 characters) to prevent excessive message length.
 
 ## Coding Rules
 
