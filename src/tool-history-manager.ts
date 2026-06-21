@@ -18,6 +18,14 @@ export class ToolHistoryManager {
   }
 
   /**
+   * Adds multiple tool entries to the history
+   */
+  addEntries(history: ToolEntry[], entries: ToolEntry[]): void {
+    history.push(...entries);
+    this.trim(history);
+  }
+
+  /**
    * Updates an existing tool entry by toolCallId
    */
   updateEntry(history: ToolEntry[], toolCallId: string, updates: Partial<ToolEntry>): boolean {
