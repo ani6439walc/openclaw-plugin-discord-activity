@@ -18,6 +18,23 @@ import {
 export const defaultStore = createSessionStore();
 export const defaultOrphans = createOrphanToolManager();
 
+function clearTimers(session: SessionEntry) {
+  if (session.clearTimer) {
+    clearTimeout(session.clearTimer);
+    session.clearTimer = undefined;
+  }
+  if (session.maxDisplayTimer) {
+    clearTimeout(session.maxDisplayTimer);
+    session.maxDisplayTimer = undefined;
+  }
+}
+
+function resetSessionState(session: SessionEntry) {
+  session.toolHistory = [];
+  session.lastRenderedContent = undefined;
+  session.finalized = false;
+}
+
 // Backward-compat re-exports during transition
 export const activeSessions = defaultStore.sessions;
 export const sessionContextMap = defaultStore.contexts;
@@ -40,27 +57,18 @@ export async function retireSession(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
-  if (session.clearTimer) {
-    clearTimeout(session.clearTimer);
-    session.clearTimer = undefined;
-  }
-  if (session.maxDisplayTimer) {
-    clearTimeout(session.maxDisplayTimer);
-    session.maxDisplayTimer = undefined;
-  }
+  clearTimers(session);
 
   await waitForPendingOp(session, `${hookName}_retire_wait`);
 
   if (!session.statusMessageId) {
-    session.toolHistory = [];
-    session.lastRenderedContent = undefined;
-    session.finalized = false;
+    resetSessionState(session);
     return;
   }
 
   const token = getToken(session.accountId);
   if (!token) {
-    session.toolHistory = [];
+    resetSessionState(session);
     return;
   }
 
@@ -69,9 +77,7 @@ export async function retireSession(
   if (deleted && session.statusMessageId === staleMsgId) {
     session.statusMessageId = undefined;
   }
-  session.toolHistory = [];
-  session.lastRenderedContent = undefined;
-  session.finalized = false;
+  resetSessionState(session);
 }
 
 export function scheduleSessionCleanup(
@@ -134,10 +140,7 @@ export async function clearStatusMessage(
 ) {
   await waitForPendingOp(session, hookName);
 
-  if (session.maxDisplayTimer) {
-    clearTimeout(session.maxDisplayTimer);
-    session.maxDisplayTimer = undefined;
-  }
+  clearTimers(session);
 
   if (!session.statusMessageId) return;
 
@@ -150,9 +153,7 @@ export async function clearStatusMessage(
       session.statusMessageId = undefined;
     }
   }
-  session.toolHistory = [];
-  session.lastRenderedContent = undefined;
-  session.finalized = false;
+  resetSessionState(session);
 }
 
 async function sendMessageWithDmFallback(

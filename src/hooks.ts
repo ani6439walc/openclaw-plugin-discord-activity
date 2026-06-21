@@ -14,6 +14,9 @@ import type {
   AgentEndEvent,
 } from "./types.js";
 import {
+  clearSessionTimer,
+} from "./helpers.js";
+import {
   getDiscordContextKey,
   isActiveMemorySessionKey,
   isIntentionHintSessionKey,
@@ -253,8 +256,7 @@ export function createHookHandlers(deps: HookDeps) {
         const nextOwnerSessionKey =
           ctx.sessionKey ?? activeSession.ownerSessionKey;
         if (activeSession.clearTimer) {
-          clearTimeout(activeSession.clearTimer);
-          activeSession.clearTimer = undefined;
+          clearSessionTimer(activeSession);
         }
         const replacement: SessionEntry = {
           contextKey,
@@ -480,10 +482,7 @@ export function createHookHandlers(deps: HookDeps) {
           ? store.getOrCreateSession(contextKey, sourceSessionKey)
           : undefined;
         if (session) {
-          if (session.clearTimer) {
-            clearTimeout(session.clearTimer);
-            session.clearTimer = undefined;
-          }
+          clearSessionTimer(session);
           const entries = parseActiveMemoryToolEntries(event);
           const preservedPlaceholder = session.toolHistory.find(
             (t) => t.toolCallId === "active-memory",
@@ -536,10 +535,7 @@ export function createHookHandlers(deps: HookDeps) {
           ? store.getOrCreateSession(contextKey, sourceSessionKey)
           : undefined;
         if (session) {
-          if (session.clearTimer) {
-            clearTimeout(session.clearTimer);
-            session.clearTimer = undefined;
-          }
+          clearSessionTimer(session);
           const resultEntry = parseIntentionHintResultEntry(event);
           const newEntry: ToolEntry = resultEntry
             ? resultEntry
