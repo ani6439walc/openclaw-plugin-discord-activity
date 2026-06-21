@@ -35,53 +35,7 @@ import {
   updateStatusMessage,
 } from "./session.js";
 import { AGENT_END_DELAY_MS } from "./constants.js";
-
-type SubagentToolName = "active-memory" | "intention-hint";
-
-function replaceGroupInPlace(
-  history: ToolEntry[],
-  predicate: (t: ToolEntry) => boolean,
-  replacements: ToolEntry[],
-): void {
-  const startIdx = history.findIndex(predicate);
-  if (startIdx === -1) {
-    history.push(...replacements);
-    return;
-  }
-  let endIdx = startIdx;
-  while (endIdx < history.length && predicate(history[endIdx])) {
-    endIdx++;
-  }
-  history.splice(startIdx, endIdx - startIdx, ...replacements);
-}
-
-function isSubagentToolEntry(
-  entry: ToolEntry,
-  toolName: SubagentToolName,
-): boolean {
-  return (
-    entry.toolName === toolName || entry.toolName.startsWith(`${toolName}:`)
-  );
-}
-
-function isSubagentChildEntry(
-  entry: ToolEntry,
-  toolName: SubagentToolName,
-): boolean {
-  return entry.toolName.startsWith(`${toolName}:`);
-}
-
-function replaceSubagentGroup(
-  history: ToolEntry[],
-  toolName: SubagentToolName,
-  replacements: ToolEntry[],
-): void {
-  replaceGroupInPlace(
-    history,
-    (entry) => isSubagentToolEntry(entry, toolName),
-    replacements,
-  );
-}
+import { ToolHistoryManager } from "./tool-history-manager.js";
 
 function buildPendingSubagentEntries(
   agentId: string | undefined,
@@ -121,6 +75,9 @@ export function createHookHandlers(deps: HookDeps) {
     isIntentionHintEnabled,
   } = deps;
 
+  // Initialize the ToolHistoryManager
+  const toolHistoryManager = new ToolHistoryManager(config);
+
   function logHookEvent(
     hookName: string,
     _event: unknown,
@@ -138,12 +95,6 @@ export function createHookHandlers(deps: HookDeps) {
       ctx.messageProvider === "discord" ||
       /^\d{17,20}$/.test(String(ctx.channelId))
     );
-  }
-
-  function trimToolHistory(history: ToolEntry[]): void {
-    while (history.length > config.maxToolHistoryLength) {
-      history.shift();
-    }
   }
 
   async function updateSessionStatus(
@@ -172,7 +123,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (pendingEntries.length === 0) return;
 
     session.toolHistory.push(...pendingEntries);
-    trimToolHistory(session.toolHistory);
+    toolHistoryManager.trim(session.toolHistory);
     await updateSessionStatus(session, false);
   }
 
@@ -338,14 +289,13 @@ export function createHookHandlers(deps: HookDeps) {
     }
 
     if (!event.toolCallId) return;
-    session.toolHistory.push({
+    toolHistoryManager.addEntry(session.toolHistory, {
       toolCallId: event.toolCallId,
       toolName: event.toolName,
       params: event.params,
       status: "pending",
     });
 
-    trimToolHistory(session.toolHistory);
     await updateSessionStatus(session, false);
   }
 
@@ -369,6 +319,8 @@ export function createHookHandlers(deps: HookDeps) {
       return;
     }
 
+    if (!event.toolCallId) return;
+
     let toolEntry = session.toolHistory.find(
       (t) => t.toolCallId === event.toolCallId,
     );
@@ -388,8 +340,7 @@ export function createHookHandlers(deps: HookDeps) {
             status: "pending",
           };
           isOrphanReconcile = true;
-          session.toolHistory.push(toolEntry);
-          trimToolHistory(session.toolHistory);
+          toolHistoryManager.addEntry(session.toolHistory, toolEntry);
           logger.debug(`after_tool_call: reconciled orphan tool entry.`, {
             toolCallId: event.toolCallId,
           });
@@ -399,15 +350,28 @@ export function createHookHandlers(deps: HookDeps) {
     }
     if (toolEntry) {
       if (event.error) {
-        toolEntry.status = "error";
-        toolEntry.error = event.error;
+        if (event.toolCallId) {
+          toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+            status: "error",
+            error: event.error,
+          });
+        }
       } else if (isOrphanReconcile) {
-        toolEntry.status = "orphan-completed";
+        if (event.toolCallId) {
+          toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+            status: "orphan-completed",
+            error: undefined,
+          });
+        }
       } else {
-        toolEntry.status = "completed";
-        toolEntry.error = undefined;
+        if (event.toolCallId) {
+          toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+            status: "completed",
+            error: undefined,
+            durationMs: event.durationMs,
+          });
+        }
       }
-      toolEntry.durationMs = event.durationMs;
       await updateSessionStatus(session, false);
     }
   }
@@ -495,23 +459,24 @@ export function createHookHandlers(deps: HookDeps) {
                 (t) => t.toolCallId === entry.toolCallId,
               );
               if (existing) {
-                existing.status = entry.status;
-                existing.params = entry.params;
-                existing.toolName = entry.toolName;
+                toolHistoryManager.updateEntry(session.toolHistory, entry.toolCallId, {
+                  status: entry.status,
+                  params: entry.params,
+                  toolName: entry.toolName,
+                });
               } else {
                 newEntries.push(entry);
               }
             }
-            replaceSubagentGroup(
+            toolHistoryManager.replaceSubagentGroup(
               session.toolHistory,
               "active-memory",
-              session.toolHistory
-                .filter((t) => isSubagentChildEntry(t, "active-memory"))
+              toolHistoryManager.findSubagentChildEntries(session.toolHistory, "active-memory")
                 .concat(newEntries),
             );
-            trimToolHistory(session.toolHistory);
+            toolHistoryManager.trim(session.toolHistory);
           } else if (event.error || event.success === false) {
-            replaceSubagentGroup(session.toolHistory, "active-memory", [
+            toolHistoryManager.replaceSubagentGroup(session.toolHistory, "active-memory", [
               {
                 toolCallId: "active-memory",
                 toolName: "active-memory",
@@ -555,16 +520,14 @@ export function createHookHandlers(deps: HookDeps) {
                   status: "completed" as const,
                   durationMs: event.durationMs,
                 };
-          const existingIhEntries = session.toolHistory.filter((t) =>
-            isSubagentToolEntry(t, "intention-hint"),
-          );
+          const existingIhEntries = toolHistoryManager.findSubagentEntries(session.toolHistory, "intention-hint");
           const ihReplacements = [...existingIhEntries, newEntry].slice(-3);
-          replaceSubagentGroup(
+          toolHistoryManager.replaceSubagentGroup(
             session.toolHistory,
             "intention-hint",
             ihReplacements,
           );
-          trimToolHistory(session.toolHistory);
+          toolHistoryManager.trim(session.toolHistory);
           await updateSessionStatus(session, true);
         }
         return;

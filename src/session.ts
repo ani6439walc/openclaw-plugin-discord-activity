@@ -8,7 +8,7 @@ import {
 } from "./discord-api.js";
 import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { createSessionStore } from "./store.js";
-import { createOrphanToolManager } from "./orphans.js";
+import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
 import { renderStatusContent } from "./render.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
@@ -16,7 +16,7 @@ import {
 } from "./constants.js";
 
 export const defaultStore = createSessionStore();
-export const defaultOrphans = createOrphanToolManager();
+export const defaultOrphans = createEnhancedOrphanManager();
 
 function clearTimers(session: SessionEntry) {
   if (session.clearTimer) {
