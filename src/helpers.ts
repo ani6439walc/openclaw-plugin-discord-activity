@@ -8,3 +8,14 @@ export function clearSessionTimer(session: { clearTimer?: ReturnType<typeof setT
     session.clearTimer = undefined;
   }
 }
+
+export function clearAllSessionTimers(session: {
+  clearTimer?: ReturnType<typeof setTimeout>;
+  maxDisplayTimer?: ReturnType<typeof setTimeout>;
+}) {
+  clearSessionTimer(session);
+  if (session.maxDisplayTimer) {
+    clearTimeout(session.maxDisplayTimer);
+    session.maxDisplayTimer = undefined;
+  }
+}

@@ -87,12 +87,14 @@ export type OrphanToolManager = {
   get(toolCallId: string): OrphanEntry | undefined;
   remove(toolCallId: string): boolean;
   pruneStale(): void;
-  // Enhanced functionality
-  findMatching?(context: MessageContext): OrphanEntry[];
-  find?(predicate: (entry: OrphanEntry) => boolean): OrphanEntry[];
-  getCount?(): number;
-  clear?(): void;
-  getAll?(): OrphanEntry[];
+};
+
+export type EnhancedOrphanManager = OrphanToolManager & {
+  findMatching(context: MessageContext): OrphanEntry[];
+  find(predicate: (entry: OrphanEntry) => boolean): OrphanEntry[];
+  getCount(): number;
+  clear(): void;
+  getAll(): OrphanEntry[];
 };
 
 export type HookDeps = {

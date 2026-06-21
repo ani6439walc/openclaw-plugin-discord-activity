@@ -4,7 +4,7 @@ import { DiscordMessageOperations } from "./discord-message-operations.js";
 import { createSessionStore } from "./store.js";
 import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
 import { renderStatusContent } from "./render.js";
-import { clearSessionTimer } from "./helpers.js";
+import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   STATUS_MAX_ENTRIES,
@@ -14,11 +14,7 @@ export const defaultStore = createSessionStore();
 export const defaultOrphans = createEnhancedOrphanManager();
 
 function clearTimers(session: SessionEntry) {
-  clearSessionTimer(session);
-  if (session.maxDisplayTimer) {
-    clearTimeout(session.maxDisplayTimer);
-    session.maxDisplayTimer = undefined;
-  }
+  clearAllSessionTimers(session);
 }
 
 function resetSessionState(session: SessionEntry) {

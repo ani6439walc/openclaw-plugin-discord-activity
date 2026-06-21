@@ -1,53 +1,6 @@
-import type { OrphanEntry, MessageContext } from "./types.js";
+import type { OrphanEntry, MessageContext, EnhancedOrphanManager } from "./types.js";
 import { ORPHAN_TTL_MS } from "./constants.js";
 import { logger } from "../api.js";
-
-export type EnhancedOrphanManager = {
-  /**
-   * Adds a new orphan entry to the collection
-   */
-  add(entry: OrphanEntry): void;
-
-  /**
-   * Retrieves an orphan entry by its tool call ID
-   */
-  get(toolCallId: string): OrphanEntry | undefined;
-
-  /**
-   * Removes an orphan entry by its tool call ID
-   */
-  remove(toolCallId: string): boolean;
-
-  /**
-   * Removes all orphan entries that have exceeded their TTL
-   */
-  pruneStale(): void;
-
-  /**
-   * Finds all orphan entries matching a specific message context
-   */
-  findMatching(context: MessageContext): OrphanEntry[];
-
-  /**
-   * Finds orphan entries by a custom predicate function
-   */
-  find(predicate: (entry: OrphanEntry) => boolean): OrphanEntry[];
-
-  /**
-   * Gets the total count of orphan entries
-   */
-  getCount(): number;
-
-  /**
-   * Clears all orphan entries
-   */
-  clear(): void;
-
-  /**
-   * Gets all orphan entries
-   */
-  getAll(): OrphanEntry[];
-};
 
 export function createEnhancedOrphanManager(ttlMs: number = ORPHAN_TTL_MS): EnhancedOrphanManager {
   const entries = new Map<string, OrphanEntry>();
