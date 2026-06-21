@@ -206,9 +206,7 @@ export function createHookHandlers(deps: HookDeps) {
       ) {
         const nextOwnerSessionKey =
           ctx.sessionKey ?? activeSession.ownerSessionKey;
-        if (activeSession.clearTimer) {
-          clearSessionTimer(activeSession);
-        }
+        clearSessionTimer(activeSession);
         const replacement: SessionEntry = {
           contextKey,
           channelId: actualChannelId,
@@ -350,27 +348,23 @@ export function createHookHandlers(deps: HookDeps) {
     }
     if (toolEntry) {
       if (event.error) {
-        if (event.toolCallId) {
-          toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
-            status: "error",
-            error: event.error,
-          });
-        }
+        toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+          status: "error",
+          error: event.error,
+          durationMs: event.durationMs,
+        });
       } else if (isOrphanReconcile) {
-        if (event.toolCallId) {
-          toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
-            status: "orphan-completed",
-            error: undefined,
-          });
-        }
+        toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+          status: "orphan-completed",
+          error: undefined,
+          durationMs: event.durationMs,
+        });
       } else {
-        if (event.toolCallId) {
-          toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
-            status: "completed",
-            error: undefined,
-            durationMs: event.durationMs,
-          });
-        }
+        toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+          status: "completed",
+          error: undefined,
+          durationMs: event.durationMs,
+        });
       }
       await updateSessionStatus(session, false);
     }

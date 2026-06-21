@@ -11,6 +11,7 @@ import { extractUserIdFromDirectSessionKey } from "./parser.js";
 import { createSessionStore } from "./store.js";
 import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
 import { renderStatusContent } from "./render.js";
+import { clearSessionTimer } from "./helpers.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   STATUS_MAX_ENTRIES,
@@ -20,10 +21,7 @@ export const defaultStore = createSessionStore();
 export const defaultOrphans = createEnhancedOrphanManager();
 
 function clearTimers(session: SessionEntry) {
-  if (session.clearTimer) {
-    clearTimeout(session.clearTimer);
-    session.clearTimer = undefined;
-  }
+  clearSessionTimer(session);
   if (session.maxDisplayTimer) {
     clearTimeout(session.maxDisplayTimer);
     session.maxDisplayTimer = undefined;
@@ -136,7 +134,11 @@ export async function clearStatusMessage(
 ) {
   await waitForPendingOp(session, `${hookName}_wait`);
 
-  clearTimers(session);
+  // Only clear the maxDisplayTimer, not the session cleanup timer
+  if (session.maxDisplayTimer) {
+    clearTimeout(session.maxDisplayTimer);
+    session.maxDisplayTimer = undefined;
+  }
 
   if (!session.statusMessageId) return;
 
@@ -149,31 +151,6 @@ export async function clearStatusMessage(
     session.statusMessageId = undefined;
   }
   resetSessionState(session);
-}
-
-async function sendMessageWithDmFallback(
-  session: SessionEntry,
-  content: string,
-  token: string,
-  replyToId?: string,
-): Promise<string | undefined> {
-  // Preemptively resolve DM channel for direct-message sessions
-  const userId = extractUserIdFromDirectSessionKey(session.ownerSessionKey);
-  if (userId && userId === session.channelId) {
-    const dmChannelId = await resolveDmChannel(userId, token);
-    if (dmChannelId) {
-      session.channelId = dmChannelId;
-      return sendDiscordMessage(dmChannelId, content, token, replyToId);
-    }
-    logger.warn("failed to resolve DM channel before sending status message.", {
-      userId,
-      contextKey: session.contextKey,
-      ownerSessionKey: session.ownerSessionKey,
-    });
-    return undefined;
-  }
-
-  return sendDiscordMessage(session.channelId, content, token, replyToId);
 }
 
 function startMaxDisplayTimer(

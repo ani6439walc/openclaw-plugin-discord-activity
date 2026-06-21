@@ -65,14 +65,12 @@ export function createSessionStore() {
         return;
       }
     }
-
-    if (session?.clearTimer) {
+    if (session) {
       clearSessionTimer(session);
+      sessions.delete(contextKey);
+      contexts.delete(contextKey);
     }
-    sessions.delete(contextKey);
-    contexts.delete(contextKey);
   }
-
   function getOrCreateSession(
     contextKey: string,
     requestSessionKey?: string,
