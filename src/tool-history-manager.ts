@@ -26,6 +26,42 @@ export class ToolHistoryManager {
   }
 
   /**
+   * Upserts entries: updates those existing in history, collects new ones.
+   * Returns the array of new entries (not yet in history) with duplicates resolved.
+   */
+  upsertEntries(history: ToolEntry[], entries: ToolEntry[]): ToolEntry[] {
+    const newEntries: ToolEntry[] = [];
+    for (const entry of entries) {
+      const existingInHistory = history.find(
+        (t) => t.toolCallId === entry.toolCallId,
+      );
+      if (existingInHistory) {
+        this.updateEntry(history, entry.toolCallId, {
+          status: entry.status,
+          params: entry.params,
+          toolName: entry.toolName,
+        });
+      } else {
+        const existingInNew = newEntries.find(
+          (t) => t.toolCallId === entry.toolCallId,
+        );
+        if (existingInNew) {
+          const idx = newEntries.indexOf(existingInNew);
+          newEntries[idx] = {
+            ...newEntries[idx],
+            status: entry.status,
+            params: entry.params,
+            toolName: entry.toolName,
+          };
+        } else {
+          newEntries.push(entry);
+        }
+      }
+    }
+    return newEntries;
+  }
+
+  /**
    * Updates an existing tool entry by toolCallId
    */
   updateEntry(history: ToolEntry[], toolCallId: string, updates: Partial<ToolEntry>): boolean {

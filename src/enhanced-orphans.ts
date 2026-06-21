@@ -1,5 +1,6 @@
 import type { OrphanEntry, MessageContext } from "./types.js";
 import { ORPHAN_TTL_MS } from "./constants.js";
+import { logger } from "../api.js";
 
 export type EnhancedOrphanManager = {
   /**
@@ -76,7 +77,7 @@ export function createEnhancedOrphanManager(ttlMs: number = ORPHAN_TTL_MS): Enha
     // STUB: Context-based matching is not yet implemented
     // Returns empty array to prevent cross-context data leakage
     // TODO: Implement proper filtering based on channelId, accountId, etc.
-    console.warn(
+    logger.warn(
       "EnhancedOrphanManager.findMatching() is not implemented. " +
       "This method currently returns an empty array to prevent data leakage. " +
       "Future versions should implement context-based filtering."
