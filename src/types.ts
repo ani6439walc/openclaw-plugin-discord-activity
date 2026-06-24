@@ -159,6 +159,7 @@ export type BeforeAgentReplyEvent = {
 
 export type AgentContext = {
   sessionKey?: string;
+  runId?: string;
   channelId?: string;
   accountId?: string;
   conversationId?: string;
@@ -170,4 +171,11 @@ export type AgentEndEvent = {
   success?: boolean;
   error?: string;
   durationMs?: number;
+};
+
+export type AgentPipelineEvent = {
+  runId: string;
+  stream: string;
+  sessionKey?: string;
+  data: Record<string, unknown>;
 };

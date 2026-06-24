@@ -67,6 +67,11 @@ export function createPlugin(
       api.on("message_sending", handlers.onMessageSending);
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
+      api.agent?.events?.registerAgentEventSubscription?.({
+        id: "discord-tool-status:intention-hint-pipeline",
+        streams: ["plugin:intention-hint"],
+        handle: handlers.onIntentionHintPipelineEvent,
+      });
     },
   });
 }

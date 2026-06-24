@@ -647,7 +647,81 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
-    it("renders the final intention-hint assistant message as a result item", async () => {
+    it("renders intention-hint pipeline events as grouped status entries", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onIntentionHintPipelineEvent(
+        {
+          runId: "run-1",
+          stream: "plugin:intention-hint",
+          sessionKey: "agent:main:discord:direct:123",
+          data: {
+            kind: "intention-hint.pipeline",
+            phase: "exact-keyword-hint",
+            state: "completed",
+            intent: "social-casual",
+            domain: "chat",
+            keyword: "hi",
+          },
+        },
+      );
+
+      await handlers.onIntentionHintPipelineEvent(
+        {
+          runId: "run-1",
+          stream: "plugin:intention-hint",
+          sessionKey: "agent:main:discord:direct:123",
+          data: {
+            kind: "intention-hint.pipeline",
+            phase: "prompt-prefix-injection",
+            state: "completed",
+            intent: "social-casual",
+            domain: "chat",
+          },
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            toolCallId: "intention-hint:run-1:exact-keyword-hint",
+            toolName: "intention-hint:exact-keyword-hint",
+            params: expect.objectContaining({ intent: "social-casual" }),
+            status: "completed",
+          }),
+        ]),
+      );
+      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
+      expect(session?.lastRenderedContent).toContain(
+        "- exact-keyword-hint: ✔",
+      );
+      expect(session?.lastRenderedContent).toContain(
+        "- prompt-prefix-injection: ✔",
+      );
+      expect(session?.lastRenderedContent).not.toMatch(/fastpath-a[12]/i);
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(2);
+    });
+
+    it("ignores legacy intention-hint agent_end result rendering", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
       isIntentionHintEnabled.mockReturnValue(true);
@@ -678,30 +752,50 @@ describe("createHookHandlers", () => {
       );
 
       const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            toolCallId: "intention-hint:result",
-            toolName: "intention-hint:result",
-            params: {
-              text: "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
-            },
-            status: "completed",
-          }),
-        ]),
-      );
-      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
-      expect(session?.lastRenderedContent).toContain(
-        "- result: INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
-      );
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
-        countCalls(
-          fetchMock,
-          "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        session?.toolHistory.some(
+          (tool) => tool.toolName === "intention-hint:result",
         ),
-      ).toBe(1);
+      ).toBe(false);
+      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
+    it("ignores malformed intention-hint pipeline events", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onIntentionHintPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "exact-keyword-hint",
+          state: "completed",
+        },
+      });
+      await handlers.onIntentionHintPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        sessionKey: "agent:main:discord:direct:123",
+        data: { kind: "other", phase: "exact-keyword-hint", state: "completed" },
+      });
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({ toolName: "intention-hint" }),
+      ]);
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
     it("does not reuse earlier assistant text when the final assistant message has only tool calls", async () => {
@@ -994,18 +1088,18 @@ describe("createHookHandlers", () => {
         afterActiveMemory!.lastRenderedContent!.indexOf("intention-hint"),
       );
 
-      await handlers.onAgentEnd(
+      await handlers.onIntentionHintPipelineEvent(
         {
-          messages: [
-            {
-              role: "assistant",
-              content: "INTENT:CHAT",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:intention-hint:abc",
+          runId: "run-1",
+          stream: "plugin:intention-hint",
+          sessionKey: "agent:main:discord:direct:123",
+          data: {
+            kind: "intention-hint.pipeline",
+            phase: "intent-classification",
+            state: "completed",
+            intent: "social-casual",
+            domain: "chat",
+          },
         },
       );
 
