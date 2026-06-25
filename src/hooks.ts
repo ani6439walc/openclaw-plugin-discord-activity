@@ -12,6 +12,7 @@ import type {
   BeforeAgentReplyEvent,
   AgentContext,
   AgentEndEvent,
+  AgentPipelineEvent,
 } from "./types.js";
 import { clearSessionTimer } from "./helpers.js";
 import {
@@ -20,12 +21,10 @@ import {
   isIntentionHintSessionKey,
   isSubagentSessionKey,
   getActiveMemorySourceSessionKey,
-  getIntentionHintSourceSessionKey,
   extractIdFromMetadata,
   extractSenderId,
   extractAgentIdFromSessionKey,
   parseActiveMemoryToolEntries,
-  parseIntentionHintResultEntry,
 } from "./parser.js";
 import {
   retireSession,
@@ -34,6 +33,55 @@ import {
 } from "./session.js";
 import { AGENT_END_DELAY_MS } from "./constants.js";
 import { ToolHistoryManager } from "./tool-history-manager.js";
+
+const INTENTION_HINT_EVENT_STREAM = "plugin:intention-hint";
+const INTENTION_HINT_EVENT_KIND = "intention-hint.pipeline";
+// Keep public Discord status from accidentally exposing raw prompt/context data.
+const INTENTION_HINT_PARAM_KEYS = new Set([
+  "intent",
+  "domain",
+  "confidence",
+  "complexity",
+  "topicChangeReason",
+  "keyword",
+  "matchedKeyword",
+  "score",
+  "reason",
+]);
+
+function mapPipelineState(value: unknown): ToolEntry["status"] | undefined {
+  if (value === "started") return "pending";
+  if (value === "completed" || value === "skipped") return "completed";
+  if (value === "failed") return "error";
+  return undefined;
+}
+
+function parseIntentionHintPipelineEntry(
+  event: AgentPipelineEvent,
+): ToolEntry | undefined {
+  if (event.stream !== INTENTION_HINT_EVENT_STREAM) return;
+  const data = event.data;
+  if (data?.kind !== INTENTION_HINT_EVENT_KIND) return;
+  if (typeof data.phase !== "string" || !data.phase.trim()) return;
+
+  const status = mapPipelineState(data.state);
+  if (!status) return;
+
+  const params = Object.fromEntries(
+    Object.entries(data).filter(
+      ([key, value]) =>
+        INTENTION_HINT_PARAM_KEYS.has(key) && value !== undefined,
+    ),
+  );
+
+  return {
+    toolCallId: `intention-hint:${event.runId}:${data.phase}`,
+    toolName: `intention-hint:${data.phase}`,
+    params,
+    status,
+    error: status === "error" ? String(data.reason ?? "failed") : undefined,
+  };
+}
 
 function buildPendingSubagentEntries(
   agentId: string | undefined,
@@ -478,51 +526,48 @@ export function createHookHandlers(deps: HookDeps) {
       }
 
       if (isIntentionHintSessionKey(ctx.sessionKey)) {
-        const sourceSessionKey = getIntentionHintSourceSessionKey(
-          ctx.sessionKey,
-        );
-        const session = sourceSessionKey
-          ? store.getOrCreateSession(contextKey, sourceSessionKey)
-          : undefined;
-        if (session) {
-          clearSessionTimer(session);
-          const resultEntry = parseIntentionHintResultEntry(event);
-          const newEntry: ToolEntry = resultEntry
-            ? resultEntry
-            : event.error || event.success === false
-              ? {
-                  toolCallId: "intention-hint",
-                  toolName: "intention-hint",
-                  params: {},
-                  status: "error" as const,
-                  durationMs: event.durationMs,
-                  error: event.error,
-                }
-              : {
-                  toolCallId: "intention-hint",
-                  toolName: "intention-hint",
-                  params: {},
-                  status: "completed" as const,
-                  durationMs: event.durationMs,
-                };
-          const existingIhEntries = toolHistoryManager.findSubagentEntries(
-            session.toolHistory,
-            "intention-hint",
-          );
-          const ihReplacements = [...existingIhEntries, newEntry].slice(-3);
-          toolHistoryManager.replaceSubagentGroup(
-            session.toolHistory,
-            "intention-hint",
-            ihReplacements,
-          );
-          toolHistoryManager.trim(session.toolHistory);
-          await updateSessionStatus(session, true);
-        }
         return;
       }
 
       await resolveAndFinalize(ctx, AGENT_END_DELAY_MS, "agent_end");
     }
+  }
+
+  async function onIntentionHintPipelineEvent(event: AgentPipelineEvent) {
+    if (!event.sessionKey) return;
+    const entry = parseIntentionHintPipelineEntry(event);
+    if (!entry) return;
+
+    const contextKey = getDiscordContextKey(event.sessionKey);
+    const session = contextKey
+      ? await store.resolveSession(contextKey, event.sessionKey)
+      : undefined;
+    if (!session) return;
+
+    clearSessionTimer(session);
+    const existingChildEntries = toolHistoryManager.findSubagentChildEntries(
+      session.toolHistory,
+      "intention-hint",
+    );
+    const existingEntry = existingChildEntries.find(
+      (tool) => tool.toolCallId === entry.toolCallId,
+    );
+    const nextEntry =
+      existingEntry?.status === "completed" && entry.status === "pending"
+        ? existingEntry
+        : entry;
+    toolHistoryManager.replaceSubagentGroup(
+      session.toolHistory,
+      "intention-hint",
+      [
+        ...existingChildEntries.filter(
+          (tool) => tool.toolCallId !== entry.toolCallId,
+        ),
+        nextEntry,
+      ].slice(-8),
+    );
+    toolHistoryManager.trim(session.toolHistory);
+    await updateSessionStatus(session, false);
   }
 
   return Object.freeze({
@@ -532,5 +577,6 @@ export function createHookHandlers(deps: HookDeps) {
     onMessageSending,
     onBeforeAgentReply,
     onAgentEnd,
+    onIntentionHintPipelineEvent,
   });
 }

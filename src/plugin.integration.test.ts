@@ -31,6 +31,11 @@ describe("plugin", () => {
         },
       },
       pluginConfig: {},
+      agent: {
+        events: {
+          registerAgentEventSubscription: vi.fn(),
+        },
+      },
     };
   });
 
@@ -71,5 +76,22 @@ describe("plugin", () => {
       expect.any(Function),
     );
     expect(mockApi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
+    expect(
+      mockApi.agent.events.registerAgentEventSubscription,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "discord-tool-status:intention-hint-pipeline",
+        streams: ["plugin:intention-hint"],
+        handle: expect.any(Function),
+      }),
+    );
+  });
+
+  it("registers core handlers without agent event subscriptions", () => {
+    mockApi.agent = undefined as never;
+    const plugin = createPlugin(mockApi);
+
+    expect(() => plugin.register(mockApi)).not.toThrow();
+    expect(mockApi.on).toHaveBeenCalledTimes(6);
   });
 });

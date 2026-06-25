@@ -61,12 +61,20 @@ export function createPlugin(
     description:
       "Shows live tool-call status as a Discord message that is updated and deleted when the agent finishes.",
     register() {
+      const registerAgentEventSubscription =
+        api.agent?.events?.registerAgentEventSubscription;
+
       api.on("message_received", handlers.onMessageReceived);
       api.on("before_tool_call", handlers.onBeforeToolCall);
       api.on("after_tool_call", handlers.onAfterToolCall);
       api.on("message_sending", handlers.onMessageSending);
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
+      registerAgentEventSubscription?.({
+        id: "discord-tool-status:intention-hint-pipeline",
+        streams: ["plugin:intention-hint"],
+        handle: handlers.onIntentionHintPipelineEvent,
+      });
     },
   });
 }

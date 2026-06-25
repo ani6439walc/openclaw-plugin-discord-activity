@@ -1,17 +1,5 @@
 import type { ToolEntry, AgentEventMessage } from "./types.js";
 
-/**
- * Strip fenced code blocks (```json ... ```) from text,
- * keeping only the inner content. Prevents nested code blocks
- * from breaking Discord markdown rendering when multiple entries
- * are concatenated.
- */
-function stripFencedCodeBlocks(text: string): string {
-  return text.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, inner: string) =>
-    inner.trim(),
-  );
-}
-
 function extractAssistantText(msg: AgentEventMessage): string | undefined {
   if (typeof msg.content === "string") {
     const text = msg.content.trim();
@@ -69,19 +57,6 @@ export function getActiveMemorySourceSessionKey(
     return undefined;
   }
   const idx = sessionKey!.indexOf(":active-memory:");
-  if (idx <= 0) {
-    return undefined;
-  }
-  return sessionKey!.slice(0, idx);
-}
-
-export function getIntentionHintSourceSessionKey(
-  sessionKey: string | undefined,
-): string | undefined {
-  if (!isIntentionHintSessionKey(sessionKey)) {
-    return undefined;
-  }
-  const idx = sessionKey!.indexOf(":intention-hint:");
   if (idx <= 0) {
     return undefined;
   }
@@ -184,31 +159,4 @@ export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
   }
 
   return entries;
-}
-
-export function parseIntentionHintResultEntry(
-  event: any,
-): ToolEntry | undefined {
-  const messages = (event?.messages ?? []) as AgentEventMessage[];
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return undefined;
-  }
-
-  const lastAssistantMessage = [...messages]
-    .reverse()
-    .find((msg) => msg?.role === "assistant");
-  const finalAssistantText = lastAssistantMessage
-    ? extractAssistantText(lastAssistantMessage)
-    : undefined;
-
-  if (!finalAssistantText) {
-    return undefined;
-  }
-
-  return {
-    toolCallId: "intention-hint:result",
-    toolName: "intention-hint:result",
-    params: { text: stripFencedCodeBlocks(finalAssistantText) },
-    status: "completed",
-  };
 }
