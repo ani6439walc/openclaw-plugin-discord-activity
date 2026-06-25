@@ -36,6 +36,7 @@ import { ToolHistoryManager } from "./tool-history-manager.js";
 
 const INTENTION_HINT_EVENT_STREAM = "plugin:intention-hint";
 const INTENTION_HINT_EVENT_KIND = "intention-hint.pipeline";
+// Keep public Discord status from accidentally exposing raw prompt/context data.
 const INTENTION_HINT_PARAM_KEYS = new Set([
   "intent",
   "domain",
