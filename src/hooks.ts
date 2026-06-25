@@ -36,6 +36,17 @@ import { ToolHistoryManager } from "./tool-history-manager.js";
 
 const INTENTION_HINT_EVENT_STREAM = "plugin:intention-hint";
 const INTENTION_HINT_EVENT_KIND = "intention-hint.pipeline";
+const INTENTION_HINT_PARAM_KEYS = new Set([
+  "intent",
+  "domain",
+  "confidence",
+  "complexity",
+  "topicChangeReason",
+  "keyword",
+  "matchedKeyword",
+  "score",
+  "reason",
+]);
 
 function mapPipelineState(value: unknown): ToolEntry["status"] | undefined {
   if (value === "started") return "pending";
@@ -58,7 +69,7 @@ function parseIntentionHintPipelineEntry(
   const params = Object.fromEntries(
     Object.entries(data).filter(
       ([key, value]) =>
-        !["kind", "phase", "state"].includes(key) && value !== undefined,
+        INTENTION_HINT_PARAM_KEYS.has(key) && value !== undefined,
     ),
   );
 

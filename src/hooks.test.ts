@@ -661,36 +661,33 @@ describe("createHookHandlers", () => {
         },
       );
 
-      await handlers.onIntentionHintPipelineEvent(
-        {
-          runId: "run-1",
-          stream: "plugin:intention-hint",
-          sessionKey: "agent:main:discord:direct:123",
-          data: {
-            kind: "intention-hint.pipeline",
-            phase: "exact-keyword-hint",
-            state: "completed",
-            intent: "social-casual",
-            domain: "chat",
-            keyword: "hi",
-          },
+      await handlers.onIntentionHintPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "exact-keyword-hint",
+          state: "completed",
+          intent: "social-casual",
+          domain: "chat",
+          keyword: "hi",
+          rawContext: "do not persist this",
         },
-      );
+      });
 
-      await handlers.onIntentionHintPipelineEvent(
-        {
-          runId: "run-1",
-          stream: "plugin:intention-hint",
-          sessionKey: "agent:main:discord:direct:123",
-          data: {
-            kind: "intention-hint.pipeline",
-            phase: "prompt-prefix-injection",
-            state: "completed",
-            intent: "social-casual",
-            domain: "chat",
-          },
+      await handlers.onIntentionHintPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "prompt-prefix-injection",
+          state: "completed",
+          intent: "social-casual",
+          domain: "chat",
         },
-      );
+      });
 
       const session = store.sessions.get("discord:direct:123");
       expect(session?.toolHistory).toEqual(
@@ -703,10 +700,14 @@ describe("createHookHandlers", () => {
           }),
         ]),
       );
+      expect(
+        session?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "intention-hint:run-1:exact-keyword-hint",
+        )?.params,
+      ).not.toHaveProperty("rawContext");
       expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
-      expect(session?.lastRenderedContent).toContain(
-        "- exact-keyword-hint: ✔",
-      );
+      expect(session?.lastRenderedContent).toContain("- exact-keyword-hint: ✔");
       expect(session?.lastRenderedContent).toContain(
         "- prompt-prefix-injection: ✔",
       );
@@ -788,7 +789,11 @@ describe("createHookHandlers", () => {
         runId: "run-1",
         stream: "plugin:intention-hint",
         sessionKey: "agent:main:discord:direct:123",
-        data: { kind: "other", phase: "exact-keyword-hint", state: "completed" },
+        data: {
+          kind: "other",
+          phase: "exact-keyword-hint",
+          state: "completed",
+        },
       });
 
       const session = store.sessions.get("discord:direct:123");
@@ -1088,20 +1093,18 @@ describe("createHookHandlers", () => {
         afterActiveMemory!.lastRenderedContent!.indexOf("intention-hint"),
       );
 
-      await handlers.onIntentionHintPipelineEvent(
-        {
-          runId: "run-1",
-          stream: "plugin:intention-hint",
-          sessionKey: "agent:main:discord:direct:123",
-          data: {
-            kind: "intention-hint.pipeline",
-            phase: "intent-classification",
-            state: "completed",
-            intent: "social-casual",
-            domain: "chat",
-          },
+      await handlers.onIntentionHintPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "intent-classification",
+          state: "completed",
+          intent: "social-casual",
+          domain: "chat",
         },
-      );
+      });
 
       const afterIntentionHint = store.sessions.get("discord:direct:123");
       expect(afterIntentionHint?.lastRenderedContent).toContain(
