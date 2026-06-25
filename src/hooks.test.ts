@@ -729,7 +729,13 @@ describe("createHookHandlers", () => {
           state: "completed",
           intent: "social-casual",
           domain: "chat",
+          keywords: ["hi", "hello"],
+          topic: "User is greeting.",
           keyword: "hi",
+          matchedKeyword: "hello",
+          score: 1,
+          reason: "exact keyword matched",
+          result: "matched greeting keyword",
           rawContext: "do not persist this",
         },
       });
@@ -764,11 +770,38 @@ describe("createHookHandlers", () => {
             tool.toolCallId === "intention-hint:run-1:exact-keyword-hint",
         )?.params,
       ).not.toHaveProperty("rawContext");
+      expect(
+        session?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "intention-hint:run-1:exact-keyword-hint",
+        )?.params,
+      ).not.toEqual(
+        expect.objectContaining({
+          matchedKeyword: expect.anything(),
+          score: expect.anything(),
+          reason: expect.anything(),
+        }),
+      );
       expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
       expect(session?.lastRenderedContent).toContain("- exact-keyword-hint: ✔");
+      expect(session?.lastRenderedContent).toContain("keywords: |");
+      expect(session?.lastRenderedContent).toContain('"hi"');
+      expect(session?.lastRenderedContent).toContain('"hello"');
+      expect(session?.lastRenderedContent).toContain(
+        "topic: User is greeting.",
+      );
+      expect(session?.lastRenderedContent).toContain(
+        "result: matched greeting keyword",
+      );
+      expect(session?.lastRenderedContent).not.toContain("matchedKeyword");
+      expect(session?.lastRenderedContent).not.toContain("score:");
+      expect(session?.lastRenderedContent).not.toContain(
+        "exact keyword matched",
+      );
       expect(session?.lastRenderedContent).toContain(
         "- prompt-prefix-injection: ✔",
       );
+      expect(session?.lastRenderedContent).not.toContain("rawContext");
       expect(session?.lastRenderedContent).not.toMatch(/fastpath-a[12]/i);
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(

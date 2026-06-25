@@ -40,13 +40,13 @@ const INTENTION_HINT_EVENT_KIND = "intention-hint.pipeline";
 const INTENTION_HINT_PARAM_KEYS = new Set([
   "intent",
   "domain",
+  "keywords",
+  "topic",
   "confidence",
   "complexity",
   "topicChangeReason",
   "keyword",
-  "matchedKeyword",
-  "score",
-  "reason",
+  "result",
 ]);
 
 function mapPipelineState(value: unknown): ToolEntry["status"] | undefined {
