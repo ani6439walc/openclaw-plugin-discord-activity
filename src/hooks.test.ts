@@ -761,6 +761,83 @@ describe("createHookHandlers", () => {
       );
     });
 
+    it("does not render duplicate intention-hint pipeline events twice", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      const event = {
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "session-record",
+          state: "completed",
+        },
+      };
+
+      await handlers.onIntentionHintPipelineEvent(event);
+      await handlers.onIntentionHintPipelineEvent(event);
+
+      expect(
+        store.sessions
+          .get("discord:direct:123")
+          ?.toolHistory.filter(
+            (tool) => tool.toolCallId === "intention-hint:run-1:session-record",
+          ),
+      ).toHaveLength(1);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+    });
+
+    it("uses intention-hint data sessionKey when the event wrapper omits it", async () => {
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onIntentionHintPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "prompt-prefix-injection",
+          state: "skipped",
+          sessionKey: "agent:main:discord:direct:123",
+        },
+      });
+
+      const entry = store.sessions
+        .get("discord:direct:123")
+        ?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "intention-hint:run-1:prompt-prefix-injection",
+        );
+      expect(entry).toEqual(expect.objectContaining({ status: "completed" }));
+    });
+
     it("does not downgrade completed intention-hint phases to pending", async () => {
       isActiveMemoryEnabled.mockReturnValue(false);
       isIntentionHintEnabled.mockReturnValue(true);

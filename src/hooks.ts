@@ -534,13 +534,21 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onIntentionHintPipelineEvent(event: AgentPipelineEvent) {
-    if (!event.sessionKey) return;
+    const sessionKey =
+      event.sessionKey ??
+      (typeof event.data?.sessionKey === "string"
+        ? event.data.sessionKey
+        : undefined);
+    if (!sessionKey) return;
+
     const entry = parseIntentionHintPipelineEntry(event);
     if (!entry) return;
 
-    const contextKey = getDiscordContextKey(event.sessionKey);
+    const contextKey = getDiscordContextKey(sessionKey);
+    if (!contextKey) return;
+
     const session = contextKey
-      ? await store.resolveSession(contextKey, event.sessionKey)
+      ? await store.resolveSession(contextKey, sessionKey)
       : undefined;
     if (!session) return;
 
@@ -556,6 +564,15 @@ export function createHookHandlers(deps: HookDeps) {
       existingEntry?.status === "completed" && entry.status === "pending"
         ? existingEntry
         : entry;
+    if (
+      existingEntry &&
+      existingEntry.status === nextEntry.status &&
+      existingEntry.error === nextEntry.error &&
+      JSON.stringify(existingEntry.params ?? {}) ===
+        JSON.stringify(nextEntry.params ?? {})
+    ) {
+      return;
+    }
     toolHistoryManager.replaceSubagentGroup(
       session.toolHistory,
       "intention-hint",

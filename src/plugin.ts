@@ -61,8 +61,15 @@ export function createPlugin(
     description:
       "Shows live tool-call status as a Discord message that is updated and deleted when the agent finishes.",
     register() {
+      const runtimeApi = api as unknown as {
+        agent?: {
+          events?: {
+            registerAgentEventSubscription?: OpenClawPluginApi["agent"]["events"]["registerAgentEventSubscription"];
+          };
+        };
+      };
       const registerAgentEventSubscription =
-        api.agent?.events?.registerAgentEventSubscription;
+        runtimeApi.agent?.events?.registerAgentEventSubscription;
 
       api.on("message_received", handlers.onMessageReceived);
       api.on("before_tool_call", handlers.onBeforeToolCall);
