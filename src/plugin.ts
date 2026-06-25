@@ -63,11 +63,6 @@ export function createPlugin(
     register() {
       const registerAgentEventSubscription =
         api.agent?.events?.registerAgentEventSubscription;
-      if (!registerAgentEventSubscription) {
-        throw new Error(
-          "discord-tool-status requires agent event subscriptions",
-        );
-      }
 
       api.on("message_received", handlers.onMessageReceived);
       api.on("before_tool_call", handlers.onBeforeToolCall);
@@ -75,7 +70,7 @@ export function createPlugin(
       api.on("message_sending", handlers.onMessageSending);
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
-      registerAgentEventSubscription({
+      registerAgentEventSubscription?.({
         id: "discord-tool-status:intention-hint-pipeline",
         streams: ["plugin:intention-hint"],
         handle: handlers.onIntentionHintPipelineEvent,

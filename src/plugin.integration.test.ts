@@ -86,4 +86,12 @@ describe("plugin", () => {
       }),
     );
   });
+
+  it("registers core handlers without agent event subscriptions", () => {
+    mockApi.agent = undefined as never;
+    const plugin = createPlugin(mockApi);
+
+    expect(() => plugin.register(mockApi)).not.toThrow();
+    expect(mockApi.on).toHaveBeenCalledTimes(6);
+  });
 });

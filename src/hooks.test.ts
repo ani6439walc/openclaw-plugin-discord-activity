@@ -722,6 +722,89 @@ describe("createHookHandlers", () => {
       ).toBe(2);
     });
 
+    it("maps failed intention-hint pipeline events to error entries", async () => {
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onIntentionHintPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "intent-classification",
+          state: "failed",
+          reason: "classifier crashed",
+        },
+      });
+
+      const entry = store.sessions
+        .get("discord:direct:123")
+        ?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "intention-hint:run-1:intent-classification",
+        );
+      expect(entry).toEqual(
+        expect.objectContaining({
+          status: "error",
+          error: "classifier crashed",
+        }),
+      );
+    });
+
+    it("does not downgrade completed intention-hint phases to pending", async () => {
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isIntentionHintEnabled.mockReturnValue(true);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      const eventBase = {
+        runId: "run-1",
+        stream: "plugin:intention-hint",
+        sessionKey: "agent:main:discord:direct:123",
+      } as const;
+      await handlers.onIntentionHintPipelineEvent({
+        ...eventBase,
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "intent-classification",
+          state: "completed",
+        },
+      });
+      await handlers.onIntentionHintPipelineEvent({
+        ...eventBase,
+        data: {
+          kind: "intention-hint.pipeline",
+          phase: "intent-classification",
+          state: "started",
+        },
+      });
+
+      const entry = store.sessions
+        .get("discord:direct:123")
+        ?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "intention-hint:run-1:intent-classification",
+        );
+      expect(entry?.status).toBe("completed");
+    });
+
     it("ignores legacy intention-hint agent_end result rendering", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);

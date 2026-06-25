@@ -545,13 +545,26 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return;
 
     clearSessionTimer(session);
-    const existingEntries = toolHistoryManager
-      .findSubagentChildEntries(session.toolHistory, "intention-hint")
-      .filter((tool) => tool.toolCallId !== entry.toolCallId);
+    const existingChildEntries = toolHistoryManager.findSubagentChildEntries(
+      session.toolHistory,
+      "intention-hint",
+    );
+    const existingEntry = existingChildEntries.find(
+      (tool) => tool.toolCallId === entry.toolCallId,
+    );
+    const nextEntry =
+      existingEntry?.status === "completed" && entry.status === "pending"
+        ? existingEntry
+        : entry;
     toolHistoryManager.replaceSubagentGroup(
       session.toolHistory,
       "intention-hint",
-      [...existingEntries, entry].slice(-8),
+      [
+        ...existingChildEntries.filter(
+          (tool) => tool.toolCallId !== entry.toolCallId,
+        ),
+        nextEntry,
+      ].slice(-8),
     );
     toolHistoryManager.trim(session.toolHistory);
     await updateSessionStatus(session, false);
