@@ -55,8 +55,16 @@ export function formatParams(
     .filter(([_, v]) => v !== undefined && v !== null)
     .map(([k, v], index) => {
       const keyPrefix = index === 0 ? firstPrefix : restPrefix;
-      const valueIndent = "      ";
-      let val = typeof v === "string" ? v : JSON.stringify(v, null, 5);
+      const valueIndent = " ".repeat(
+        (keyPrefix.match(/^ */)?.[0].length ?? 0) + 2,
+      );
+      let val =
+        typeof v === "string" ||
+        (Array.isArray(v) && v.every((x) => typeof x === "string"))
+          ? typeof v === "string"
+            ? v
+            : JSON.stringify(v)
+          : JSON.stringify(v, null, 5);
       val = val.trim();
 
       if (val.includes("\n")) {

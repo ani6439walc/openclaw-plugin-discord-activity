@@ -200,6 +200,25 @@ describe("renderStatusContent", () => {
     expect(result).not.toContain("- result:");
   });
 
+  it("renders string array intention-hint fields inline", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint:phase",
+        toolName: "intention-hint:topic-continuity-check",
+        params: {
+          domain: "follow-up",
+          keywords: ["再看", "一次"],
+          topic: "User is asking to view something again.",
+        },
+        status: "completed",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain('       keywords: ["再看","一次"]');
+    expect(result).not.toContain("keywords: |");
+  });
+
   it("renders active-memory group with error suffix", () => {
     const entries: ToolEntry[] = [
       {

@@ -784,9 +784,9 @@ describe("createHookHandlers", () => {
       );
       expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
       expect(session?.lastRenderedContent).toContain("- exact-keyword-hint: ✔");
-      expect(session?.lastRenderedContent).toContain("keywords: |");
-      expect(session?.lastRenderedContent).toContain('"hi"');
-      expect(session?.lastRenderedContent).toContain('"hello"');
+      expect(session?.lastRenderedContent).toContain(
+        'keywords: ["hi","hello"]',
+      );
       expect(session?.lastRenderedContent).toContain(
         "topic: User is greeting.",
       );
