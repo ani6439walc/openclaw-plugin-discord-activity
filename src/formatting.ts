@@ -55,9 +55,7 @@ export function formatParams(
     .filter(([_, v]) => v !== undefined && v !== null)
     .map(([k, v], index) => {
       const keyPrefix = index === 0 ? firstPrefix : restPrefix;
-      const valueIndent = " ".repeat(
-        (keyPrefix.match(/^ */)?.[0].length ?? 0) + 2,
-      );
+      const valueIndent = " ".repeat(keyPrefix.length + 2);
       let val =
         typeof v === "string" ||
         (Array.isArray(v) && v.every((x) => typeof x === "string"))

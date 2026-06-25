@@ -219,6 +219,29 @@ describe("renderStatusContent", () => {
     expect(result).not.toContain("keywords: |");
   });
 
+  it("indents multiline phase result under the result key", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint:phase",
+        toolName: "intention-hint:instruction-hint-generation",
+        params: {
+          result: "Intent: memory-recent\n\nSuggested workflow",
+        },
+        status: "completed",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain(
+      [
+        "     - result: |",
+        "         Intent: memory-recent",
+        "         ",
+        "         Suggested workflow",
+      ].join("\n"),
+    );
+  });
+
   it("renders active-memory group with error suffix", () => {
     const entries: ToolEntry[] = [
       {
