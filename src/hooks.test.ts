@@ -779,7 +779,6 @@ describe("createHookHandlers", () => {
         expect.objectContaining({
           matchedKeyword: expect.anything(),
           score: expect.anything(),
-          reason: expect.anything(),
         }),
       );
       expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
@@ -795,8 +794,8 @@ describe("createHookHandlers", () => {
       );
       expect(session?.lastRenderedContent).not.toContain("matchedKeyword");
       expect(session?.lastRenderedContent).not.toContain("score:");
-      expect(session?.lastRenderedContent).not.toContain(
-        "exact keyword matched",
+      expect(session?.lastRenderedContent).toContain(
+        "reason: exact keyword matched",
       );
       expect(session?.lastRenderedContent).toContain(
         "- prompt-prefix-injection: ✔",

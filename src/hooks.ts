@@ -41,11 +41,10 @@ const INTENTION_HINT_PARAM_KEYS = new Set([
   "intent",
   "domain",
   "keywords",
-  "topic",
-  "confidence",
   "complexity",
-  "topicChangeReason",
-  "keyword",
+  "topic",
+  "reason",
+  "confidence",
   "result",
 ]);
 
