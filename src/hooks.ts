@@ -192,6 +192,22 @@ export function createHookHandlers(deps: HookDeps) {
     return false;
   }
 
+  function shouldSkipToolSession(
+    ctx: { sessionKey?: string },
+    hookName: string,
+  ): boolean {
+    if (
+      isIntentionHintSessionKey(ctx.sessionKey) ||
+      isSubagentSessionKey(ctx.sessionKey)
+    ) {
+      logger.trace(`${hookName}: skip (intention-hint/subagent) session.`, {
+        sessionKey: ctx.sessionKey,
+      });
+      return true;
+    }
+    return false;
+  }
+
   async function resolveAndFinalize(
     ctx: AgentContext,
     delayMs: number,
@@ -295,28 +311,38 @@ export function createHookHandlers(deps: HookDeps) {
     event: BeforeToolCallEvent,
     ctx: ToolContext,
   ) {
-    if (shouldSkipSession(ctx, "before_tool_call")) return;
+    if (shouldSkipToolSession(ctx, "before_tool_call")) return;
     logHookEvent("before_tool_call", event, ctx);
     orphans.pruneStale();
 
-    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    const sourceSessionKey =
+      getActiveMemorySourceSessionKey(ctx.sessionKey) ?? ctx.sessionKey;
+    const contextKey = getDiscordContextKey(sourceSessionKey);
     const session = contextKey
-      ? await store.resolveSession(contextKey, ctx.sessionKey)
+      ? await store.resolveSession(contextKey, sourceSessionKey)
       : undefined;
+    const isActiveMemoryTool = isActiveMemorySessionKey(ctx.sessionKey);
+    const toolCallId =
+      isActiveMemoryTool && event.toolCallId
+        ? `active-memory:${event.toolCallId}`
+        : event.toolCallId;
+    const toolName = isActiveMemoryTool
+      ? `active-memory:${event.toolName}`
+      : event.toolName;
 
     if (!session) {
-      if (event.toolCallId && event.toolName) {
+      if (toolCallId && toolName) {
         orphans.add({
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
+          toolCallId,
+          toolName,
           params: event.params ?? {},
           createdAt: Date.now(),
         });
         logger.debug(
           `before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`,
           {
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
+            toolCallId,
+            toolName,
           },
         );
       }
@@ -331,10 +357,10 @@ export function createHookHandlers(deps: HookDeps) {
       return;
     }
 
-    if (!event.toolCallId) return;
+    if (!toolCallId) return;
     toolHistoryManager.addEntry(session.toolHistory, {
-      toolCallId: event.toolCallId,
-      toolName: event.toolName,
+      toolCallId,
+      toolName,
       params: event.params,
       status: "pending",
     });
@@ -343,13 +369,15 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onAfterToolCall(event: AfterToolCallEvent, ctx: ToolContext) {
-    if (shouldSkipSession(ctx, "after_tool_call")) return;
+    if (shouldSkipToolSession(ctx, "after_tool_call")) return;
     logHookEvent("after_tool_call", event, ctx);
     orphans.pruneStale();
 
-    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    const sourceSessionKey =
+      getActiveMemorySourceSessionKey(ctx.sessionKey) ?? ctx.sessionKey;
+    const contextKey = getDiscordContextKey(sourceSessionKey);
     const session = contextKey
-      ? await store.resolveSession(contextKey, ctx.sessionKey)
+      ? await store.resolveSession(contextKey, sourceSessionKey)
       : undefined;
 
     if (!session) return;
@@ -363,16 +391,19 @@ export function createHookHandlers(deps: HookDeps) {
     }
 
     if (!event.toolCallId) return;
+    const toolCallId = isActiveMemorySessionKey(ctx.sessionKey)
+      ? `active-memory:${event.toolCallId}`
+      : event.toolCallId;
 
     let toolEntry = session.toolHistory.find(
-      (t) => t.toolCallId === event.toolCallId,
+      (t) => t.toolCallId === toolCallId,
     );
     let isOrphanReconcile = false;
     if (!toolEntry) {
-      const orphan = orphans.get(event.toolCallId as string);
+      const orphan = orphans.get(toolCallId);
       logger.debug(
         `after_tool_call: lookup orphan id=${event.toolCallId} found=${orphan ? "yes" : "no"}`,
-        { toolCallId: event.toolCallId },
+        { toolCallId },
       );
       if (orphan) {
         if (Date.now() - orphan.createdAt <= config.orphanTtlMs) {
@@ -385,27 +416,27 @@ export function createHookHandlers(deps: HookDeps) {
           isOrphanReconcile = true;
           toolHistoryManager.addEntry(session.toolHistory, toolEntry);
           logger.debug(`after_tool_call: reconciled orphan tool entry.`, {
-            toolCallId: event.toolCallId,
+            toolCallId,
           });
         }
-        orphans.remove(event.toolCallId as string);
+        orphans.remove(toolCallId);
       }
     }
     if (toolEntry) {
       if (event.error) {
-        toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+        toolHistoryManager.updateEntry(session.toolHistory, toolCallId, {
           status: "error",
           error: event.error,
           durationMs: event.durationMs,
         });
       } else if (isOrphanReconcile) {
-        toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+        toolHistoryManager.updateEntry(session.toolHistory, toolCallId, {
           status: "orphan-completed",
           error: undefined,
           durationMs: event.durationMs,
         });
       } else {
-        toolHistoryManager.updateEntry(session.toolHistory, event.toolCallId, {
+        toolHistoryManager.updateEntry(session.toolHistory, toolCallId, {
           status: "completed",
           error: undefined,
           durationMs: event.durationMs,

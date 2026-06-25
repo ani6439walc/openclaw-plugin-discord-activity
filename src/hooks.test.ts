@@ -262,6 +262,64 @@ describe("createHookHandlers", () => {
   });
 
   describe("onAfterToolCall", () => {
+    it("shows active-memory subagent tool calls in the parent session", async () => {
+      const fetchMock = createDiscordFetchMock();
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "memory_search",
+          params: { query: "fastpath" },
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
+          toolName: "memory_search",
+          toolCallId: "call_1",
+        },
+      );
+
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "memory_search",
+          params: { query: "fastpath" },
+          durationMs: 42,
+        },
+        {
+          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
+          toolName: "memory_search",
+          toolCallId: "call_1",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          status: "pending",
+        }),
+        expect.objectContaining({
+          toolCallId: "active-memory:call_1",
+          toolName: "active-memory:memory_search",
+          status: "completed",
+          durationMs: 42,
+        }),
+      ]);
+      expect(session?.lastRenderedContent).toContain("🧩 active-memory: ✔");
+      expect(session?.lastRenderedContent).toContain("memory_search: ✔");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("reconciles orphan tool entry", async () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       orphans.add({
