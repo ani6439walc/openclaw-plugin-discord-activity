@@ -43,6 +43,7 @@ const INTENTION_HINT_PARAM_KEYS = new Set([
   "keywords",
   "complexity",
   "topic",
+  "changed",
   "reason",
   "confidence",
   "result",
