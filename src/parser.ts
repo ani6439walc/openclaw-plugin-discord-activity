@@ -60,7 +60,11 @@ export function getActiveMemorySourceSessionKey(
   if (idx <= 0) {
     return undefined;
   }
-  return sessionKey!.slice(0, idx);
+  const sourceSessionKey = sessionKey!.slice(0, idx);
+  const subagentIdx = sourceSessionKey.indexOf(":subagent:");
+  return subagentIdx > 0
+    ? sourceSessionKey.slice(0, subagentIdx)
+    : sourceSessionKey;
 }
 
 export function extractIdFromMetadata(

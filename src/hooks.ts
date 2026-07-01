@@ -198,7 +198,8 @@ export function createHookHandlers(deps: HookDeps) {
   ): boolean {
     if (
       isIntentionHintSessionKey(ctx.sessionKey) ||
-      isSubagentSessionKey(ctx.sessionKey)
+      (isSubagentSessionKey(ctx.sessionKey) &&
+        !isActiveMemorySessionKey(ctx.sessionKey))
     ) {
       logger.trace(`${hookName}: skip (intention-hint/subagent) session.`, {
         sessionKey: ctx.sessionKey,
@@ -498,7 +499,11 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onAgentEnd(event: AgentEndEvent, ctx: AgentContext) {
-    if (isSubagentSessionKey(ctx.sessionKey)) {
+    if (
+      isSubagentSessionKey(ctx.sessionKey) &&
+      !isActiveMemorySessionKey(ctx.sessionKey) &&
+      !isIntentionHintSessionKey(ctx.sessionKey)
+    ) {
       logger.trace("agent_end: skip subagent session.", {
         sessionKey: ctx.sessionKey,
       });

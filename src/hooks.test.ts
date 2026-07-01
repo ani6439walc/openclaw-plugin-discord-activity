@@ -320,6 +320,53 @@ describe("createHookHandlers", () => {
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
+    it("shows active-memory tool calls from subagent-scoped session keys", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const activeMemorySessionKey =
+        "agent:main:discord:direct:123:subagent:abc:active-memory:def";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "memory_search",
+          params: { query: "fastpath" },
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          toolName: "memory_search",
+          toolCallId: "call_1",
+        },
+      );
+
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "memory_search",
+          params: { query: "fastpath" },
+          durationMs: 42,
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          toolName: "memory_search",
+          toolCallId: "call_1",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.lastRenderedContent).toContain("🧩 active-memory: ✔");
+      expect(session?.lastRenderedContent).toContain("memory_search: ✔");
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("reconciles orphan tool entry", async () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       orphans.add({
@@ -695,6 +742,64 @@ describe("createHookHandlers", () => {
       expect(session?.lastRenderedContent).toContain(
         "- result: 每日早報重跑已觸發 Cron job",
       );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+    });
+
+    it("captures active-memory results from subagent-scoped session keys", async () => {
+      const fetchMock = createDiscordFetchMock();
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "mem_1",
+                  name: "memory_search",
+                  arguments: { query: "hello" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "mem_1",
+              toolName: "memory_search",
+            },
+            {
+              role: "assistant",
+              content: "NONE",
+            },
+          ],
+          success: true,
+        },
+        {
+          sessionKey:
+            "agent:main:discord:direct:123:subagent:abc:active-memory:def",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.lastRenderedContent).toContain("🧩 active-memory: ✔");
+      expect(session?.lastRenderedContent).toContain("memory_search: ✔");
+      expect(session?.lastRenderedContent).toContain("- result: NONE");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
         countCalls(
