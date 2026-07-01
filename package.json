@@ -2,7 +2,7 @@
   "name": "discord-tool-status",
   "displayName": "Discord Tool Status",
   "description": "Shows live tool-call status as a Discord message that is updated and deleted when the agent finishes.",
-  "version": "2026.6.8",
+  "version": "2026.6.11",
   "type": "module",
   "license": "MIT",
   "author": "Ani <ani6439walc@gmail.com>",
@@ -34,12 +34,12 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.6.8",
-      "minGatewayVersion": "2026.6.8"
+      "pluginApi": ">=2026.6.11",
+      "minGatewayVersion": "2026.6.11"
     },
     "build": {
-      "openclawVersion": "2026.6.8",
-      "pluginSdkVersion": "2026.6.8"
+      "openclawVersion": "2026.6.11",
+      "pluginSdkVersion": "2026.6.11"
     }
   },
   "scripts": {
@@ -52,12 +52,12 @@
     "zod": "4.4.3"
   },
   "peerDependencies": {
-    "openclaw": "2026.6.8",
+    "openclaw": "2026.6.11",
     "typebox": "1.1.39"
   },
   "devDependencies": {
     "typescript": "6.0.3",
-    "prettier": "3.8.4",
-    "vitest": "4.1.8"
+    "prettier": "3.9.4",
+    "vitest": "4.1.9"
   }
 }
