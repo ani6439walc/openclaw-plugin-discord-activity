@@ -48,6 +48,58 @@ describe("renderStatusContent", () => {
     expect(result).toContain("error: permission denied");
   });
 
+  it("quotes single-line string params containing colons", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: { query: "site:example.com status:open" },
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toContain('query: "site:example.com status:open"');
+  });
+
+  it("quotes error messages containing colons", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          status: "error",
+          error: "failed: timeout",
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toContain('   - error: "failed: timeout"');
+  });
+
+  it("quotes strings that begin with YAML indicators or numeric literal syntax", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: {
+            quoted: '"already quoted"',
+            dash: "- item",
+            question: "? key",
+            hex: "0x1A",
+            octal: "0o77",
+          },
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toContain('quoted: "\\\"already quoted\\\""');
+    expect(result).toContain('dash: "- item"');
+    expect(result).toContain('question: "? key"');
+    expect(result).toContain('hex: "0x1A"');
+    expect(result).toContain('octal: "0o77"');
+  });
+
   it("renders orphan-completed with recycle mark", () => {
     const result = renderStatusContent(
       [makeEntry({ status: "orphan-completed" })],
@@ -138,7 +190,29 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(result).toContain("💡 intention-hint: ✔");
-    expect(result).toContain("- result: INTENT:RESEARCH | GOAL: docs");
+    expect(result).toContain('- result: "INTENT:RESEARCH | GOAL: docs"');
+  });
+
+  it("quotes intention-hint JSON object string fields containing colons", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "intention-hint:result",
+        toolName: "intention-hint:result",
+        params: {
+          text: JSON.stringify({
+            intent: "skill-lifecycle",
+            reason: "User said: keep templates separate",
+          }),
+        },
+        status: "completed",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+    expect(result).toContain("- intent: skill-lifecycle");
+    expect(result).toContain(
+      '     reason: "User said: keep templates separate"',
+    );
   });
 
   it("renders intention-hint result as key-value when JSON object", () => {
