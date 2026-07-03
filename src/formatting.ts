@@ -44,6 +44,22 @@ export function getToolIcon(name: string): string {
   return "⚙️";
 }
 
+function shouldQuoteYamlString(value: string): boolean {
+  return (
+    value === "" ||
+    value.includes(":") ||
+    value.includes("#") ||
+    value !== value.trim() ||
+    /^[`@*&!|>{[%,]/.test(value) ||
+    /^(?:yes|no|on|off|true|false|null|~|\.inf|-\.inf|\.nan)$/i.test(value) ||
+    /^[-+]?(?:\d+|\d+\.\d+|\.\d+)(?:e[-+]?\d+)?$/i.test(value)
+  );
+}
+
+function formatYamlScalar(value: string): string {
+  return shouldQuoteYamlString(value) ? JSON.stringify(value) : value;
+}
+
 export function formatParams(
   params: any,
   indent?: { first: string; rest: string },
@@ -77,6 +93,7 @@ export function formatParams(
         return `${keyPrefix}${k}: |\n${lines}`;
       } else {
         if (val.length > 200) val = val.substring(0, 200) + "...";
+        if (typeof v === "string") val = formatYamlScalar(val);
         return `${keyPrefix}${k}: ${val}`;
       }
     })

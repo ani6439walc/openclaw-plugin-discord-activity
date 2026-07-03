@@ -17,7 +17,7 @@ function formatDuration(entry: ToolEntry): string {
 
 function formatErrorLine(entry: ToolEntry | undefined): string {
   return entry?.status === "error" && entry.error
-    ? `\n   - error: ${entry.error}`
+    ? `\n${formatParams({ error: entry.error })}`
     : "";
 }
 
@@ -42,12 +42,7 @@ function renderIntentionHintResult(entry: ToolEntry): string {
   try {
     const obj = JSON.parse(cleanText);
     if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-      return Object.entries(obj)
-        .map(
-          ([key, value], i) =>
-            `${i === 0 ? "   - " : "     "}${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
-        )
-        .join("\n");
+      return formatParams(obj, { first: "   - ", rest: "     " });
     }
   } catch {}
 
