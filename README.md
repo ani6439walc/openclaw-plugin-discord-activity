@@ -35,7 +35,7 @@ Enable the extension in your `openclaw.plugin.json` or main configuration:
       "discord-tool-status": {
         "enabled": true,
         "config": {
-          "maxToolHistoryLength": 10,
+          "maxToolHistoryLength": 30,
           "maxDisplayMs": 600000
         }
       }
@@ -61,7 +61,7 @@ The plugin can be customized via the `config` object in your OpenClaw settings:
 
 | Property                 | Type     | Default  | Description                                                                           |
 | :----------------------- | :------- | :------- | :------------------------------------------------------------------------------------ |
-| `maxToolHistoryLength`   | `number` | `10`     | Maximum number of tool calls to display in the status message.                        |
+| `maxToolHistoryLength`   | `number` | `30`     | Maximum number of tool calls to keep in history.                                      |
 | `maxStatusMessageLength` | `number` | `1700`   | Character limit for the Discord message content.                                      |
 | `maxDisplayMs`           | `number` | `600000` | Force-delete the status message after this duration (ms) to prevent stale indicators. |
 | `orphanTtlMs`            | `number` | `300000` | Time to keep orphaned tool calls in memory while waiting for a session link.          |
@@ -86,6 +86,8 @@ Status messages are rendered as YAML code blocks. Normal tools appear after inte
 ```
 
 `intention-hint` JSON object results are flattened into key-value fields. Plain text results are labeled as `result:` so they do not appear as unlabeled list items.
+
+The status display keeps up to 6 normal tool entries, up to 6 `active-memory` child entries, and up to 6 `intention-hint` child entries independently. Subagent `result` entries are rendered after other child entries.
 
 ## Companion X/Twitter workflows
 

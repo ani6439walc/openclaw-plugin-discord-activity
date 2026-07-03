@@ -5,10 +5,7 @@ import { createSessionStore } from "./store.js";
 import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
 import { renderStatusContent } from "./render.js";
 import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
-import {
-  DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
-  STATUS_MAX_ENTRIES,
-} from "./constants.js";
+import { DEFAULT_MAX_STATUS_MESSAGE_LENGTH } from "./constants.js";
 
 export const defaultStore = createSessionStore();
 export const defaultOrphans = createEnhancedOrphanManager();
@@ -207,10 +204,7 @@ export async function updateStatusMessage(
     let content = "";
     while (session.toolHistory.length > 0) {
       content = renderStatusContent(session.toolHistory, isFinal);
-      if (
-        content.length <= maxStatusMessageLength &&
-        session.toolHistory.length <= STATUS_MAX_ENTRIES
-      ) {
+      if (content.length <= maxStatusMessageLength) {
         break;
       }
       session.toolHistory.shift();

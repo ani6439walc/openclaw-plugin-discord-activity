@@ -156,4 +156,39 @@ describe("updateStatusMessage", () => {
     ]);
     expect(session.lastRenderedContent?.length).toBeLessThanOrEqual(120);
   });
+
+  it("does not trim tool history just because total entries exceed the display entry limit", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const toolHistory = [
+      ...Array.from({ length: 7 }, (_, index) =>
+        createToolEntry({
+          toolCallId: `active-memory:mem_${index}`,
+          toolName: `active-memory:memory_search_${index}`,
+          params: { query: `memory ${index}` },
+        }),
+      ),
+      ...Array.from({ length: 7 }, (_, index) =>
+        createToolEntry({
+          toolCallId: `normal_${index}`,
+          toolName: `normal_tool_${index}`,
+        }),
+      ),
+    ];
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory,
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", true, 60_000);
+
+    expect(session.toolHistory).toHaveLength(14);
+    expect(session.lastRenderedContent).not.toContain("memory_search_0");
+    expect(session.lastRenderedContent).toContain("memory_search_1");
+    expect(session.lastRenderedContent).not.toContain("normal_tool_0");
+    expect(session.lastRenderedContent).toContain("normal_tool_1");
+  });
 });

@@ -31,6 +31,23 @@ function isSubagentToolEntry(entry: ToolEntry, prefix: string): boolean {
   return entry.toolName === prefix || entry.toolName.startsWith(`${prefix}:`);
 }
 
+function isSubagentResultEntry(entry: ToolEntry, prefix: string): boolean {
+  return entry.toolName === `${prefix}:result`;
+}
+
+function sortSubagentChildEntries(
+  entries: readonly ToolEntry[],
+  prefix: string,
+): ToolEntry[] {
+  const toolEntries = entries.filter(
+    (entry) => !isSubagentResultEntry(entry, prefix),
+  );
+  const resultEntries = entries.filter((entry) =>
+    isSubagentResultEntry(entry, prefix),
+  );
+  return [...toolEntries, ...resultEntries].slice(-STATUS_MAX_ENTRIES);
+}
+
 function renderIntentionHintResult(entry: ToolEntry): string {
   const resultText = entry.params?.text ?? "";
   let cleanText = resultText;
@@ -82,8 +99,8 @@ function renderSubagentGroup(
   renderResult?: (entry: ToolEntry) => string,
 ): string {
   const realEntries = group.filter((e) => e.toolName.startsWith(`${prefix}:`));
-  const subEntryStrs = realEntries.map((entry) =>
-    renderNestedToolEntry(entry, prefix, renderResult),
+  const subEntryStrs = sortSubagentChildEntries(realEntries, prefix).map(
+    (entry) => renderNestedToolEntry(entry, prefix, renderResult),
   );
   const parentSuffix = group.some((entry) => entry.status === "error")
     ? "✘"
@@ -176,13 +193,15 @@ export function renderStatusContent(
     }
   }
 
-  const normalEntries = toolHistory.filter(
-    (t) =>
-      !(
-        isSubagentToolEntry(t, "active-memory") ||
-        isSubagentToolEntry(t, "intention-hint")
-      ),
-  );
+  const normalEntries = toolHistory
+    .filter(
+      (t) =>
+        !(
+          isSubagentToolEntry(t, "active-memory") ||
+          isSubagentToolEntry(t, "intention-hint")
+        ),
+    )
+    .slice(-STATUS_MAX_ENTRIES);
 
   for (const [index, entry] of normalEntries.entries()) {
     const isLast = index === normalEntries.length - 1;
@@ -192,6 +211,9 @@ export function renderStatusContent(
   return "```yaml\n" + contentParts.join("\n\n") + "\n```";
 }
 
-export function isContentTooLong(content: string, entryCount: number): boolean {
-  return content.length > STATUS_MAX_LENGTH || entryCount > STATUS_MAX_ENTRIES;
+export function isContentTooLong(
+  content: string,
+  _entryCount: number,
+): boolean {
+  return content.length > STATUS_MAX_LENGTH;
 }

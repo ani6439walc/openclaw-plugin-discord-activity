@@ -153,6 +153,110 @@ describe("renderStatusContent", () => {
     );
   });
 
+  it("renders subagent result entries after other nested tools regardless of history order", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: "NONE" },
+        status: "completed",
+      },
+      {
+        toolCallId: "active-memory:mem1",
+        toolName: "active-memory:memory_search",
+        params: { query: "7-11 賣貨便 出貨" },
+        status: "completed",
+      },
+      {
+        toolCallId: "intention-hint:result",
+        toolName: "intention-hint:result",
+        params: { text: JSON.stringify({ intent: "answer-question" }) },
+        status: "completed",
+      },
+      {
+        toolCallId: "intention-hint:phase",
+        toolName: "intention-hint:topic-triage",
+        params: { domain: "tools" },
+        status: "completed",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+
+    expect(result.indexOf("memory_search")).toBeLessThan(
+      result.indexOf("- result: NONE"),
+    );
+    expect(result.indexOf("topic-triage")).toBeLessThan(
+      result.indexOf("- intent: answer-question"),
+    );
+  });
+
+  it("limits normal entries separately from subagent child entries", () => {
+    const normalEntries = Array.from({ length: 7 }, (_, index) =>
+      makeEntry({
+        toolCallId: `normal_${index}`,
+        toolName: `normal_tool_${index}`,
+        status: "completed",
+      }),
+    );
+    const activeMemoryEntries: ToolEntry[] = Array.from(
+      { length: 7 },
+      (_, index) => ({
+        toolCallId: `active-memory:mem_${index}`,
+        toolName: `active-memory:memory_search_${index}`,
+        params: { query: `memory ${index}` },
+        status: "completed",
+      }),
+    );
+    const intentionHintEntries: ToolEntry[] = Array.from(
+      { length: 7 },
+      (_, index) => ({
+        toolCallId: `intention-hint:phase_${index}`,
+        toolName: `intention-hint:phase_${index}`,
+        params: { result: `hint ${index}` },
+        status: "completed",
+      }),
+    );
+
+    const result = renderStatusContent(
+      [...activeMemoryEntries, ...intentionHintEntries, ...normalEntries],
+      true,
+    );
+
+    expect(result).not.toContain("normal_tool_0");
+    expect(result).toContain("normal_tool_1");
+    expect(result).not.toContain("memory_search_0");
+    expect(result).toContain("memory_search_1");
+    expect(result).not.toContain("phase_0");
+    expect(result).toContain("phase_1");
+  });
+
+  it("keeps subagent result entries at the end when limiting child entries", () => {
+    const entries: ToolEntry[] = [
+      ...Array.from({ length: 7 }, (_, index) => ({
+        toolCallId: `active-memory:mem_${index}`,
+        toolName: `active-memory:memory_search_${index}`,
+        params: { query: `memory ${index}` },
+        status: "completed" as const,
+      })),
+      {
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: "final result" },
+        status: "completed",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+
+    expect(result).not.toContain("memory_search_0");
+    expect(result).not.toContain("memory_search_1");
+    expect(result).toContain("memory_search_2");
+    expect(result.indexOf("memory_search_6")).toBeLessThan(
+      result.indexOf("- result: final result"),
+    );
+  });
+
   it("renders active-memory group with pending suffix", () => {
     const entries: ToolEntry[] = [
       {
@@ -427,8 +531,8 @@ describe("isContentTooLong", () => {
     expect(isContentTooLong("x".repeat(1701), 1)).toBe(true);
   });
 
-  it("returns true when entry count exceeds max", () => {
-    expect(isContentTooLong("short", 7)).toBe(true);
+  it("does not use aggregate entry count for content length checks", () => {
+    expect(isContentTooLong("short", 7)).toBe(false);
   });
 
   it("returns false when within limits", () => {

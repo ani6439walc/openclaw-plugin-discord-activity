@@ -31,7 +31,7 @@ import {
   scheduleSessionCleanup,
   updateStatusMessage,
 } from "./session.js";
-import { AGENT_END_DELAY_MS } from "./constants.js";
+import { AGENT_END_DELAY_MS, STATUS_MAX_ENTRIES } from "./constants.js";
 import { ToolHistoryManager } from "./tool-history-manager.js";
 
 const INTENTION_HINT_EVENT_STREAM = "plugin:intention-hint";
@@ -780,7 +780,7 @@ export function createHookHandlers(deps: HookDeps) {
           (tool) => tool.toolCallId !== entry.toolCallId,
         ),
         nextEntry,
-      ].slice(-8),
+      ].slice(-STATUS_MAX_ENTRIES),
     );
     toolHistoryManager.trim(session.toolHistory);
     await updateSessionStatus(session, false);
