@@ -50,8 +50,9 @@ function shouldQuoteYamlString(value: string): boolean {
     value.includes(":") ||
     value.includes("#") ||
     value !== value.trim() ||
-    /^[`@*&!|>{[%,]/.test(value) ||
+    /^[`@*&!|>{}\[\]%,?'"-]/.test(value) ||
     /^(?:yes|no|on|off|true|false|null|~|\.inf|-\.inf|\.nan)$/i.test(value) ||
+    /^[-+]?(?:0x[0-9a-f]+|0o[0-7]+|0[0-7]+)$/i.test(value) ||
     /^[-+]?(?:\d+|\d+\.\d+|\.\d+)(?:e[-+]?\d+)?$/i.test(value)
   );
 }

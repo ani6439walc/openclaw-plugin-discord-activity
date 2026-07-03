@@ -73,7 +73,31 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(result).toContain('error: "failed: timeout"');
+    expect(result).toContain('   - error: "failed: timeout"');
+  });
+
+  it("quotes strings that begin with YAML indicators or numeric literal syntax", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: {
+            quoted: '"already quoted"',
+            dash: "- item",
+            question: "? key",
+            hex: "0x1A",
+            octal: "0o77",
+          },
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toContain('quoted: "\\\"already quoted\\\""');
+    expect(result).toContain('dash: "- item"');
+    expect(result).toContain('question: "? key"');
+    expect(result).toContain('hex: "0x1A"');
+    expect(result).toContain('octal: "0o77"');
   });
 
   it("renders orphan-completed with recycle mark", () => {
