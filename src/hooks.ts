@@ -49,6 +49,8 @@ const INTENTION_HINT_PARAM_KEYS = new Set([
   "result",
 ]);
 
+type ToolDedupeIdentity = Pick<ToolEntry, "toolCallId" | "toolName" | "params">;
+
 function normalizeToolNameForDedupe(toolName: string): string {
   return toolName.trim().toLowerCase();
 }
@@ -93,7 +95,10 @@ function preferDisplayToolName(existing: string, incoming: string): string {
   return existing;
 }
 
-function preferToolCallId(existing: ToolEntry, incoming: ToolEntry): string {
+function preferToolCallId(
+  existing: ToolDedupeIdentity,
+  incoming: ToolDedupeIdentity,
+): string {
   if (existing.toolCallId === incoming.toolCallId) {
     return existing.toolCallId;
   }
@@ -122,7 +127,7 @@ function stableValue(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([a], [b]) => a.localeCompare(b))
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([key, nested]) => [key, stableValue(nested)]),
     );
   }
@@ -135,8 +140,8 @@ function stableParamsKey(params: unknown): string {
 }
 
 function isDuplicateCodexOpenClawToolEntry(
-  existing: ToolEntry,
-  incoming: ToolEntry,
+  existing: ToolDedupeIdentity,
+  incoming: ToolDedupeIdentity,
 ): boolean {
   if (
     canonicalToolNameForDedupe(existing.toolName) !==
@@ -155,7 +160,7 @@ function isDuplicateCodexOpenClawToolEntry(
 
 function findDedupedToolEntry(
   history: ToolEntry[],
-  incoming: ToolEntry,
+  incoming: ToolDedupeIdentity,
 ): ToolEntry | undefined {
   return (
     history.find((entry) => entry.toolCallId === incoming.toolCallId) ??
@@ -537,7 +542,6 @@ export function createHookHandlers(deps: HookDeps) {
       toolCallId,
       toolName: event.toolName,
       params: event.params,
-      status: "pending",
     });
     let isOrphanReconcile = false;
     if (!toolEntry) {
@@ -569,7 +573,6 @@ export function createHookHandlers(deps: HookDeps) {
         toolCallId,
         toolName: event.toolName,
         params: event.params,
-        status: "pending",
       });
       const nextToolName = preferDisplayToolName(
         toolEntry.toolName,

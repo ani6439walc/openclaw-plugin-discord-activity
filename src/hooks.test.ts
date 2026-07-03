@@ -377,6 +377,46 @@ describe("createHookHandlers", () => {
         "openclawmemory_search",
       );
     });
+
+    it("keeps duplicate non-OpenClaw tool events with matching params as separate entries", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", {
+        actualChannelId: "123",
+        accountId: "default",
+      });
+      const params = { command: "pwd" };
+
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "bash",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "bash", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "bash",
+          toolCallId: "call_2",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "call_1",
+          toolName: "bash",
+          status: "pending",
+        }),
+        expect.objectContaining({
+          toolCallId: "call_2",
+          toolName: "bash",
+          status: "pending",
+        }),
+      ]);
+    });
   });
 
   describe("onAfterToolCall", () => {
