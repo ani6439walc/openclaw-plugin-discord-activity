@@ -49,6 +49,148 @@ const INTENTION_HINT_PARAM_KEYS = new Set([
   "result",
 ]);
 
+type ToolDedupeIdentity = Pick<ToolEntry, "toolCallId" | "toolName" | "params">;
+
+function normalizeToolNameForDedupe(toolName: string): string {
+  return toolName.trim().toLowerCase();
+}
+
+function getOpenClawToolSuffix(toolName: string): string | undefined {
+  const trimmed = toolName.trim();
+  const normalized = normalizeToolNameForDedupe(trimmed);
+  if (!normalized.startsWith("openclaw")) {
+    return undefined;
+  }
+
+  let suffix = trimmed.slice("openclaw".length);
+  if (!suffix) {
+    return undefined;
+  }
+
+  if ([".", ":", "/", "_", "-"].includes(suffix[0] ?? "")) {
+    suffix = suffix.slice(1);
+  }
+
+  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(suffix)) {
+    return undefined;
+  }
+
+  return suffix;
+}
+
+function isCodexOpenClawToolName(toolName: string): boolean {
+  return getOpenClawToolSuffix(toolName) !== undefined;
+}
+
+function canonicalToolNameForDedupe(toolName: string): string {
+  return normalizeToolNameForDedupe(
+    getOpenClawToolSuffix(toolName) ?? toolName,
+  );
+}
+
+function preferDisplayToolName(existing: string, incoming: string): string {
+  if (isCodexOpenClawToolName(existing) && !isCodexOpenClawToolName(incoming)) {
+    return incoming;
+  }
+  return existing;
+}
+
+function preferToolCallId(
+  existing: ToolDedupeIdentity,
+  incoming: ToolDedupeIdentity,
+): string {
+  if (existing.toolCallId === incoming.toolCallId) {
+    return existing.toolCallId;
+  }
+  if (
+    isCodexOpenClawToolName(existing.toolName) &&
+    !isCodexOpenClawToolName(incoming.toolName)
+  ) {
+    return incoming.toolCallId;
+  }
+  return existing.toolCallId;
+}
+
+function isTerminalToolStatus(status: ToolEntry["status"]): boolean {
+  return (
+    status === "completed" ||
+    status === "error" ||
+    status === "orphan-completed"
+  );
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stableValue);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, nested]) => [key, stableValue(nested)]),
+    );
+  }
+
+  return value;
+}
+
+function stableParamsKey(params: unknown): string {
+  return JSON.stringify(stableValue(params ?? {}));
+}
+
+function isDuplicateCodexOpenClawToolEntry(
+  existing: ToolDedupeIdentity,
+  incoming: ToolDedupeIdentity,
+): boolean {
+  if (
+    canonicalToolNameForDedupe(existing.toolName) !==
+    canonicalToolNameForDedupe(incoming.toolName)
+  ) {
+    return false;
+  }
+  if (
+    !isCodexOpenClawToolName(existing.toolName) &&
+    !isCodexOpenClawToolName(incoming.toolName)
+  ) {
+    return false;
+  }
+  return stableParamsKey(existing.params) === stableParamsKey(incoming.params);
+}
+
+function findDedupedToolEntry(
+  history: ToolEntry[],
+  incoming: ToolDedupeIdentity,
+): ToolEntry | undefined {
+  return (
+    history.find((entry) => entry.toolCallId === incoming.toolCallId) ??
+    history.find((entry) => isDuplicateCodexOpenClawToolEntry(entry, incoming))
+  );
+}
+
+function upsertToolEntry(
+  toolHistoryManager: ToolHistoryManager,
+  history: ToolEntry[],
+  incoming: ToolEntry,
+): ToolEntry {
+  const existing = findDedupedToolEntry(history, incoming);
+  if (!existing) {
+    toolHistoryManager.addEntry(history, incoming);
+    return incoming;
+  }
+
+  const updates: Partial<ToolEntry> = {
+    toolCallId: preferToolCallId(existing, incoming),
+    toolName: preferDisplayToolName(existing.toolName, incoming.toolName),
+    params: incoming.params,
+    status: isTerminalToolStatus(existing.status)
+      ? existing.status
+      : incoming.status,
+  };
+  toolHistoryManager.updateEntry(history, existing.toolCallId, updates);
+  return { ...existing, ...updates };
+}
+
 function mapPipelineState(value: unknown): ToolEntry["status"] | undefined {
   if (value === "started") return "pending";
   if (value === "completed" || value === "skipped") return "completed";
@@ -359,7 +501,7 @@ export function createHookHandlers(deps: HookDeps) {
     }
 
     if (!toolCallId) return;
-    toolHistoryManager.addEntry(session.toolHistory, {
+    upsertToolEntry(toolHistoryManager, session.toolHistory, {
       toolCallId,
       toolName,
       params: event.params,
@@ -396,9 +538,11 @@ export function createHookHandlers(deps: HookDeps) {
       ? `active-memory:${event.toolCallId}`
       : event.toolCallId;
 
-    let toolEntry = session.toolHistory.find(
-      (t) => t.toolCallId === toolCallId,
-    );
+    let toolEntry = findDedupedToolEntry(session.toolHistory, {
+      toolCallId,
+      toolName: event.toolName,
+      params: event.params,
+    });
     let isOrphanReconcile = false;
     if (!toolEntry) {
       const orphan = orphans.get(toolCallId);
@@ -424,20 +568,39 @@ export function createHookHandlers(deps: HookDeps) {
       }
     }
     if (toolEntry) {
+      const updateToolCallId = toolEntry.toolCallId;
+      const nextToolCallId = preferToolCallId(toolEntry, {
+        toolCallId,
+        toolName: event.toolName,
+        params: event.params,
+      });
+      const nextToolName = preferDisplayToolName(
+        toolEntry.toolName,
+        event.toolName,
+      );
       if (event.error) {
-        toolHistoryManager.updateEntry(session.toolHistory, toolCallId, {
+        toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
+          toolCallId: nextToolCallId,
+          toolName: nextToolName,
+          params: event.params,
           status: "error",
           error: event.error,
           durationMs: event.durationMs,
         });
       } else if (isOrphanReconcile) {
-        toolHistoryManager.updateEntry(session.toolHistory, toolCallId, {
+        toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
+          toolCallId: nextToolCallId,
+          toolName: nextToolName,
+          params: event.params,
           status: "orphan-completed",
           error: undefined,
           durationMs: event.durationMs,
         });
       } else {
-        toolHistoryManager.updateEntry(session.toolHistory, toolCallId, {
+        toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
+          toolCallId: nextToolCallId,
+          toolName: nextToolName,
+          params: event.params,
           status: "completed",
           error: undefined,
           durationMs: event.durationMs,

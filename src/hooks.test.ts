@@ -259,6 +259,164 @@ describe("createHookHandlers", () => {
         "call_3",
       ]);
     });
+
+    it("dedupes repeated Codex/OpenClaw tool events with the same tool call id", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", {
+        actualChannelId: "123",
+        accountId: "default",
+      });
+      const params = {
+        corpus: "all",
+        maxResults: 5,
+        query: "高鐵 座位 偏好 靠窗",
+      };
+
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "openclawmemory_search", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "openclawmemory_search",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "openclawmemory_search",
+          params,
+          durationMs: 2259,
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "openclawmemory_search",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "memory_search", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "memory_search",
+          toolCallId: "call_1",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "call_1",
+          toolName: "memory_search",
+          status: "completed",
+          durationMs: 2259,
+        }),
+      ]);
+      expect(session?.lastRenderedContent).toContain("memory_search:");
+      expect(session?.lastRenderedContent).not.toContain(
+        "openclawmemory_search",
+      );
+    });
+
+    it("dedupes Codex/OpenClaw tool events with different ids but matching canonical tool and params", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", {
+        actualChannelId: "123",
+        accountId: "default",
+      });
+      const params = {
+        corpus: "all",
+        maxResults: 5,
+        query: "高鐵 座位 偏好 靠窗",
+      };
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "native_call_1",
+          toolName: "openclawmemory_search",
+          params,
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "openclawmemory_search",
+          toolCallId: "native_call_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "dynamic_call_1", toolName: "memory_search", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "memory_search",
+          toolCallId: "dynamic_call_1",
+        },
+      );
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "dynamic_call_1",
+          toolName: "memory_search",
+          params,
+          durationMs: 2259,
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "memory_search",
+          toolCallId: "dynamic_call_1",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "dynamic_call_1",
+          toolName: "memory_search",
+          status: "completed",
+          durationMs: 2259,
+        }),
+      ]);
+      expect(session?.lastRenderedContent).toContain("memory_search:");
+      expect(session?.lastRenderedContent).not.toContain(
+        "openclawmemory_search",
+      );
+    });
+
+    it("keeps duplicate non-OpenClaw tool events with matching params as separate entries", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", {
+        actualChannelId: "123",
+        accountId: "default",
+      });
+      const params = { command: "pwd" };
+
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "bash",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "bash", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "bash",
+          toolCallId: "call_2",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "call_1",
+          toolName: "bash",
+          status: "pending",
+        }),
+        expect.objectContaining({
+          toolCallId: "call_2",
+          toolName: "bash",
+          status: "pending",
+        }),
+      ]);
+    });
   });
 
   describe("onAfterToolCall", () => {
