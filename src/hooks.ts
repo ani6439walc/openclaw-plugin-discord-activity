@@ -18,7 +18,7 @@ import { clearSessionTimer } from "./helpers.js";
 import {
   getDiscordContextKey,
   isActiveMemorySessionKey,
-  isIntentionHintSessionKey,
+  isSkillHarnessSessionKey,
   isSubagentSessionKey,
   getActiveMemorySourceSessionKey,
   extractIdFromMetadata,
@@ -34,10 +34,10 @@ import {
 import { AGENT_END_DELAY_MS, STATUS_MAX_ENTRIES } from "./constants.js";
 import { ToolHistoryManager } from "./tool-history-manager.js";
 
-const INTENTION_HINT_EVENT_STREAM = "plugin:intention-hint";
-const INTENTION_HINT_EVENT_KIND = "intention-hint.pipeline";
+const SKILL_HARNESS_EVENT_STREAM = "plugin:skill-harness";
+const SKILL_HARNESS_EVENT_KIND = "skill-harness.pipeline";
 // Keep public Discord status from accidentally exposing raw prompt/context data.
-const INTENTION_HINT_PARAM_KEYS = new Set([
+const SKILL_HARNESS_PARAM_KEYS = new Set([
   "intent",
   "domain",
   "keywords",
@@ -198,12 +198,12 @@ function mapPipelineState(value: unknown): ToolEntry["status"] | undefined {
   return undefined;
 }
 
-function parseIntentionHintPipelineEntry(
+function parseSkillHarnessPipelineEntry(
   event: AgentPipelineEvent,
 ): ToolEntry | undefined {
-  if (event.stream !== INTENTION_HINT_EVENT_STREAM) return;
+  if (event.stream !== SKILL_HARNESS_EVENT_STREAM) return;
   const data = event.data;
-  if (data?.kind !== INTENTION_HINT_EVENT_KIND) return;
+  if (data?.kind !== SKILL_HARNESS_EVENT_KIND) return;
   if (typeof data.phase !== "string" || !data.phase.trim()) return;
 
   const status = mapPipelineState(data.state);
@@ -212,13 +212,13 @@ function parseIntentionHintPipelineEntry(
   const params = Object.fromEntries(
     Object.entries(data).filter(
       ([key, value]) =>
-        INTENTION_HINT_PARAM_KEYS.has(key) && value !== undefined,
+        SKILL_HARNESS_PARAM_KEYS.has(key) && value !== undefined,
     ),
   );
 
   return {
-    toolCallId: `intention-hint:${event.runId}:${data.phase}`,
-    toolName: `intention-hint:${data.phase}`,
+    toolCallId: `skill-harness:${event.runId}:${data.phase}`,
+    toolName: `skill-harness:${data.phase}`,
     params,
     status,
     error: status === "error" ? String(data.reason ?? "failed") : undefined,
@@ -228,7 +228,7 @@ function parseIntentionHintPipelineEntry(
 function buildPendingSubagentEntries(
   agentId: string | undefined,
   isActiveMemoryEnabled: (agentId: string) => boolean,
-  isIntentionHintEnabled: (agentId: string) => boolean,
+  isSkillHarnessEnabled: (agentId: string) => boolean,
 ): ToolEntry[] {
   const entries: ToolEntry[] = [];
 
@@ -241,10 +241,10 @@ function buildPendingSubagentEntries(
     });
   }
 
-  if (agentId === undefined || isIntentionHintEnabled(agentId)) {
+  if (agentId === undefined || isSkillHarnessEnabled(agentId)) {
     entries.push({
-      toolCallId: "intention-hint",
-      toolName: "intention-hint",
+      toolCallId: "skill-harness",
+      toolName: "skill-harness",
       params: {},
       status: "pending",
     });
@@ -260,7 +260,7 @@ export function createHookHandlers(deps: HookDeps) {
     getToken,
     config,
     isActiveMemoryEnabled,
-    isIntentionHintEnabled,
+    isSkillHarnessEnabled,
   } = deps;
 
   // Initialize the ToolHistoryManager
@@ -306,7 +306,7 @@ export function createHookHandlers(deps: HookDeps) {
     const pendingEntries = buildPendingSubagentEntries(
       agentId,
       isActiveMemoryEnabled,
-      isIntentionHintEnabled,
+      isSkillHarnessEnabled,
     );
     if (pendingEntries.length === 0) return;
 
@@ -320,11 +320,11 @@ export function createHookHandlers(deps: HookDeps) {
   ): boolean {
     if (
       isActiveMemorySessionKey(ctx.sessionKey) ||
-      isIntentionHintSessionKey(ctx.sessionKey) ||
+      isSkillHarnessSessionKey(ctx.sessionKey) ||
       isSubagentSessionKey(ctx.sessionKey)
     ) {
       logger.trace(
-        `${hookName}: skip (active-memory/intention-hint/subagent) session.`,
+        `${hookName}: skip (active-memory/skill-harness/subagent) session.`,
         {
           sessionKey: ctx.sessionKey,
         },
@@ -339,11 +339,11 @@ export function createHookHandlers(deps: HookDeps) {
     hookName: string,
   ): boolean {
     if (
-      isIntentionHintSessionKey(ctx.sessionKey) ||
+      isSkillHarnessSessionKey(ctx.sessionKey) ||
       (isSubagentSessionKey(ctx.sessionKey) &&
         !isActiveMemorySessionKey(ctx.sessionKey))
     ) {
-      logger.trace(`${hookName}: skip (intention-hint/subagent) session.`, {
+      logger.trace(`${hookName}: skip (skill-harness/subagent) session.`, {
         sessionKey: ctx.sessionKey,
       });
       return true;
@@ -665,7 +665,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (
       isSubagentSessionKey(ctx.sessionKey) &&
       !isActiveMemorySessionKey(ctx.sessionKey) &&
-      !isIntentionHintSessionKey(ctx.sessionKey)
+      !isSkillHarnessSessionKey(ctx.sessionKey)
     ) {
       logger.trace("agent_end: skip subagent session.", {
         sessionKey: ctx.sessionKey,
@@ -724,7 +724,7 @@ export function createHookHandlers(deps: HookDeps) {
         return;
       }
 
-      if (isIntentionHintSessionKey(ctx.sessionKey)) {
+      if (isSkillHarnessSessionKey(ctx.sessionKey)) {
         return;
       }
 
@@ -732,7 +732,7 @@ export function createHookHandlers(deps: HookDeps) {
     }
   }
 
-  async function onIntentionHintPipelineEvent(event: AgentPipelineEvent) {
+  async function onSkillHarnessPipelineEvent(event: AgentPipelineEvent) {
     const sessionKey =
       event.sessionKey ??
       (typeof event.data?.sessionKey === "string"
@@ -740,7 +740,7 @@ export function createHookHandlers(deps: HookDeps) {
         : undefined);
     if (!sessionKey) return;
 
-    const entry = parseIntentionHintPipelineEntry(event);
+    const entry = parseSkillHarnessPipelineEntry(event);
     if (!entry) return;
 
     const contextKey = getDiscordContextKey(sessionKey);
@@ -754,7 +754,7 @@ export function createHookHandlers(deps: HookDeps) {
     clearSessionTimer(session);
     const existingChildEntries = toolHistoryManager.findSubagentChildEntries(
       session.toolHistory,
-      "intention-hint",
+      "skill-harness",
     );
     const existingEntry = existingChildEntries.find(
       (tool) => tool.toolCallId === entry.toolCallId,
@@ -774,7 +774,7 @@ export function createHookHandlers(deps: HookDeps) {
     }
     toolHistoryManager.replaceSubagentGroup(
       session.toolHistory,
-      "intention-hint",
+      "skill-harness",
       [
         ...existingChildEntries.filter(
           (tool) => tool.toolCallId !== entry.toolCallId,
@@ -793,6 +793,6 @@ export function createHookHandlers(deps: HookDeps) {
     onMessageSending,
     onBeforeAgentReply,
     onAgentEnd,
-    onIntentionHintPipelineEvent,
+    onSkillHarnessPipelineEvent,
   });
 }

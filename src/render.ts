@@ -48,7 +48,7 @@ function sortSubagentChildEntries(
   return [...toolEntries, ...resultEntries].slice(-STATUS_MAX_ENTRIES);
 }
 
-function renderIntentionHintResult(entry: ToolEntry): string {
+function renderSkillHarnessResult(entry: ToolEntry): string {
   const resultText = entry.params?.text ?? "";
   let cleanText = resultText;
   const fenceMatch = resultText.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
@@ -144,20 +144,20 @@ function renderActiveMemoryGroup(
   return renderSubagentGroup("🧩", "active-memory", group);
 }
 
-function renderIntentionHintGroup(group: readonly ToolEntry[]): string {
+function renderSkillHarnessGroup(group: readonly ToolEntry[]): string {
   return renderSubagentGroup(
     "💡",
-    "intention-hint",
+    "skill-harness",
     group,
-    renderIntentionHintResult,
+    renderSkillHarnessResult,
   );
 }
 
 function getSubagentGroupEntries(
   toolHistory: readonly ToolEntry[],
-): Array<{ name: "active-memory" | "intention-hint"; entries: ToolEntry[] }> {
+): Array<{ name: "active-memory" | "skill-harness"; entries: ToolEntry[] }> {
   const groups: Array<{
-    name: "active-memory" | "intention-hint";
+    name: "active-memory" | "skill-harness";
     entries: ToolEntry[];
   }> = [];
 
@@ -168,11 +168,11 @@ function getSubagentGroupEntries(
     groups.push({ name: "active-memory", entries: activeMemoryEntries });
   }
 
-  const intentionHintEntries = toolHistory.filter((t) =>
-    isSubagentToolEntry(t, "intention-hint"),
+  const skillHarnessEntries = toolHistory.filter((t) =>
+    isSubagentToolEntry(t, "skill-harness"),
   );
-  if (intentionHintEntries.length > 0) {
-    groups.push({ name: "intention-hint", entries: intentionHintEntries });
+  if (skillHarnessEntries.length > 0) {
+    groups.push({ name: "skill-harness", entries: skillHarnessEntries });
   }
 
   return groups.sort((a, b) => a.name.localeCompare(b.name));
@@ -189,7 +189,7 @@ export function renderStatusContent(
     if (group.name === "active-memory") {
       contentParts.push(renderActiveMemoryGroup(group.entries, isFinal));
     } else {
-      contentParts.push(renderIntentionHintGroup(group.entries));
+      contentParts.push(renderSkillHarnessGroup(group.entries));
     }
   }
 
@@ -198,7 +198,7 @@ export function renderStatusContent(
       (t) =>
         !(
           isSubagentToolEntry(t, "active-memory") ||
-          isSubagentToolEntry(t, "intention-hint")
+          isSubagentToolEntry(t, "skill-harness")
         ),
     )
     .slice(-STATUS_MAX_ENTRIES);

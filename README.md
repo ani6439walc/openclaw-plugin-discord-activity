@@ -3,7 +3,7 @@
 [![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://github.com/openclaw/openclaw)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Discord Tool Status is an OpenClaw plugin that makes agent activity visible in Discord. It creates one live YAML-formatted status message per Discord conversation, updates it as tools run, folds in internal `active-memory` and `intention-hint` subagent status, then deletes the message after the agent finishes.
+Discord Tool Status is an OpenClaw plugin that makes agent activity visible in Discord. It creates one live YAML-formatted status message per Discord conversation, updates it as tools run, folds in internal `active-memory` and `skill-harness` subagent status, then deletes the message after the agent finishes.
 
 ![Discord Tool Status Example](example.png)
 
@@ -11,7 +11,7 @@ Discord Tool Status is an OpenClaw plugin that makes agent activity visible in D
 
 - **Live Tool Monitoring**: Tracks `before_tool_call` and `after_tool_call` events as pending (`←`), completed (`✔`), errored (`✘`), or orphan-reconciled (`♻︎`) entries.
 - **YAML Status Rendering**: Renders compact Discord code blocks with semantic icons, tool parameters, durations, and error details.
-- **Subagent Visibility**: Shows `active-memory` and `intention-hint` as stable top-level groups, including final assistant result text when those internal sessions finish.
+- **Subagent Visibility**: Shows `active-memory` and `skill-harness` as stable top-level groups, including final assistant result text when those internal sessions finish.
 - **Session Lifecycle Management**: Creates one status message per Discord context, edits it in place, avoids duplicate edits when content is unchanged, and schedules cleanup after finalization.
 - **Discord API Resilience**: Retries Discord `429` rate limits, transient `5xx` responses, and network errors with backoff.
 - **Context-Aware Routing**: Maps OpenClaw session keys to Discord channels, DMs, and conversations, including DM channel resolution and owner-session replacement.
@@ -76,7 +76,7 @@ Status messages are rendered as YAML code blocks. Normal tools appear after inte
      - query: project notes
    - result: Relevant memory found
 
-💡 intention-hint: ✔
+💡 skill-harness: ✔
    - intent: code-review
      reason: User asked for a review
      confidence: 0.92
@@ -85,9 +85,9 @@ Status messages are rendered as YAML code blocks. Normal tools appear after inte
    - query: OpenClaw plugin SDK
 ```
 
-`intention-hint` JSON object results are flattened into key-value fields. Plain text results are labeled as `result:` so they do not appear as unlabeled list items.
+`skill-harness` JSON object results are flattened into key-value fields. Plain text results are labeled as `result:` so they do not appear as unlabeled list items.
 
-The status display keeps up to 6 normal tool entries, up to 6 `active-memory` child entries, and up to 6 `intention-hint` child entries independently. Subagent `result` entries are rendered after other child entries.
+The status display keeps up to 6 normal tool entries, up to 6 `active-memory` child entries, and up to 6 `skill-harness` child entries independently. Subagent `result` entries are rendered after other child entries.
 
 ## Companion X/Twitter workflows
 
@@ -118,7 +118,7 @@ Runtime flow:
 2. **`before_tool_call`**: Adds a pending tool entry or stores an orphan when no Discord session is available yet.
 3. **`after_tool_call`**: Marks the entry completed, errored, or orphan-reconciled, then updates the status message.
 4. **`before_agent_reply` / `message_sending`**: Finalizes visible status before the user-facing reply is sent.
-5. **`agent_end`**: Captures `active-memory` and `intention-hint` final results, finalizes the parent Discord status, and schedules cleanup.
+5. **`agent_end`**: Captures `active-memory` and `skill-harness` final results, finalizes the parent Discord status, and schedules cleanup.
 
 ## 🔒 Security & Performance
 

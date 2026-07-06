@@ -1,6 +1,6 @@
 # Agent Guide: Discord Tool Status
 
-This repository is an OpenClaw plugin. It shows live tool-call status in Discord by creating one YAML-formatted status message per Discord conversation, editing it as tools run, folding in internal `active-memory` and `intention-hint` subagent status, and deleting the message after the agent finishes.
+This repository is an OpenClaw plugin. It shows live tool-call status in Discord by creating one YAML-formatted status message per Discord conversation, editing it as tools run, folding in internal `active-memory` and `skill-harness` subagent status, and deleting the message after the agent finishes.
 
 Use this file as the working contract for coding agents. The README explains the product behavior; this guide explains how to change the code safely.
 
@@ -54,21 +54,21 @@ The core flow is:
 2. `before_tool_call` adds a pending tool entry, or stores an orphan when no Discord session is known yet.
 3. `after_tool_call` marks entries completed, errored, or orphan-reconciled, then updates the Discord status message.
 4. `before_agent_reply` and `message_sending` finalize visible status before the final user-facing reply.
-5. `agent_end` handles main-session cleanup and captures final internal subagent output for `active-memory` and `intention-hint` sessions.
+5. `agent_end` handles main-session cleanup and captures final internal subagent output for `active-memory` and `skill-harness` sessions.
 
 Important behavior to preserve:
 
 - Status messages are YAML code blocks.
 - Normal tools render after internal subagent groups.
-- `active-memory` and `intention-hint` groups stay in stable order before normal tools.
-- `intention-hint` JSON object results flatten to key-value fields.
-- `intention-hint` plain text results render as `result: <text>`; do not let them become unlabeled list items.
+- `active-memory` and `skill-harness` groups stay in stable order before normal tools.
+- `skill-harness` JSON object results flatten to key-value fields.
+- `skill-harness` plain text results render as `result: <text>`; do not let them become unlabeled list items.
 - `active-memory` result text renders as `result: <text>`.
 - Finalized sessions should not create duplicate status messages from late tool events.
 - Per-session Discord operations must remain serialized through `pendingOp` to avoid create/edit/delete races.
 - DM sessions may need `resolveDmChannel()` before sending.
 - Missing Discord token or Discord API failures should fail open by logging and skipping status updates, not by blocking the agent flow.
-- Status messages are limited to `STATUS_MAX_ENTRIES` (6 entries) independently for normal tools, `active-memory` children, and `intention-hint` children, plus `STATUS_MAX_LENGTH` (1700 characters) to prevent excessive message length.
+- Status messages are limited to `STATUS_MAX_ENTRIES` (6 entries) independently for normal tools, `active-memory` children, and `skill-harness` children, plus `STATUS_MAX_LENGTH` (1700 characters) to prevent excessive message length.
 
 ## Coding Rules
 
@@ -123,7 +123,7 @@ If CodeGraph was used for analysis and code changed afterward, run `codegraph sy
 
 - Do not commit, push, merge, or delete branches unless explicitly asked.
 - Use summary-only conventional commits, for example:
-  - `fix: label intention hint plain text result`
+  - `fix: label skill harness plain text result`
   - `refactor: simplify result label assertions`
   - `docs: document plugin architecture`
 - Before pushing to an existing PR branch, check PR state with `gh pr view --json state,headRefName,url`.

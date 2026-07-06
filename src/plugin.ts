@@ -39,9 +39,9 @@ export function createPlugin(
     api.config,
     "active-memory",
   );
-  const isIntentionHintEnabled = buildIsPluginEnabledForAgent(
+  const isSkillHarnessEnabled = buildIsPluginEnabledForAgent(
     api.config,
-    "intention-hint",
+    "skill-harness",
   );
 
   const store = defaultStore;
@@ -52,7 +52,7 @@ export function createPlugin(
     getToken,
     config,
     isActiveMemoryEnabled,
-    isIntentionHintEnabled,
+    isSkillHarnessEnabled,
   });
 
   return definePluginEntry({
@@ -78,9 +78,9 @@ export function createPlugin(
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
       registerAgentEventSubscription?.({
-        id: "discord-tool-status:intention-hint-pipeline",
-        streams: ["plugin:intention-hint"],
-        handle: handlers.onIntentionHintPipelineEvent,
+        id: "discord-tool-status:skill-harness-pipeline",
+        streams: ["plugin:skill-harness"],
+        handle: handlers.onSkillHarnessPipelineEvent,
       });
     },
   });

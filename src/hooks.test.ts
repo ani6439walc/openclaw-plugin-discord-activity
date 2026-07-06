@@ -89,7 +89,7 @@ describe("createHookHandlers", () => {
   let getToken: Mock<HookDeps["getToken"]>;
   let config: ReturnType<typeof resolveConfig>;
   let isActiveMemoryEnabled: Mock<HookDeps["isActiveMemoryEnabled"]>;
-  let isIntentionHintEnabled: Mock<HookDeps["isIntentionHintEnabled"]>;
+  let isSkillHarnessEnabled: Mock<HookDeps["isSkillHarnessEnabled"]>;
   let handlers: ReturnType<typeof createHookHandlers>;
 
   beforeEach(() => {
@@ -102,8 +102,8 @@ describe("createHookHandlers", () => {
     isActiveMemoryEnabled = vi
       .fn<HookDeps["isActiveMemoryEnabled"]>()
       .mockReturnValue(true);
-    isIntentionHintEnabled = vi
-      .fn<HookDeps["isIntentionHintEnabled"]>()
+    isSkillHarnessEnabled = vi
+      .fn<HookDeps["isSkillHarnessEnabled"]>()
       .mockReturnValue(false);
     handlers = createHookHandlers({
       store,
@@ -111,7 +111,7 @@ describe("createHookHandlers", () => {
       getToken,
       config,
       isActiveMemoryEnabled,
-      isIntentionHintEnabled,
+      isSkillHarnessEnabled,
     });
   });
 
@@ -139,10 +139,10 @@ describe("createHookHandlers", () => {
       expect(store.contexts.size).toBe(1);
     });
 
-    it("shows pending intention-hint status when enabled", async () => {
+    it("shows pending skill-harness status when enabled", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "msg_1", metadata: { to: "user:123" } },
@@ -156,19 +156,19 @@ describe("createHookHandlers", () => {
       const session = store.sessions.get("discord:direct:123");
       expect(session?.toolHistory).toEqual([
         expect.objectContaining({
-          toolCallId: "intention-hint",
-          toolName: "intention-hint",
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
           status: "pending",
         }),
       ]);
-      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("💡 skill-harness: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
-    it("inserts active-memory and intention-hint placeholders together in stable order", async () => {
+    it("inserts active-memory and skill-harness placeholders together in stable order", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "msg_1", metadata: { to: "user:123" } },
@@ -182,10 +182,10 @@ describe("createHookHandlers", () => {
       const session = store.sessions.get("discord:direct:123");
       expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
         "active-memory",
-        "intention-hint",
+        "skill-harness",
       ]);
       expect(session?.lastRenderedContent).toContain("🧩 active-memory: ←");
-      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("💡 skill-harness: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -238,7 +238,7 @@ describe("createHookHandlers", () => {
         getToken,
         config,
         isActiveMemoryEnabled,
-        isIntentionHintEnabled,
+        isSkillHarnessEnabled,
       });
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
 
@@ -627,7 +627,7 @@ describe("createHookHandlers", () => {
     it("does not finalize on before_agent_reply when only pending subagent placeholders exist", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -647,7 +647,7 @@ describe("createHookHandlers", () => {
       expect(result).toEqual({ handled: false });
       expect(session?.finalized).toBeFalsy();
       expect(session?.lastRenderedContent).toContain("🧩 active-memory: ←");
-      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("💡 skill-harness: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -968,10 +968,10 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
-    it("renders intention-hint pipeline events as grouped status entries", async () => {
+    it("renders skill-harness pipeline events as grouped status entries", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -982,12 +982,12 @@ describe("createHookHandlers", () => {
         },
       );
 
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         sessionKey: "agent:main:discord:direct:123",
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "exact-keyword-hint",
           state: "completed",
           intent: "social-casual",
@@ -1003,12 +1003,12 @@ describe("createHookHandlers", () => {
         },
       });
 
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         sessionKey: "agent:main:discord:direct:123",
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "prompt-prefix-injection",
           state: "completed",
           intent: "social-casual",
@@ -1020,8 +1020,8 @@ describe("createHookHandlers", () => {
       expect(session?.toolHistory).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            toolCallId: "intention-hint:run-1:exact-keyword-hint",
-            toolName: "intention-hint:exact-keyword-hint",
+            toolCallId: "skill-harness:run-1:exact-keyword-hint",
+            toolName: "skill-harness:exact-keyword-hint",
             params: expect.objectContaining({ intent: "social-casual" }),
             status: "completed",
           }),
@@ -1030,13 +1030,13 @@ describe("createHookHandlers", () => {
       expect(
         session?.toolHistory.find(
           (tool) =>
-            tool.toolCallId === "intention-hint:run-1:exact-keyword-hint",
+            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
         )?.params,
       ).not.toHaveProperty("rawContext");
       expect(
         session?.toolHistory.find(
           (tool) =>
-            tool.toolCallId === "intention-hint:run-1:exact-keyword-hint",
+            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
         )?.params,
       ).not.toEqual(
         expect.objectContaining({
@@ -1044,7 +1044,7 @@ describe("createHookHandlers", () => {
           score: expect.anything(),
         }),
       );
-      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ✔");
+      expect(session?.lastRenderedContent).toContain("💡 skill-harness: ✔");
       expect(session?.lastRenderedContent).toContain("- exact-keyword-hint: ✔");
       expect(session?.lastRenderedContent).toContain(
         'keywords: ["hi","hello"]',
@@ -1075,9 +1075,9 @@ describe("createHookHandlers", () => {
       ).toBe(2);
     });
 
-    it("maps failed intention-hint pipeline events to error entries", async () => {
+    it("maps failed skill-harness pipeline events to error entries", async () => {
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1088,12 +1088,12 @@ describe("createHookHandlers", () => {
         },
       );
 
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         sessionKey: "agent:main:discord:direct:123",
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "intent-classification",
           state: "failed",
           reason: "classifier crashed",
@@ -1104,7 +1104,7 @@ describe("createHookHandlers", () => {
         .get("discord:direct:123")
         ?.toolHistory.find(
           (tool) =>
-            tool.toolCallId === "intention-hint:run-1:intent-classification",
+            tool.toolCallId === "skill-harness:run-1:intent-classification",
         );
       expect(entry).toEqual(
         expect.objectContaining({
@@ -1114,10 +1114,10 @@ describe("createHookHandlers", () => {
       );
     });
 
-    it("does not render duplicate intention-hint pipeline events twice", async () => {
+    it("does not render duplicate skill-harness pipeline events twice", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1130,23 +1130,23 @@ describe("createHookHandlers", () => {
 
       const event = {
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         sessionKey: "agent:main:discord:direct:123",
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "session-record",
           state: "completed",
         },
       };
 
-      await handlers.onIntentionHintPipelineEvent(event);
-      await handlers.onIntentionHintPipelineEvent(event);
+      await handlers.onSkillHarnessPipelineEvent(event);
+      await handlers.onSkillHarnessPipelineEvent(event);
 
       expect(
         store.sessions
           .get("discord:direct:123")
           ?.toolHistory.filter(
-            (tool) => tool.toolCallId === "intention-hint:run-1:session-record",
+            (tool) => tool.toolCallId === "skill-harness:run-1:session-record",
           ),
       ).toHaveLength(1);
       expect(
@@ -1158,9 +1158,9 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
-    it("uses intention-hint data sessionKey when the event wrapper omits it", async () => {
+    it("uses skill-harness data sessionKey when the event wrapper omits it", async () => {
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1171,11 +1171,11 @@ describe("createHookHandlers", () => {
         },
       );
 
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "prompt-prefix-injection",
           state: "skipped",
           sessionKey: "agent:main:discord:direct:123",
@@ -1186,14 +1186,14 @@ describe("createHookHandlers", () => {
         .get("discord:direct:123")
         ?.toolHistory.find(
           (tool) =>
-            tool.toolCallId === "intention-hint:run-1:prompt-prefix-injection",
+            tool.toolCallId === "skill-harness:run-1:prompt-prefix-injection",
         );
       expect(entry).toEqual(expect.objectContaining({ status: "completed" }));
     });
 
-    it("does not downgrade completed intention-hint phases to pending", async () => {
+    it("does not downgrade completed skill-harness phases to pending", async () => {
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1206,21 +1206,21 @@ describe("createHookHandlers", () => {
 
       const eventBase = {
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         sessionKey: "agent:main:discord:direct:123",
       } as const;
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         ...eventBase,
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "intent-classification",
           state: "completed",
         },
       });
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         ...eventBase,
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "intent-classification",
           state: "started",
         },
@@ -1230,15 +1230,15 @@ describe("createHookHandlers", () => {
         .get("discord:direct:123")
         ?.toolHistory.find(
           (tool) =>
-            tool.toolCallId === "intention-hint:run-1:intent-classification",
+            tool.toolCallId === "skill-harness:run-1:intent-classification",
         );
       expect(entry?.status).toBe("completed");
     });
 
-    it("ignores legacy intention-hint agent_end result rendering", async () => {
+    it("ignores legacy skill-harness agent_end result rendering", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1261,24 +1261,24 @@ describe("createHookHandlers", () => {
           success: true,
         },
         {
-          sessionKey: "agent:main:discord:direct:123:intention-hint:abc",
+          sessionKey: "agent:main:discord:direct:123:skill-harness:abc",
         },
       );
 
       const session = store.sessions.get("discord:direct:123");
       expect(
         session?.toolHistory.some(
-          (tool) => tool.toolName === "intention-hint:result",
+          (tool) => tool.toolName === "skill-harness:result",
         ),
       ).toBe(false);
-      expect(session?.lastRenderedContent).toContain("💡 intention-hint: ←");
+      expect(session?.lastRenderedContent).toContain("💡 skill-harness: ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
-    it("ignores malformed intention-hint pipeline events", async () => {
+    it("ignores malformed skill-harness pipeline events", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1289,18 +1289,18 @@ describe("createHookHandlers", () => {
         },
       );
 
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "exact-keyword-hint",
           state: "completed",
         },
       });
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         sessionKey: "agent:main:discord:direct:123",
         data: {
           kind: "other",
@@ -1311,7 +1311,7 @@ describe("createHookHandlers", () => {
 
       const session = store.sessions.get("discord:direct:123");
       expect(session?.toolHistory).toEqual([
-        expect.objectContaining({ toolName: "intention-hint" }),
+        expect.objectContaining({ toolName: "skill-harness" }),
       ]);
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
@@ -1442,10 +1442,10 @@ describe("createHookHandlers", () => {
       ).toBe(patchCountBefore);
     });
 
-    it("preserves group order when active-memory completes before intention-hint", async () => {
+    it("preserves group order when active-memory completes before skill-harness", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1459,7 +1459,7 @@ describe("createHookHandlers", () => {
       const session = store.sessions.get("discord:direct:123");
       expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
         "active-memory",
-        "intention-hint",
+        "skill-harness",
       ]);
 
       await handlers.onAgentEnd(
@@ -1498,8 +1498,8 @@ describe("createHookHandlers", () => {
       );
       const ihIdx = afterAm!.toolHistory.findIndex(
         (t) =>
-          t.toolName === "intention-hint" ||
-          t.toolName.startsWith("intention-hint:"),
+          t.toolName === "skill-harness" ||
+          t.toolName.startsWith("skill-harness:"),
       );
       expect(amIdx).toBeLessThan(ihIdx);
 
@@ -1514,7 +1514,7 @@ describe("createHookHandlers", () => {
           success: true,
         },
         {
-          sessionKey: "agent:main:discord:direct:123:intention-hint:xyz",
+          sessionKey: "agent:main:discord:direct:123:skill-harness:xyz",
         },
       );
 
@@ -1526,8 +1526,8 @@ describe("createHookHandlers", () => {
       );
       const finalIhIdx = final!.toolHistory.findIndex(
         (t) =>
-          t.toolName === "intention-hint" ||
-          t.toolName.startsWith("intention-hint:"),
+          t.toolName === "skill-harness" ||
+          t.toolName.startsWith("skill-harness:"),
       );
       expect(finalAmIdx).toBeLessThan(finalIhIdx);
     });
@@ -1535,7 +1535,7 @@ describe("createHookHandlers", () => {
     it("keeps parent order stable across the real subagent lifecycle", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1554,7 +1554,7 @@ describe("createHookHandlers", () => {
       const initial = store.sessions.get("discord:direct:123");
       expect(initial?.toolHistory.map((t) => t.toolCallId)).toEqual([
         "active-memory",
-        "intention-hint",
+        "skill-harness",
       ]);
 
       await handlers.onAgentEnd(
@@ -1598,20 +1598,20 @@ describe("createHookHandlers", () => {
         "🧩 active-memory: ✔",
       );
       expect(afterActiveMemory?.lastRenderedContent).toContain(
-        "💡 intention-hint: ←",
+        "💡 skill-harness: ←",
       );
       expect(
         afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
       ).toBeLessThan(
-        afterActiveMemory!.lastRenderedContent!.indexOf("intention-hint"),
+        afterActiveMemory!.lastRenderedContent!.indexOf("skill-harness"),
       );
 
-      await handlers.onIntentionHintPipelineEvent({
+      await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
-        stream: "plugin:intention-hint",
+        stream: "plugin:skill-harness",
         sessionKey: "agent:main:discord:direct:123",
         data: {
-          kind: "intention-hint.pipeline",
+          kind: "skill-harness.pipeline",
           phase: "intent-classification",
           state: "completed",
           intent: "social-casual",
@@ -1619,17 +1619,17 @@ describe("createHookHandlers", () => {
         },
       });
 
-      const afterIntentionHint = store.sessions.get("discord:direct:123");
-      expect(afterIntentionHint?.lastRenderedContent).toContain(
+      const afterSkillHarness = store.sessions.get("discord:direct:123");
+      expect(afterSkillHarness?.lastRenderedContent).toContain(
         "🧩 active-memory: ✔",
       );
-      expect(afterIntentionHint?.lastRenderedContent).toContain(
-        "💡 intention-hint: ✔",
+      expect(afterSkillHarness?.lastRenderedContent).toContain(
+        "💡 skill-harness: ✔",
       );
       expect(
-        afterIntentionHint!.lastRenderedContent!.indexOf("🧩 active-memory"),
+        afterSkillHarness!.lastRenderedContent!.indexOf("🧩 active-memory"),
       ).toBeLessThan(
-        afterIntentionHint!.lastRenderedContent!.indexOf("intention-hint"),
+        afterSkillHarness!.lastRenderedContent!.indexOf("skill-harness"),
       );
 
       await handlers.onAgentEnd(
@@ -1639,17 +1639,17 @@ describe("createHookHandlers", () => {
 
       const final = store.sessions.get("discord:direct:123");
       expect(final?.lastRenderedContent).toContain("🧩 active-memory: ✔");
-      expect(final?.lastRenderedContent).toContain("intention-hint");
+      expect(final?.lastRenderedContent).toContain("skill-harness");
       expect(
         final!.lastRenderedContent!.indexOf("🧩 active-memory"),
-      ).toBeLessThan(final!.lastRenderedContent!.indexOf("intention-hint"));
+      ).toBeLessThan(final!.lastRenderedContent!.indexOf("skill-harness"));
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
-    it("preserves group order when intention-hint completes before active-memory", async () => {
+    it("preserves group order when skill-harness completes before active-memory", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
-      isIntentionHintEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1663,7 +1663,7 @@ describe("createHookHandlers", () => {
       const session = store.sessions.get("discord:direct:456");
       expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
         "active-memory",
-        "intention-hint",
+        "skill-harness",
       ]);
 
       await handlers.onAgentEnd(
@@ -1677,7 +1677,7 @@ describe("createHookHandlers", () => {
           success: true,
         },
         {
-          sessionKey: "agent:main:discord:direct:456:intention-hint:xyz",
+          sessionKey: "agent:main:discord:direct:456:skill-harness:xyz",
         },
       );
 
@@ -1689,8 +1689,8 @@ describe("createHookHandlers", () => {
       );
       const ihIdx = afterIh!.toolHistory.findIndex(
         (t) =>
-          t.toolName === "intention-hint" ||
-          t.toolName.startsWith("intention-hint:"),
+          t.toolName === "skill-harness" ||
+          t.toolName.startsWith("skill-harness:"),
       );
       expect(amIdx).toBeLessThan(ihIdx);
 
@@ -1730,8 +1730,8 @@ describe("createHookHandlers", () => {
       );
       const finalIhIdx = final!.toolHistory.findIndex(
         (t) =>
-          t.toolName === "intention-hint" ||
-          t.toolName.startsWith("intention-hint:"),
+          t.toolName === "skill-harness" ||
+          t.toolName.startsWith("skill-harness:"),
       );
       expect(finalAmIdx).toBeLessThan(finalIhIdx);
     });

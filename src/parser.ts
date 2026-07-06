@@ -42,11 +42,11 @@ export function isActiveMemorySessionKey(
   );
 }
 
-export function isIntentionHintSessionKey(
+export function isSkillHarnessSessionKey(
   sessionKey: string | undefined,
 ): boolean {
   return (
-    typeof sessionKey === "string" && sessionKey.includes(":intention-hint:")
+    typeof sessionKey === "string" && sessionKey.includes(":skill-harness:")
   );
 }
 

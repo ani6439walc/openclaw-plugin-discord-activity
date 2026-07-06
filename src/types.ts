@@ -15,7 +15,7 @@ export type ToolEntry = {
   error?: string;
 };
 
-export type SubagentToolName = "active-memory" | "intention-hint";
+export type SubagentToolName = "active-memory" | "skill-harness";
 
 export type AgentMessageContentItem = {
   type?: string;
@@ -103,7 +103,7 @@ export type HookDeps = {
   getToken: GetTokenFn;
   config: PluginConfig;
   isActiveMemoryEnabled: (agentId: string) => boolean;
-  isIntentionHintEnabled: (agentId: string) => boolean;
+  isSkillHarnessEnabled: (agentId: string) => boolean;
 };
 
 export type StatusRenderResult = {

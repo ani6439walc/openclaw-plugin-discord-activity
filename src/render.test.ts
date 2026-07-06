@@ -168,14 +168,14 @@ describe("renderStatusContent", () => {
         status: "completed",
       },
       {
-        toolCallId: "intention-hint:result",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: JSON.stringify({ intent: "answer-question" }) },
         status: "completed",
       },
       {
-        toolCallId: "intention-hint:phase",
-        toolName: "intention-hint:topic-triage",
+        toolCallId: "skill-harness:phase",
+        toolName: "skill-harness:topic-triage",
         params: { domain: "tools" },
         status: "completed",
       },
@@ -208,18 +208,18 @@ describe("renderStatusContent", () => {
         status: "completed",
       }),
     );
-    const intentionHintEntries: ToolEntry[] = Array.from(
+    const skillHarnessEntries: ToolEntry[] = Array.from(
       { length: 7 },
       (_, index) => ({
-        toolCallId: `intention-hint:phase_${index}`,
-        toolName: `intention-hint:phase_${index}`,
+        toolCallId: `skill-harness:phase_${index}`,
+        toolName: `skill-harness:phase_${index}`,
         params: { result: `hint ${index}` },
         status: "completed",
       }),
     );
 
     const result = renderStatusContent(
-      [...activeMemoryEntries, ...intentionHintEntries, ...normalEntries],
+      [...activeMemoryEntries, ...skillHarnessEntries, ...normalEntries],
       true,
     );
 
@@ -270,38 +270,38 @@ describe("renderStatusContent", () => {
     expect(result).toContain("🧩 active-memory: ←");
   });
 
-  it("renders intention-hint group with pending suffix", () => {
+  it("renders skill-harness group with pending suffix", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "intention-hint",
-        toolName: "intention-hint",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "pending",
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(result).toContain("💡 intention-hint: ←");
+    expect(result).toContain("💡 skill-harness: ←");
   });
 
-  it("renders intention-hint plain text result with a result label", () => {
+  it("renders skill-harness plain text result with a result label", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "intention-hint:result",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "INTENT:RESEARCH | GOAL: docs" },
         status: "completed",
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("💡 intention-hint: ✔");
+    expect(result).toContain("💡 skill-harness: ✔");
     expect(result).toContain('- result: "INTENT:RESEARCH | GOAL: docs"');
   });
 
-  it("quotes intention-hint JSON object string fields containing colons", () => {
+  it("quotes skill-harness JSON object string fields containing colons", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "intention-hint:result",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: {
           text: JSON.stringify({
             intent: "skill-lifecycle",
@@ -319,11 +319,11 @@ describe("renderStatusContent", () => {
     );
   });
 
-  it("renders intention-hint result as key-value when JSON object", () => {
+  it("renders skill-harness result as key-value when JSON object", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "intention-hint:result",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: {
           text: JSON.stringify({ intent: "RESEARCH", confidence: 0.9 }),
         },
@@ -331,16 +331,16 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("💡 intention-hint: ✔");
+    expect(result).toContain("💡 skill-harness: ✔");
     expect(result).toContain("- intent: RESEARCH");
     expect(result).toContain("     confidence: 0.9");
   });
 
-  it("renders multiple intention-hint JSON results without result wrappers", () => {
+  it("renders multiple skill-harness JSON results without result wrappers", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "intention-hint:result:1",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result:1",
+        toolName: "skill-harness:result",
         params: {
           text: JSON.stringify({
             keywords: ["收巡", "codex"],
@@ -353,8 +353,8 @@ describe("renderStatusContent", () => {
         status: "completed",
       },
       {
-        toolCallId: "intention-hint:result:2",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result:2",
+        toolName: "skill-harness:result",
         params: {
           text: JSON.stringify({
             intent: "code-review",
@@ -368,7 +368,7 @@ describe("renderStatusContent", () => {
     ];
 
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("💡 intention-hint: ✔");
+    expect(result).toContain("💡 skill-harness: ✔");
     expect(result).toContain('- keywords: ["收巡","codex"]');
     expect(result).toContain(
       "     topic: user requesting to check or review codex",
@@ -378,11 +378,11 @@ describe("renderStatusContent", () => {
     expect(result).not.toContain("- result:");
   });
 
-  it("renders string array intention-hint fields inline", () => {
+  it("renders string array skill-harness fields inline", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "intention-hint:phase",
-        toolName: "intention-hint:topic-continuity-check",
+        toolCallId: "skill-harness:phase",
+        toolName: "skill-harness:topic-continuity-check",
         params: {
           domain: "follow-up",
           keywords: ["再看", "一次"],
@@ -400,8 +400,8 @@ describe("renderStatusContent", () => {
   it("indents multiline phase result under the result key", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "intention-hint:phase",
-        toolName: "intention-hint:instruction-hint-generation",
+        toolCallId: "skill-harness:phase",
+        toolName: "skill-harness:instruction-hint-generation",
         params: {
           result: "Intent: memory-recent\n\nSuggested workflow",
         },
@@ -481,15 +481,15 @@ describe("renderStatusContent", () => {
         status: "completed",
       },
       {
-        toolCallId: "intention-hint:result",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "INTENT:RESEARCH" },
         status: "completed",
       },
     ];
     const result = renderStatusContent(entries, true);
     const amPos = result.indexOf("active-memory");
-    const ihPos = result.indexOf("intention-hint");
+    const ihPos = result.indexOf("skill-harness");
     const readPos = result.indexOf("read");
     expect(amPos).toBeLessThan(ihPos);
     expect(ihPos).toBeLessThan(readPos);
@@ -508,15 +508,15 @@ describe("renderStatusContent", () => {
         status: "completed",
       },
       {
-        toolCallId: "intention-hint:result",
-        toolName: "intention-hint:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "INTENT:RESEARCH" },
         status: "completed",
       },
     ];
     const result = renderStatusContent(entries, true);
     const amPos = result.indexOf("active-memory");
-    const ihPos = result.indexOf("intention-hint");
+    const ihPos = result.indexOf("skill-harness");
     const bashPos = result.indexOf("bash");
     expect(amPos).toBeLessThan(ihPos);
     expect(ihPos).toBeLessThan(bashPos);

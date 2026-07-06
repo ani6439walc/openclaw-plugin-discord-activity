@@ -23,7 +23,7 @@ describe("plugin", () => {
               enabled: true,
               config: { agents: ["test-agent"] },
             },
-            "intention-hint": {
+            "skill-harness": {
               enabled: true,
               config: { agents: ["test-agent"] },
             },
@@ -80,8 +80,8 @@ describe("plugin", () => {
       mockApi.agent.events.registerAgentEventSubscription,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "discord-tool-status:intention-hint-pipeline",
-        streams: ["plugin:intention-hint"],
+        id: "discord-tool-status:skill-harness-pipeline",
+        streams: ["plugin:skill-harness"],
         handle: expect.any(Function),
       }),
     );

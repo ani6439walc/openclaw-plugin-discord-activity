@@ -18,7 +18,7 @@ export function createSessionStore() {
         t.toolCallId !== "init" &&
         !(
           (t.toolCallId === "active-memory" ||
-            t.toolCallId === "intention-hint") &&
+            t.toolCallId === "skill-harness") &&
           t.status === "pending"
         ),
     );

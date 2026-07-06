@@ -205,8 +205,8 @@ describe("ToolHistoryManager", () => {
         status: "pending",
       },
       {
-        toolCallId: "intention-hint",
-        toolName: "intention-hint",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "pending",
       },

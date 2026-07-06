@@ -81,19 +81,19 @@ describe("createSessionStore", () => {
       expect(store.hasVisibleStatusState(session)).toBe(false);
     });
 
-    it("returns false for intention-hint placeholder only", () => {
+    it("returns false for skill-harness placeholder only", () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       const session = store.getOrCreateSession("discord:channel:123")!;
       session.toolHistory.push({
-        toolCallId: "intention-hint",
-        toolName: "intention-hint",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "pending",
       });
       expect(store.hasVisibleStatusState(session)).toBe(false);
     });
 
-    it("returns false for active-memory and intention-hint placeholders only", () => {
+    it("returns false for active-memory and skill-harness placeholders only", () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       const session = store.getOrCreateSession("discord:channel:123")!;
       session.toolHistory.push(
@@ -104,8 +104,8 @@ describe("createSessionStore", () => {
           status: "pending",
         },
         {
-          toolCallId: "intention-hint",
-          toolName: "intention-hint",
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
           params: {},
           status: "pending",
         },
