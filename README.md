@@ -3,30 +3,110 @@
 [![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://github.com/openclaw/openclaw)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Discord Tool Status is an OpenClaw plugin that makes agent activity visible in Discord. It creates one live YAML-formatted status message per Discord conversation, updates it as tools run, folds in internal `active-memory` and `skill-harness` subagent status, then deletes the message after the agent finishes.
+Discord Tool Status is an OpenClaw plugin that shows live agent/tool activity in Discord. For each Discord conversation, it creates one YAML-formatted status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
 
 ![Discord Tool Status Example](example.png)
 
-## 🚀 Key Features
+## What problem it solves
 
-- **Live Tool Monitoring**: Tracks `before_tool_call` and `after_tool_call` events as pending (`←`), completed (`✔`), errored (`✘`), or orphan-reconciled (`♻︎`) entries.
-- **YAML Status Rendering**: Renders compact Discord code blocks with semantic icons, tool parameters, durations, and error details.
-- **Subagent Visibility**: Shows `active-memory` and `skill-harness` as stable top-level groups, including final assistant result text when those internal sessions finish.
-- **Session Lifecycle Management**: Creates one status message per Discord context, edits it in place, avoids duplicate edits when content is unchanged, and schedules cleanup after finalization.
-- **Discord API Resilience**: Retries Discord `429` rate limits, transient `5xx` responses, and network errors with backoff.
-- **Context-Aware Routing**: Maps OpenClaw session keys to Discord channels, DMs, and conversations, including DM channel resolution and owner-session replacement.
-- **Orphan Tool Reconciliation**: Temporarily stores tool calls that arrive before a Discord session is known, then attaches them when the matching session appears.
+When an OpenClaw agent is working from Discord, long-running tool calls can otherwise look like silence. This plugin gives users and operators a lightweight progress view without changing the final assistant reply.
 
-## 🛠 Installation
+It helps answer:
 
-Install the plugin package where OpenClaw loads local plugins, then build it before enabling the extension entry:
+- Is the agent currently using tools?
+- Which tool or internal pipeline phase is running?
+- Did a tool complete, fail, or get reconciled after arriving before a Discord session existed?
+- How long did completed tools take?
+- Are internal companion workflows such as `active-memory` and `skill-harness` still running?
+
+The plugin is designed to fail open: if Discord credentials are missing or Discord API calls fail, it logs the problem and skips status updates instead of blocking the agent flow.
+
+## What it shows
+
+Status messages are Discord YAML code blocks. Internal subagent groups appear before normal tools:
+
+```yaml
+🧩 active-memory: ✔
+   - memory_search: ✔ (120ms)
+     - query: project notes
+   - result: Relevant memory found
+
+💡 skill-harness: ✔
+   - intent: code-review
+     reason: User asked for a review
+     confidence: 0.92
+
+🔍 web_search: ✔ (450ms)
+   - query: OpenClaw plugin SDK
+```
+
+Status markers:
+
+- `←` pending or currently visible as the latest non-final completed entry.
+- `✔` completed.
+- `✘` errored.
+- `♻︎` orphan-reconciled after the tool result arrived before the Discord session was known.
+
+Rendering rules to preserve:
+
+- Normal tools render after `active-memory` and `skill-harness` groups.
+- `active-memory` and `skill-harness` group order is stable.
+- `skill-harness` JSON object results flatten to key-value fields.
+- `skill-harness` plain text results render as `result: <text>`.
+- `active-memory` result text renders as `result: <text>`.
+- Status output keeps up to 6 normal tool entries, 6 `active-memory` child entries, and 6 `skill-harness` child entries independently.
+- Overlong status messages are trimmed to fit the configured Discord message limit.
+
+## How it works
+
+The plugin listens to OpenClaw runtime events and maps them to one active Discord status message per Discord conversation.
+
+1. **`message_received`** resolves the Discord context, records channel/message metadata, and starts or replaces the active session for the conversation.
+2. **`before_tool_call`** adds a pending tool entry. If the Discord session is not known yet, the tool call is stored as an orphan.
+3. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves completed duration data, and updates the status message.
+4. **`before_agent_reply` / `message_sending`** finalize visible status before the final user-facing reply is sent.
+5. **`agent_end`** handles main-session cleanup and captures final `active-memory` output from its internal session.
+6. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
+
+Session and race-safety behavior:
+
+- Each session serializes Discord create/edit/delete operations through `pendingOp`.
+- `generation`, `ownerSessionKey`, `finalized`, and current-session checks prevent stale events from editing a replacement session.
+- Finalized sessions do not create duplicate status messages from late tool events.
+- Direct-message sessions can resolve a Discord DM channel before sending.
+- Codex/OpenClaw-prefixed tool names such as `openclawskill_view` display immediately as canonical names such as `skill_view`.
+
+## Architecture
+
+The repository is a small TypeScript plugin with focused runtime modules and colocated tests. The main runtime hotspot is `src/hooks.ts`; keep new behavior in smaller helpers when possible instead of growing hook orchestration unnecessarily.
+
+| Path                                | Responsibility                                                                                                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/plugin.ts`                     | Plugin assembly: config resolution, token resolver, companion-plugin enablement checks, shared runtime state, and hook registration.                                    |
+| `src/hooks.ts`                      | OpenClaw hook behavior: session routing, tool lifecycle updates, subagent placeholders/results, orphan reconciliation, finalization, and skill-harness pipeline events. |
+| `src/session.ts`                    | Discord status message lifecycle: send, edit, retire, delete, pending operation serialization, cleanup timers, and max-display handling.                                |
+| `src/store.ts`                      | Active session and Discord context tracking.                                                                                                                            |
+| `src/enhanced-orphans.ts`           | Temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.                                                                  |
+| `src/parser.ts`                     | Session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.                                                    |
+| `src/render.ts`                     | Pure rendering from tool history to YAML status content.                                                                                                                |
+| `src/formatting.ts`                 | Icons and YAML-safe parameter formatting.                                                                                                                               |
+| `src/discord-api.ts`                | Discord REST calls, rate-limit retry, server-error retry, network-error retry, and DM channel resolution.                                                               |
+| `src/discord-message-operations.ts` | Token-gated send/edit/delete operations around the Discord API layer, including DM fallback.                                                                            |
+| `src/tool-history-manager.ts`       | Tool-history add/update/replace/trim helpers and subagent group operations.                                                                                             |
+| `src/config.ts`                     | Zod-backed plugin config parsing and defaults.                                                                                                                          |
+| `src/types.ts`                      | Shared event, session, store, and tool-entry types.                                                                                                                     |
+| `api.ts`, `index.ts`, `token.ts`    | Plugin SDK bridge, exported plugin entrypoint, and Discord token resolution.                                                                                            |
+
+## Installation
+
+Install the plugin package wherever your OpenClaw deployment loads local plugins, then install dependencies and build the extension:
 
 ```bash
 pnpm install
 pnpm run build
 ```
 
-Enable the extension in your `openclaw.plugin.json` or main configuration:
+Enable the plugin in your OpenClaw plugin configuration:
 
 ```json
 {
@@ -44,90 +124,78 @@ Enable the extension in your `openclaw.plugin.json` or main configuration:
 }
 ```
 
-The plugin activates on startup for the `discord` channel. Discord bot credentials are resolved from OpenClaw's account/secret configuration through the plugin SDK.
+The plugin manifest activates on startup for the `discord` channel:
 
-## 🧪 Commands
+```json
+{
+  "activation": {
+    "onStartup": true,
+    "onChannels": ["discord"]
+  }
+}
+```
+
+Discord bot credentials are resolved through OpenClaw account/secret configuration by the plugin SDK. Keep Discord credentials in the OpenClaw Discord channel/account configuration or secret store; do not hard-code credentials in this plugin.
+
+## Configuration
+
+| Property                 | Type     | Default  | Description                                                        |
+| ------------------------ | -------- | -------- | ------------------------------------------------------------------ |
+| `maxToolHistoryLength`   | `number` | `30`     | Maximum number of tool entries retained in memory before trimming. |
+| `maxStatusMessageLength` | `number` | `1700`   | Maximum rendered Discord status message length.                    |
+| `maxDisplayMs`           | `number` | `600000` | Maximum time a status message may remain before force cleanup.     |
+| `orphanTtlMs`            | `number` | `300000` | Time to keep orphaned tool calls while waiting for a session link. |
+
+Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 normal entries, 6 `active-memory` children, and 6 `skill-harness` children in the visible status message.
+
+## Companion workflows
+
+Discord Tool Status is useful beside plugins that run longer tool workflows from Discord. For example, if public X/Twitter automation is handled by TweetClaw, install and configure TweetClaw separately while using Discord Tool Status for progress visibility.
+
+Visible external actions such as posting tweets, sending replies, or direct messages should still use OpenClaw's normal approval flow. This plugin only reports progress; it does not grant approval or bypass safety controls.
+
+## Development guide
+
+Use `pnpm` for all local commands.
 
 ```bash
+pnpm run format      # Prettier for Markdown, JSON, and TypeScript
+pnpm run typecheck   # TypeScript, no emit
+pnpm run test        # Full Vitest suite
+pnpm run build       # Compile to dist/
+```
+
+Before handing off code changes, run at least:
+
+```bash
+pnpm run format
 pnpm run typecheck
 pnpm run test
-pnpm run build
-pnpm run format
 ```
 
-## ⚙️ Configuration
+Run `pnpm run build` when changing plugin registration, package metadata, SDK imports, emitted behavior, release artifacts, or anything that depends on `dist/` output.
 
-The plugin can be customized via the `config` object in your OpenClaw settings:
+Testing map:
 
-| Property                 | Type     | Default  | Description                                                                           |
-| :----------------------- | :------- | :------- | :------------------------------------------------------------------------------------ |
-| `maxToolHistoryLength`   | `number` | `30`     | Maximum number of tool calls to keep in history.                                      |
-| `maxStatusMessageLength` | `number` | `1700`   | Character limit for the Discord message content.                                      |
-| `maxDisplayMs`           | `number` | `600000` | Force-delete the status message after this duration (ms) to prevent stale indicators. |
-| `orphanTtlMs`            | `number` | `300000` | Time to keep orphaned tool calls in memory while waiting for a session link.          |
+- Config parsing/defaults: `src/config.test.ts`.
+- Rendering behavior: `src/render.test.ts`.
+- Session message lifecycle, pending operation serialization, cleanup, and DM fallback: `src/session.test.ts`.
+- Store ownership/current-session behavior: `src/store.test.ts`.
+- Orphan tool behavior: `src/enhanced-orphans.test.ts`.
+- Hook-level routing and lifecycle behavior: `src/hooks.test.ts`.
+- Plugin registration and manifest-facing behavior: `src/plugin.test.ts` and `src/plugin.integration.test.ts`.
+- Tool-history helper behavior: `src/tool-history-manager.test.ts`.
 
-## 🖼 Status Format
+Package hygiene note: this package publishes `dist/`. The current `tsconfig.json` includes root `./*.ts`, and the build script is plain `tsc`, so `pnpm pack --dry-run` currently includes root tooling outputs such as `dist/vitest.config.*` and `dist/test-helpers.*`. If you change build or release behavior, verify the publish contents and prefer a clean build plus explicit runtime-only TypeScript includes.
 
-Status messages are rendered as YAML code blocks. Normal tools appear after internal subagent groups:
+## Security and performance
 
-```yaml
-🧩 active-memory: ✔
-   - memory_search: ✔ (120ms)
-     - query: project notes
-   - result: Relevant memory found
-
-💡 skill-harness: ✔
-   - intent: code-review
-     reason: User asked for a review
-     confidence: 0.92
-
-🔍 web_search: ✔ (450ms)
-   - query: OpenClaw plugin SDK
-```
-
-`skill-harness` JSON object results are flattened into key-value fields. Plain text results are labeled as `result:` so they do not appear as unlabeled list items.
-
-The status display keeps up to 6 normal tool entries, up to 6 `active-memory` child entries, and up to 6 `skill-harness` child entries independently. Subagent `result` entries are rendered after other child entries.
-
-## Companion X/Twitter workflows
-
-Discord Tool Status makes long-running OpenClaw tool calls visible in Discord. If those calls include public X/Twitter automation, install [TweetClaw](https://github.com/Xquik-dev/tweetclaw) beside it:
-
-```bash
-openclaw plugins install @xquik/tweetclaw
-```
-
-Use Discord Tool Status to show live progress for TweetClaw tool calls such as search tweets, search tweet replies, follower export, user lookup, media upload/download, monitor tweets, webhooks, and giveaway draws. For visible actions such as post tweets, post tweet replies, and direct messages, keep the status message visible while OpenClaw collects approval. Keep Discord credentials in this plugin's config or OpenClaw secret store; keep TweetClaw/Xquik credentials in TweetClaw's plugin config or host environment.
-
-## 🏗 Architecture
-
-The plugin is organized around a thin entrypoint and focused runtime modules:
-
-- `src/plugin.ts`: resolves plugin config, token resolution, companion plugin enablement checks, and hook registration.
-- `src/hooks.ts`: owns OpenClaw hook behavior, session routing, tool lifecycle updates, subagent placeholders, and finalization.
-- `src/session.ts`: sends, edits, retires, and deletes Discord status messages while serializing pending message operations per session.
-- `src/store.ts`: tracks active sessions and Discord context metadata.
-- `src/orphans.ts`: holds tool calls that arrive before a session can be resolved.
-- `src/parser.ts`: extracts Discord context keys, source session keys, and final subagent result entries.
-- `src/render.ts` and `src/formatting.ts`: render tool history into YAML-friendly Discord content.
-- `src/discord-api.ts`: wraps Discord REST calls with retry and rate-limit handling.
-
-Runtime flow:
-
-1. **`message_received`**: Initializes the session context and maps the Discord channel/message metadata.
-2. **`before_tool_call`**: Adds a pending tool entry or stores an orphan when no Discord session is available yet.
-3. **`after_tool_call`**: Marks the entry completed, errored, or orphan-reconciled, then updates the status message.
-4. **`before_agent_reply` / `message_sending`**: Finalizes visible status before the user-facing reply is sent.
-5. **`agent_end`**: Captures `active-memory` and `skill-harness` final results, finalizes the parent Discord status, and schedules cleanup.
-
-## 🔒 Security & Performance
-
-- **Token Protection**: Resolves Discord credentials securely through the OpenClaw secret management system.
-- **Minimal Overhead**: Uses a non-blocking, asynchronous architecture to ensure that status updates do not increase agent latency.
-- **Per-Session Serialization**: Chains pending Discord message operations to avoid racing create/edit/delete calls for the same status message.
-- **Rate Limit Awareness**: Honors Discord `retry-after` values and retries transient failures before giving up.
-- **Automatic Cleanup**: Deletes finalized status messages after the configured delay and force-cleans stale messages after `maxDisplayMs`.
+- Discord tokens are resolved through OpenClaw configuration/secret handling.
+- Discord API failures are logged and skipped so agent replies are not blocked.
+- Discord REST calls retry rate limits, transient server errors, and network errors.
+- Per-session message operations are serialized to avoid create/edit/delete races.
+- Finalized status messages are deleted after cleanup and force-cleaned after `maxDisplayMs`.
 
 ---
 
-_🌸 Powered by Ani, Wan Jiun Wei © 2026_
+Powered by Ani, Wan Jiun Wei © 2026

@@ -11,6 +11,7 @@ export type ToolEntry = {
   toolName: string;
   params: any;
   status: "pending" | "completed" | "error" | "orphan-completed";
+  startedAtMs?: number;
   durationMs?: number;
   error?: string;
 };

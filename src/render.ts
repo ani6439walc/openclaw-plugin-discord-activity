@@ -35,6 +35,29 @@ function isSubagentResultEntry(entry: ToolEntry, prefix: string): boolean {
   return entry.toolName === `${prefix}:result`;
 }
 
+function getDisplayToolName(toolName: string): string {
+  const trimmed = toolName.trim();
+  const normalized = trimmed.toLowerCase();
+  if (!normalized.startsWith("openclaw")) {
+    return toolName;
+  }
+
+  let suffix = trimmed.slice("openclaw".length);
+  if (!suffix) {
+    return toolName;
+  }
+
+  if ([".", ":", "/", "_", "-"].includes(suffix[0] ?? "")) {
+    suffix = suffix.slice(1);
+  }
+
+  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(suffix)) {
+    return toolName;
+  }
+
+  return suffix;
+}
+
 function sortSubagentChildEntries(
   entries: readonly ToolEntry[],
   prefix: string,
@@ -84,7 +107,9 @@ function renderNestedToolEntry(
     );
   }
 
-  const strippedName = entry.toolName.slice(prefix.length + 1);
+  const strippedName = getDisplayToolName(
+    entry.toolName.slice(prefix.length + 1),
+  );
   const pStr = formatParams(entry.params, {
     first: "     - ",
     rest: "       ",
@@ -125,6 +150,7 @@ function renderSubagentGroup(
 
 function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
   const icon = getToolIcon(t.toolName);
+  const toolName = getDisplayToolName(t.toolName);
   const pStr = formatParams(t.params);
   const done =
     t.status === "completed" ||
@@ -142,7 +168,7 @@ function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
   }
   const dur = formatDuration(t);
   const errorLine = formatErrorLine(t);
-  return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}${errorLine}`;
+  return `${icon} ${toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}${errorLine}`;
 }
 
 function renderActiveMemoryGroup(

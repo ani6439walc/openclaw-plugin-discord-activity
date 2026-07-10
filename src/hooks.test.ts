@@ -317,6 +317,31 @@ describe("createHookHandlers", () => {
       );
     });
 
+    it("renders Codex/OpenClaw prefixed tool names with the canonical display name immediately", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", {
+        actualChannelId: "123",
+        accountId: "default",
+      });
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "openclawskill_view",
+          params: { name: "openclaw" },
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "openclawskill_view",
+          toolCallId: "call_1",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.lastRenderedContent).toContain("skill_view: ←");
+      expect(session?.lastRenderedContent).not.toContain("openclawskill_view");
+    });
+
     it("dedupes Codex/OpenClaw tool events with different ids but matching canonical tool and params", async () => {
       createDiscordFetchMock();
       store.contexts.set("discord:channel:123", {
@@ -1161,6 +1186,68 @@ describe("createHookHandlers", () => {
           error: "classifier crashed",
         }),
       );
+    });
+
+    it("calculates skill-harness phase duration from first to final pipeline event", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isSkillHarnessEnabled.mockReturnValue(true);
+      const nowSpy = vi.spyOn(Date, "now");
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      nowSpy.mockReturnValueOnce(1_000);
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "topic-triage",
+          state: "started",
+          domain: "openclaw-platform",
+        },
+      });
+
+      nowSpy.mockReturnValueOnce(2_100);
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "topic-triage",
+          state: "completed",
+          domain: "openclaw-platform",
+          topic: "User approves deletion of workspace-doc-maintenance.",
+        },
+      });
+
+      const session = store.sessions.get("discord:direct:123");
+      const entry = session?.toolHistory.find(
+        (tool) => tool.toolCallId === "skill-harness:run-1:topic-triage",
+      );
+      expect(entry).toEqual(
+        expect.objectContaining({
+          status: "completed",
+          startedAtMs: 1_000,
+          durationMs: 1_100,
+        }),
+      );
+      expect(session?.lastRenderedContent).toContain(
+        "💡 skill-harness: ✔ (1,100ms)",
+      );
+      expect(session?.lastRenderedContent).toContain(
+        "- topic-triage: ✔ (1,100ms)",
+      );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
     it("does not render duplicate skill-harness pipeline events twice", async () => {

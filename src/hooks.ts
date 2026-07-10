@@ -225,6 +225,28 @@ function parseSkillHarnessPipelineEntry(
   };
 }
 
+function applySkillHarnessTiming(
+  entry: ToolEntry,
+  existingEntry: ToolEntry | undefined,
+  observedAtMs: number,
+): ToolEntry {
+  const startedAtMs = existingEntry?.startedAtMs ?? observedAtMs;
+  const isFinished = entry.status === "completed" || entry.status === "error";
+  const durationMs = isFinished
+    ? (existingEntry?.durationMs ??
+      (existingEntry?.status !== "pending" ||
+      existingEntry.startedAtMs === undefined
+        ? undefined
+        : Math.max(0, observedAtMs - startedAtMs)))
+    : existingEntry?.durationMs;
+
+  return {
+    ...entry,
+    startedAtMs,
+    durationMs,
+  };
+}
+
 function buildPendingSubagentEntries(
   agentId: string | undefined,
   isActiveMemoryEnabled: (agentId: string) => boolean,
@@ -737,6 +759,7 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onSkillHarnessPipelineEvent(event: AgentPipelineEvent) {
+    const observedAtMs = Date.now();
     const sessionKey =
       event.sessionKey ??
       (typeof event.data?.sessionKey === "string"
@@ -763,14 +786,20 @@ export function createHookHandlers(deps: HookDeps) {
     const existingEntry = existingChildEntries.find(
       (tool) => tool.toolCallId === entry.toolCallId,
     );
+    const timedEntry = applySkillHarnessTiming(
+      entry,
+      existingEntry,
+      observedAtMs,
+    );
     const nextEntry =
-      existingEntry?.status === "completed" && entry.status === "pending"
+      existingEntry?.status === "completed" && timedEntry.status === "pending"
         ? existingEntry
-        : entry;
+        : timedEntry;
     if (
       existingEntry &&
       existingEntry.status === nextEntry.status &&
       existingEntry.error === nextEntry.error &&
+      existingEntry.durationMs === nextEntry.durationMs &&
       JSON.stringify(existingEntry.params ?? {}) ===
         JSON.stringify(nextEntry.params ?? {})
     ) {

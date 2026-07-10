@@ -27,6 +27,8 @@ pnpm run format             # Prettier for md/json/ts files
 
 Run `pnpm run typecheck` and `pnpm run test` before handing off code changes. Run `pnpm run build` when changing plugin registration, package metadata, SDK imports, emitted behavior, or anything that depends on `dist/` output. Run `pnpm run format` after editing Markdown, JSON, or TypeScript.
 
+Current package-shape caveat: `package.json` publishes `dist`, while `tsconfig.json` currently includes root `./*.ts` and `pnpm run build` is plain `tsc`. `pnpm pack --dry-run` therefore includes root tooling outputs such as `dist/vitest.config.*` and `dist/test-helpers.*` unless the build config is tightened and `dist/` is cleaned before compile. If you touch package/build/release behavior, verify with `pnpm run build` and `pnpm pack --dry-run`, and prefer narrowing `tsconfig.json` includes to runtime entries (`api.ts`, `index.ts`, `token.ts`, `src/**/*.ts`) plus a clean build step.
+
 ## Source Map
 
 Keep the current module boundaries:
@@ -35,16 +37,22 @@ Keep the current module boundaries:
 - `src/hooks.ts`: OpenClaw hook behavior. Own session routing, tool lifecycle updates, subagent placeholder/result handling, orphan reconciliation, and finalization.
 - `src/session.ts`: Discord status message lifecycle. Send, edit, retire, delete, serialize pending message operations, handle DM fallback, and enforce max display cleanup.
 - `src/store.ts`: active session and Discord context tracking.
-- `src/orphans.ts`: temporary storage for tool calls that arrive before a Discord session is available.
+- `src/enhanced-orphans.ts`: temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.
 - `src/parser.ts`: session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.
 - `src/render.ts`: convert tool history into YAML Discord status content.
 - `src/formatting.ts`: icons and parameter formatting helpers.
 - `src/discord-api.ts`: Discord REST calls, rate-limit retry, server-error retry, and DM channel resolution.
+- `src/discord-message-operations.ts`: token-gated send/edit/delete wrapper around Discord API calls, including DM fallback.
+- `src/tool-history-manager.ts`: focused helper for tool-history add/update/replace/trim operations and subagent groups.
 - `src/config.ts`: Zod-backed plugin config parsing and defaults.
 - `src/types.ts`: shared event, session, store, and tool-entry types.
+- `api.ts`, `index.ts`, `token.ts`: plugin SDK bridge, exported plugin entrypoint, and Discord token resolution.
+- `test-helpers.ts`, `vitest.config.ts`: test-only support; these should not be published as runtime artifacts.
 - `src/*.test.ts`: colocated Vitest coverage for each module.
 - `openclaw.plugin.json`: manifest-visible activation and config schema.
 - `README.md`: user-facing behavior, config, architecture, and workflows.
+
+Latest codebase inspection: this repo is a small TypeScript plugin, not a large application. Excluding dependencies/build/indexes, pygount reports about 4.6k code lines total and 4.2k TypeScript code lines. Direct line counts show about 2.9k runtime TypeScript lines and 3.5k test TypeScript lines, so tests are larger than runtime (`~1.22x`). The main complexity hotspot is `src/hooks.ts`; keep new behavior out of it unless hook orchestration genuinely belongs there.
 
 ## Runtime Behavior
 
@@ -54,7 +62,8 @@ The core flow is:
 2. `before_tool_call` adds a pending tool entry, or stores an orphan when no Discord session is known yet.
 3. `after_tool_call` marks entries completed, errored, or orphan-reconciled, then updates the Discord status message.
 4. `before_agent_reply` and `message_sending` finalize visible status before the final user-facing reply.
-5. `agent_end` handles main-session cleanup and captures final internal subagent output for `active-memory` and `skill-harness` sessions.
+5. `agent_end` handles main-session cleanup and captures final `active-memory` output from its internal session. Legacy `skill-harness` `agent_end` result rendering is intentionally ignored.
+6. `skill-harness` status comes from the `plugin:skill-harness` pipeline event subscription, not from ordinary tool-call hooks.
 
 Important behavior to preserve:
 
@@ -64,6 +73,8 @@ Important behavior to preserve:
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`; do not let them become unlabeled list items.
 - `active-memory` result text renders as `result: <text>`.
+- Codex/OpenClaw-prefixed tool names such as `openclawskill_view` should display as their canonical tool names (`skill_view`) immediately; avoid visible name flicker.
+- If a duplicate completion event omits `durationMs`, preserve the existing completed duration instead of erasing it from the status.
 - Finalized sessions should not create duplicate status messages from late tool events.
 - Per-session Discord operations must remain serialized through `pendingOp` to avoid create/edit/delete races.
 - DM sessions may need `resolveDmChannel()` before sending.
@@ -78,6 +89,7 @@ Important behavior to preserve:
 - Keep `src/plugin.ts` thin. If behavior grows, put it in `hooks.ts`, `session.ts`, or a focused helper module.
 - Keep Discord API logic in `src/discord-api.ts`; do not call `fetch()` directly from hooks or renderers.
 - Keep rendering pure in `src/render.ts` and `src/formatting.ts`; do not add Discord API calls or session mutation there.
+- Keep OpenClaw/Codex tool-name canonicalization consistent between hook dedupe and rendering. If more prefix rules are added, extract a shared helper instead of duplicating divergent regexes.
 - Keep hook code fail-open. Log non-fatal failures with `logger.warn()` and avoid blocking the main agent reply.
 - Do not remove cleanup guards involving `generation`, `ownerSessionKey`, `finalized`, or `isCurrentSession()` unless tests prove the race is impossible.
 - Do not broaden a bugfix PR with unrelated renderer, store, or SDK refactors.
@@ -93,11 +105,15 @@ Typical mapping:
 - Rendering behavior: `src/render.test.ts`.
 - Session message lifecycle, pending operation serialization, cleanup, and DM fallback: `src/session.test.ts`.
 - Store ownership/current-session behavior: `src/store.test.ts`.
-- Orphan tool behavior: `src/orphans.test.ts`.
+- Orphan tool behavior: `src/enhanced-orphans.test.ts`.
 - Hook-level routing and lifecycle behavior: `src/hooks.test.ts`.
 - Plugin registration and manifest-facing behavior: `src/plugin.test.ts`.
+- Tool-history helper behavior: `src/tool-history-manager.test.ts`.
+- Package/build hygiene changes: run `pnpm run build` and inspect `pnpm pack --dry-run` output for unwanted `dist/vitest.config.*`, `dist/test-helpers.*`, stale renamed files, or missing runtime files.
 
 Bug fixes should include a regression test that fails before the fix. For formatter changes, include both direct renderer tests and hook-level tests when the issue appears in real Discord status content.
+
+CodeGraph currently reports these affected tests for core runtime files (`src/hooks.ts`, `src/render.ts`, `src/session.ts`, `src/discord-api.ts`): `src/hooks.test.ts`, `src/plugin.integration.test.ts`, `src/plugin.test.ts`, `src/render.test.ts`, `src/session.test.ts`, and `src/store.test.ts`.
 
 ## Documentation Updates
 
@@ -117,7 +133,7 @@ codegraph node createHookHandlers
 codegraph node renderStatusContent
 ```
 
-If CodeGraph was used for analysis and code changed afterward, run `codegraph sync` before handing off.
+For codebase-size or package-shape claims, also verify with `pygount` and `pnpm pack --dry-run`; CodeGraph describes indexed code structure, not publish contents or non-code asset weight. If CodeGraph was used for analysis and code changed afterward, run `codegraph sync` before handing off.
 
 ## Git and PR Workflow
 
