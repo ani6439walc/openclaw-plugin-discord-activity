@@ -78,26 +78,6 @@ export class ToolHistoryManager {
   }
 
   /**
-   * Finds a tool entry by toolCallId
-   */
-  findByToolCallId(
-    history: ToolEntry[],
-    toolCallId: string,
-  ): ToolEntry | undefined {
-    return history.find((t) => t.toolCallId === toolCallId);
-  }
-
-  /**
-   * Finds all entries matching a given predicate
-   */
-  find(
-    history: ToolEntry[],
-    predicate: (entry: ToolEntry) => boolean,
-  ): ToolEntry[] {
-    return history.filter(predicate);
-  }
-
-  /**
    * Trims the history to the maximum allowed length
    */
   trim(history: ToolEntry[]): void {
@@ -118,16 +98,6 @@ export class ToolHistoryManager {
    */
   isSubagentChildEntry(entry: ToolEntry, prefix: SubagentToolName): boolean {
     return entry.toolName.startsWith(`${prefix}:`);
-  }
-
-  /**
-   * Finds all subagent entries for a given prefix
-   */
-  findSubagentEntries(
-    history: ToolEntry[],
-    prefix: SubagentToolName,
-  ): ToolEntry[] {
-    return history.filter((entry) => this.isSubagentEntry(entry, prefix));
   }
 
   /**
@@ -173,36 +143,5 @@ export class ToolHistoryManager {
       endIdx++;
     }
     history.splice(startIdx, endIdx - startIdx, ...replacements);
-  }
-
-  /**
-   * Removes all entries from history
-   */
-  clear(history: ToolEntry[]): void {
-    history.length = 0;
-  }
-
-  /**
-   * Gets the count of pending tool entries
-   */
-  getPendingCount(history: ToolEntry[]): number {
-    return history.filter((entry) => entry.status === "pending").length;
-  }
-
-  /**
-   * Gets the count of completed tool entries
-   */
-  getCompletedCount(history: ToolEntry[]): number {
-    return history.filter(
-      (entry) =>
-        entry.status === "completed" || entry.status === "orphan-completed",
-    ).length;
-  }
-
-  /**
-   * Gets the count of errored tool entries
-   */
-  getErrorCount(history: ToolEntry[]): number {
-    return history.filter((entry) => entry.status === "error").length;
   }
 }

@@ -54,6 +54,8 @@ Rendering rules to preserve:
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
 - `active-memory` result text renders as `result: <text>`.
+- Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
+- Durations below 1000ms render in milliseconds. Durations of 1000ms or more render as seconds rounded to the nearest whole number.
 - Status output keeps up to 6 normal tool entries, 6 `active-memory` child entries, and 6 `skill-harness` child entries independently.
 - Overlong status messages are trimmed to fit the configured Discord message limit.
 
@@ -63,7 +65,7 @@ The plugin listens to OpenClaw runtime events and maps them to one active Discor
 
 1. **`message_received`** resolves the Discord context, records channel/message metadata, and starts or replaces the active session for the conversation.
 2. **`before_tool_call`** adds a pending tool entry. If the Discord session is not known yet, the tool call is stored as an orphan.
-3. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves completed duration data, and updates the status message.
+3. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves or derives completed duration data, and updates the status message.
 4. **`before_agent_reply` / `message_sending`** finalize visible status before the final user-facing reply is sent.
 5. **`agent_end`** handles main-session cleanup and captures final `active-memory` output from its internal session.
 6. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
@@ -86,14 +88,14 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 | `src/hooks.ts`                      | OpenClaw hook orchestration: session routing, tool lifecycle updates, subagent placeholders/results, orphan reconciliation, and finalization. |
 | `src/session.ts`                    | Discord status message lifecycle: send, edit, retire, delete, pending operation serialization, cleanup timers, and max-display handling.      |
 | `src/store.ts`                      | Active session and Discord context tracking.                                                                                                  |
-| `src/enhanced-orphans.ts`           | Temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.                                        |
+| `src/orphans.ts`                    | Temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.                                        |
 | `src/parser.ts`                     | Session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.                          |
 | `src/render.ts`                     | Pure rendering from tool history to YAML status content.                                                                                      |
 | `src/formatting.ts`                 | Icons and YAML-safe parameter formatting.                                                                                                     |
 | `src/tool-name.ts`                  | Shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.                                                    |
 | `src/skill-harness-status.ts`       | Skill-harness pipeline parsing, visible-field filtering, child duration calculation, and duplicate phase merging.                             |
 | `src/discord-api.ts`                | Discord REST calls, rate-limit retry, server-error retry, network-error retry, and DM channel resolution.                                     |
-| `src/discord-message-operations.ts` | Token-gated send/edit/delete operations around the Discord API layer, including DM fallback.                                                  |
+| `src/discord-message-operations.ts` | Token-gated send/edit/delete functions around the Discord API layer, including DM fallback.                                                   |
 | `src/tool-history-manager.ts`       | Tool-history add/update/replace/trim helpers and subagent group operations.                                                                   |
 | `src/config.ts`                     | Zod-backed plugin config parsing and defaults.                                                                                                |
 | `src/types.ts`                      | Shared event, session, store, and tool-entry types.                                                                                           |
@@ -183,7 +185,7 @@ Testing map:
 - Rendering behavior: `src/render.test.ts`.
 - Session message lifecycle, pending operation serialization, cleanup, and DM fallback: `src/session.test.ts`.
 - Store ownership/current-session behavior: `src/store.test.ts`.
-- Orphan tool behavior: `src/enhanced-orphans.test.ts`.
+- Orphan tool behavior: `src/orphans.test.ts`.
 - Hook-level routing and lifecycle behavior: `src/hooks.test.ts`.
 - Plugin registration and manifest-facing behavior: `src/plugin.test.ts` and `src/plugin.integration.test.ts`.
 - Tool-history helper behavior: `src/tool-history-manager.test.ts`.

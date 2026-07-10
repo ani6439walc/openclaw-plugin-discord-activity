@@ -37,14 +37,14 @@ Keep the current module boundaries:
 - `src/hooks.ts`: OpenClaw hook behavior. Own session routing, tool lifecycle updates, subagent placeholder/result handling, orphan reconciliation, and finalization.
 - `src/session.ts`: Discord status message lifecycle. Send, edit, retire, delete, serialize pending message operations, handle DM fallback, and enforce max display cleanup.
 - `src/store.ts`: active session and Discord context tracking.
-- `src/enhanced-orphans.ts`: temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.
+- `src/orphans.ts`: temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.
 - `src/parser.ts`: session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.
 - `src/render.ts`: convert tool history into YAML Discord status content.
 - `src/formatting.ts`: icons and parameter formatting helpers.
 - `src/tool-name.ts`: shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.
 - `src/skill-harness-status.ts`: parse `plugin:skill-harness` pipeline events, sanitize visible fields, compute child durations, and merge duplicate phase updates.
 - `src/discord-api.ts`: Discord REST calls, rate-limit retry, server-error retry, and DM channel resolution.
-- `src/discord-message-operations.ts`: token-gated send/edit/delete wrapper around Discord API calls, including DM fallback.
+- `src/discord-message-operations.ts`: token-gated send/edit/delete functions around Discord API calls, including DM fallback.
 - `src/tool-history-manager.ts`: focused helper for tool-history add/update/replace/trim operations and subagent groups.
 - `src/config.ts`: Zod-backed plugin config parsing and defaults.
 - `src/types.ts`: shared event, session, store, and tool-entry types.
@@ -54,7 +54,7 @@ Keep the current module boundaries:
 - `openclaw.plugin.json`: manifest-visible activation and config schema.
 - `README.md`: user-facing behavior, config, architecture, and workflows.
 
-Latest codebase inspection: this repo is a small TypeScript plugin, not a large application. Excluding dependencies/build/indexes, pygount reports about 4.6k code lines total and 4.2k TypeScript code lines. Direct line counts show about 2.9k runtime TypeScript lines and 3.5k test TypeScript lines, so tests are larger than runtime (`~1.22x`). The main complexity hotspot is `src/hooks.ts`; keep new behavior out of it unless hook orchestration genuinely belongs there.
+Latest codebase inspection: this repo is a small TypeScript plugin, not a large application. Excluding dependencies/build/indexes, pygount reports about 4.0k TypeScript code lines. Direct line counts show about 2.8k runtime TypeScript lines and 3.2k test/tooling TypeScript lines, so tests remain larger than runtime (`~1.16x`). The main complexity hotspot is `src/hooks.ts`; keep new behavior out of it unless hook orchestration genuinely belongs there.
 
 ## Runtime Behavior
 
@@ -76,7 +76,8 @@ Important behavior to preserve:
 - `skill-harness` plain text results render as `result: <text>`; do not let them become unlabeled list items.
 - `active-memory` result text renders as `result: <text>`.
 - Codex/OpenClaw-prefixed tool names such as `openclawskill_view` should display as their canonical tool names (`skill_view`) immediately; avoid visible name flicker.
-- If a duplicate completion event omits `durationMs`, preserve the existing completed duration instead of erasing it from the status.
+- Prefer a tool-provided `durationMs`; when it is absent, derive elapsed time from the first observed `before_tool_call`. Preserve that value across duplicate terminal events instead of erasing or recalculating it.
+- Render durations below 1000ms in milliseconds; render durations of 1000ms or more as seconds rounded to the nearest whole number.
 - Finalized sessions should not create duplicate status messages from late tool events.
 - Per-session Discord operations must remain serialized through `pendingOp` to avoid create/edit/delete races.
 - DM sessions may need `resolveDmChannel()` before sending.
@@ -107,7 +108,7 @@ Typical mapping:
 - Rendering behavior: `src/render.test.ts`.
 - Session message lifecycle, pending operation serialization, cleanup, and DM fallback: `src/session.test.ts`.
 - Store ownership/current-session behavior: `src/store.test.ts`.
-- Orphan tool behavior: `src/enhanced-orphans.test.ts`.
+- Orphan tool behavior: `src/orphans.test.ts`.
 - Hook-level routing and lifecycle behavior: `src/hooks.test.ts`.
 - Plugin registration and manifest-facing behavior: `src/plugin.test.ts`.
 - Tool-history helper behavior: `src/tool-history-manager.test.ts`.

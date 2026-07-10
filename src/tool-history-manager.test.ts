@@ -69,42 +69,6 @@ describe("ToolHistoryManager", () => {
     expect(history[0].status).toBe("pending"); // Should remain unchanged
   });
 
-  it("should find a tool entry by toolCallId", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call123",
-        toolName: "web_search",
-        params: { query: "hello world" },
-        status: "pending",
-      },
-      {
-        toolCallId: "call456",
-        toolName: "bash",
-        params: { command: "ls" },
-        status: "completed",
-      },
-    ];
-
-    const found = manager.findByToolCallId(history, "call123");
-
-    expect(found).toEqual(history[0]);
-  });
-
-  it("should return undefined when tool entry is not found", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call123",
-        toolName: "web_search",
-        params: { query: "hello world" },
-        status: "pending",
-      },
-    ];
-
-    const found = manager.findByToolCallId(history, "nonexistent");
-
-    expect(found).toBeUndefined();
-  });
-
   it("should trim history to max length", () => {
     const history: ToolEntry[] = [];
     for (let i = 0; i < 15; i++) {
@@ -184,44 +148,6 @@ describe("ToolHistoryManager", () => {
     expect(history[3].toolName).toBe("another_tool");
   });
 
-  it("should find subagent entries", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call1",
-        toolName: "normal_tool",
-        params: {},
-        status: "completed",
-      },
-      {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
-        params: {},
-        status: "pending",
-      },
-      {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
-        params: { text: "result data" },
-        status: "pending",
-      },
-      {
-        toolCallId: "skill-harness",
-        toolName: "skill-harness",
-        params: {},
-        status: "pending",
-      },
-    ];
-
-    const subagentEntries = manager.findSubagentEntries(
-      history,
-      "active-memory",
-    );
-
-    expect(subagentEntries).toHaveLength(2);
-    expect(subagentEntries[0].toolName).toBe("active-memory");
-    expect(subagentEntries[1].toolName).toBe("active-memory:result");
-  });
-
   it("should find subagent child entries", () => {
     const history: ToolEntry[] = [
       {
@@ -258,88 +184,5 @@ describe("ToolHistoryManager", () => {
     expect(childEntries).toHaveLength(2);
     expect(childEntries[0].toolName).toBe("active-memory:result");
     expect(childEntries[1].toolName).toBe("active-memory:query");
-  });
-
-  it("should count pending entries correctly", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call1",
-        toolName: "web_search",
-        params: { query: "hello" },
-        status: "pending",
-      },
-      {
-        toolCallId: "call2",
-        toolName: "bash",
-        params: { command: "ls" },
-        status: "completed",
-      },
-      {
-        toolCallId: "call3",
-        toolName: "web_fetch",
-        params: { url: "http://example.com" },
-        status: "pending",
-      },
-    ];
-
-    const pendingCount = manager.getPendingCount(history);
-
-    expect(pendingCount).toBe(2);
-  });
-
-  it("should count completed entries correctly", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call1",
-        toolName: "web_search",
-        params: { query: "hello" },
-        status: "completed",
-      },
-      {
-        toolCallId: "call2",
-        toolName: "bash",
-        params: { command: "ls" },
-        status: "pending",
-      },
-      {
-        toolCallId: "call3",
-        toolName: "web_fetch",
-        params: { url: "http://example.com" },
-        status: "orphan-completed",
-      },
-    ];
-
-    const completedCount = manager.getCompletedCount(history);
-
-    expect(completedCount).toBe(2);
-  });
-
-  it("should count error entries correctly", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call1",
-        toolName: "web_search",
-        params: { query: "hello" },
-        status: "completed",
-      },
-      {
-        toolCallId: "call2",
-        toolName: "bash",
-        params: { command: "ls" },
-        status: "error",
-        error: "Command failed",
-      },
-      {
-        toolCallId: "call3",
-        toolName: "web_fetch",
-        params: { url: "http://example.com" },
-        status: "error",
-        error: "Network error",
-      },
-    ];
-
-    const errorCount = manager.getErrorCount(history);
-
-    expect(errorCount).toBe(2);
   });
 });

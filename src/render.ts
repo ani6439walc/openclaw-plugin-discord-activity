@@ -10,9 +10,17 @@ function getSubSuffix(status: ToolEntry["status"]): string {
   return "←";
 }
 
+function formatDurationMs(durationMs: number): string {
+  const duration =
+    durationMs < 1000
+      ? `${durationMs.toLocaleString()}ms`
+      : `${Math.round(durationMs / 1000).toLocaleString()}s`;
+  return ` (${duration})`;
+}
+
 function formatDuration(entry: ToolEntry): string {
   return typeof entry.durationMs === "number"
-    ? ` (${entry.durationMs.toLocaleString()}ms)`
+    ? formatDurationMs(entry.durationMs)
     : "";
 }
 
@@ -118,8 +126,7 @@ function renderSubagentGroup(
       sum + (typeof entry.durationMs === "number" ? entry.durationMs : 0),
     0,
   );
-  const durationStr =
-    totalDuration > 0 ? ` (${totalDuration.toLocaleString()}ms)` : "";
+  const durationStr = totalDuration > 0 ? formatDurationMs(totalDuration) : "";
 
   return `${icon} ${prefix}: ${parentSuffix}${durationStr}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""

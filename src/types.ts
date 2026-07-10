@@ -90,14 +90,6 @@ export type OrphanToolManager = {
   pruneStale(): void;
 };
 
-export type EnhancedOrphanManager = OrphanToolManager & {
-  findMatching(context: MessageContext): OrphanEntry[];
-  find(predicate: (entry: OrphanEntry) => boolean): OrphanEntry[];
-  getCount(): number;
-  clear(): void;
-  getAll(): OrphanEntry[];
-};
-
 export type HookDeps = {
   store: SessionStore;
   orphans: OrphanToolManager;

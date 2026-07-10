@@ -54,6 +54,26 @@ function isTerminalToolStatus(status: ToolEntry["status"]): boolean {
   );
 }
 
+function resolveToolDurationMs(
+  entry: ToolEntry,
+  eventDurationMs: number | undefined,
+  observedAtMs: number,
+): number | undefined {
+  if (typeof eventDurationMs === "number") {
+    return eventDurationMs;
+  }
+  if (typeof entry.durationMs === "number") {
+    return entry.durationMs;
+  }
+  if (
+    !isTerminalToolStatus(entry.status) &&
+    typeof entry.startedAtMs === "number"
+  ) {
+    return Math.max(0, observedAtMs - entry.startedAtMs);
+  }
+  return undefined;
+}
+
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(stableValue);
@@ -356,6 +376,7 @@ export function createHookHandlers(deps: HookDeps) {
     ctx: ToolContext,
   ) {
     if (shouldSkipToolSession(ctx, "before_tool_call")) return;
+    const observedAtMs = Date.now();
     logHookEvent("before_tool_call", event, ctx);
     orphans.pruneStale();
 
@@ -380,7 +401,7 @@ export function createHookHandlers(deps: HookDeps) {
           toolCallId,
           toolName,
           params: event.params ?? {},
-          createdAt: Date.now(),
+          createdAt: observedAtMs,
         });
         logger.debug(
           `before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`,
@@ -407,6 +428,7 @@ export function createHookHandlers(deps: HookDeps) {
       toolName,
       params: event.params,
       status: "pending",
+      startedAtMs: observedAtMs,
     });
 
     await updateSessionStatus(session, false);
@@ -414,6 +436,7 @@ export function createHookHandlers(deps: HookDeps) {
 
   async function onAfterToolCall(event: AfterToolCallEvent, ctx: ToolContext) {
     if (shouldSkipToolSession(ctx, "after_tool_call")) return;
+    const observedAtMs = Date.now();
     logHookEvent("after_tool_call", event, ctx);
     orphans.pruneStale();
 
@@ -452,12 +475,13 @@ export function createHookHandlers(deps: HookDeps) {
         { toolCallId },
       );
       if (orphan) {
-        if (Date.now() - orphan.createdAt <= config.orphanTtlMs) {
+        if (observedAtMs - orphan.createdAt <= config.orphanTtlMs) {
           toolEntry = {
             toolCallId: orphan.toolCallId,
             toolName: orphan.toolName,
             params: orphan.params,
             status: "pending",
+            startedAtMs: orphan.createdAt,
           };
           isOrphanReconcile = true;
           toolHistoryManager.addEntry(session.toolHistory, toolEntry);
@@ -479,10 +503,11 @@ export function createHookHandlers(deps: HookDeps) {
         toolEntry.toolName,
         event.toolName,
       );
-      const nextDurationMs =
-        typeof event.durationMs === "number"
-          ? event.durationMs
-          : toolEntry.durationMs;
+      const nextDurationMs = resolveToolDurationMs(
+        toolEntry,
+        event.durationMs,
+        observedAtMs,
+      );
       if (event.error) {
         toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
           toolCallId: nextToolCallId,

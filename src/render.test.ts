@@ -29,6 +29,21 @@ describe("renderStatusContent", () => {
     expect(result).toContain("✔");
   });
 
+  it.each([
+    [999, "999ms"],
+    [1000, "1s"],
+    [1499, "1s"],
+    [1500, "2s"],
+    [34_481, "34s"],
+  ])("formats %ims duration as %s", (durationMs, expected) => {
+    const result = renderStatusContent(
+      [makeEntry({ status: "completed", durationMs })],
+      true,
+    );
+
+    expect(result).toContain(`(${expected})`);
+  });
+
   it("renders error tool with x mark", () => {
     const result = renderStatusContent([makeEntry({ status: "error" })], false);
     expect(result).toContain("✘");

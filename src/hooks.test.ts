@@ -8,7 +8,7 @@ import {
   type Mock,
 } from "vitest";
 import { createHookHandlers } from "./hooks.js";
-import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
+import { createOrphanManager } from "./orphans.js";
 import { resolveConfig } from "./config.js";
 import { flushPromises } from "../test-helpers.js";
 import { defaultStore } from "./session.js";
@@ -85,7 +85,7 @@ function countChannelMessagePosts(fetchMock: ReturnType<typeof vi.fn>): number {
 
 describe("createHookHandlers", () => {
   let store: typeof defaultStore;
-  let orphans: ReturnType<typeof createEnhancedOrphanManager>;
+  let orphans: ReturnType<typeof createOrphanManager>;
   let getToken: Mock<HookDeps["getToken"]>;
   let config: ReturnType<typeof resolveConfig>;
   let isActiveMemoryEnabled: Mock<HookDeps["isActiveMemoryEnabled"]>;
@@ -96,7 +96,7 @@ describe("createHookHandlers", () => {
     defaultStore.sessions.clear();
     defaultStore.contexts.clear();
     store = defaultStore;
-    orphans = createEnhancedOrphanManager();
+    orphans = createOrphanManager();
     getToken = vi.fn<HookDeps["getToken"]>().mockReturnValue("test-token");
     config = resolveConfig({});
     isActiveMemoryEnabled = vi
@@ -120,6 +120,7 @@ describe("createHookHandlers", () => {
     defaultStore.contexts.clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   describe("onMessageReceived", () => {
@@ -640,6 +641,103 @@ describe("createHookHandlers", () => {
         }),
       );
       expect(session?.lastRenderedContent).toContain("🚀 exec: ✔ (538ms)");
+    });
+
+    it("falls back to elapsed time when a completion omits duration and preserves it across duplicates", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1000);
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+      const params = { command: "command -v codex" };
+
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "exec", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_1",
+        },
+      );
+
+      vi.setSystemTime(2500);
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "exec", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_1",
+        },
+      );
+
+      vi.setSystemTime(5000);
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "exec", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "exec", params: { command: "pwd" } },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_2",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory[0]).toEqual(
+        expect.objectContaining({
+          toolCallId: "call_1",
+          status: "completed",
+          startedAtMs: 1000,
+          durationMs: 1500,
+        }),
+      );
+      expect(session?.lastRenderedContent).toContain("🚀 exec: ✔ (2s)");
+    });
+
+    it("falls back to the first orphan observation after duplicate before calls", async () => {
+      const nowSpy = vi.spyOn(Date, "now");
+      createDiscordFetchMock();
+      const firstParams = { command: "command -v mise" };
+      const latestParams = { command: "command -v codex" };
+
+      nowSpy.mockReturnValue(2000);
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "exec", params: firstParams },
+        { toolName: "exec", toolCallId: "call_1" },
+      );
+      nowSpy.mockReturnValue(2100);
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "exec", params: latestParams },
+        { toolName: "exec", toolCallId: "call_1" },
+      );
+
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+      nowSpy.mockReturnValue(2250);
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "exec", params: latestParams },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_1",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory[0]).toEqual(
+        expect.objectContaining({
+          toolCallId: "call_1",
+          status: "orphan-completed",
+          startedAtMs: 2000,
+          durationMs: 250,
+          params: latestParams,
+        }),
+      );
+      expect(session?.lastRenderedContent).toContain("🚀 exec: ♻︎ (250ms)");
     });
 
     it("stores and renders normal tool error details", async () => {
@@ -1242,11 +1340,9 @@ describe("createHookHandlers", () => {
         }),
       );
       expect(session?.lastRenderedContent).toContain(
-        "💡 skill-harness: ✔ (1,100ms)",
+        "💡 skill-harness: ✔ (1s)",
       );
-      expect(session?.lastRenderedContent).toContain(
-        "- topic-triage: ✔ (1,100ms)",
-      );
+      expect(session?.lastRenderedContent).toContain("- topic-triage: ✔ (1s)");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -1578,96 +1674,6 @@ describe("createHookHandlers", () => {
       ).toBe(patchCountBefore);
     });
 
-    it("preserves group order when active-memory completes before skill-harness", async () => {
-      const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(true);
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
-        "active-memory",
-        "skill-harness",
-      ]);
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "test" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-            { role: "assistant", content: "found result" },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-        },
-      );
-
-      const afterAm = store.sessions.get("discord:direct:123");
-      const amIdx = afterAm!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "active-memory" ||
-          t.toolName.startsWith("active-memory:"),
-      );
-      const ihIdx = afterAm!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "skill-harness" ||
-          t.toolName.startsWith("skill-harness:"),
-      );
-      expect(amIdx).toBeLessThan(ihIdx);
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: "INTENT:RESEARCH | GOAL: docs",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:skill-harness:xyz",
-        },
-      );
-
-      const final = store.sessions.get("discord:direct:123");
-      const finalAmIdx = final!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "active-memory" ||
-          t.toolName.startsWith("active-memory:"),
-      );
-      const finalIhIdx = final!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "skill-harness" ||
-          t.toolName.startsWith("skill-harness:"),
-      );
-      expect(finalAmIdx).toBeLessThan(finalIhIdx);
-    });
-
     it("keeps parent order stable across the real subagent lifecycle", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
@@ -1780,96 +1786,6 @@ describe("createHookHandlers", () => {
         final!.lastRenderedContent!.indexOf("🧩 active-memory"),
       ).toBeLessThan(final!.lastRenderedContent!.indexOf("skill-harness"));
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
-    });
-
-    it("preserves group order when skill-harness completes before active-memory", async () => {
-      const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(true);
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:456",
-          accountId: "default",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:456");
-      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
-        "active-memory",
-        "skill-harness",
-      ]);
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: "INTENT:RESEARCH | GOAL: docs",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:456:skill-harness:xyz",
-        },
-      );
-
-      const afterIh = store.sessions.get("discord:direct:456");
-      const amIdx = afterIh!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "active-memory" ||
-          t.toolName.startsWith("active-memory:"),
-      );
-      const ihIdx = afterIh!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "skill-harness" ||
-          t.toolName.startsWith("skill-harness:"),
-      );
-      expect(amIdx).toBeLessThan(ihIdx);
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "test" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-            { role: "assistant", content: "found result" },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:456:active-memory:abc",
-        },
-      );
-
-      const final = store.sessions.get("discord:direct:456");
-      const finalAmIdx = final!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "active-memory" ||
-          t.toolName.startsWith("active-memory:"),
-      );
-      const finalIhIdx = final!.toolHistory.findIndex(
-        (t) =>
-          t.toolName === "skill-harness" ||
-          t.toolName.startsWith("skill-harness:"),
-      );
-      expect(finalAmIdx).toBeLessThan(finalIhIdx);
     });
   });
 });

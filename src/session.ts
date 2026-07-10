@@ -1,14 +1,18 @@
 import { logger } from "../api.js";
-import type { ChannelMeta, SessionEntry } from "./types.js";
-import { DiscordMessageOperations } from "./discord-message-operations.js";
+import type { SessionEntry } from "./types.js";
+import {
+  deleteDiscordStatusMessage,
+  editDiscordStatusMessage,
+  sendDiscordStatusWithDmFallback,
+} from "./discord-message-operations.js";
 import { createSessionStore } from "./store.js";
-import { createEnhancedOrphanManager } from "./enhanced-orphans.js";
+import { createOrphanManager } from "./orphans.js";
 import { renderStatusContent } from "./render.js";
 import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
 import { DEFAULT_MAX_STATUS_MESSAGE_LENGTH } from "./constants.js";
 
 export const defaultStore = createSessionStore();
-export const defaultOrphans = createEnhancedOrphanManager();
+export const defaultOrphans = createOrphanManager();
 
 function clearTimers(session: SessionEntry) {
   clearAllSessionTimers(session);
@@ -20,23 +24,6 @@ function resetSessionState(session: SessionEntry) {
   session.finalized = false;
 }
 
-// Backward-compat re-exports during transition
-export const activeSessions = defaultStore.sessions;
-export const sessionContextMap = defaultStore.contexts;
-
-// Re-export store methods for backward compat
-export const isCurrentSession =
-  defaultStore.isCurrentSession.bind(defaultStore);
-export const hasVisibleStatusState =
-  defaultStore.hasVisibleStatusState.bind(defaultStore);
-export const getOrCreateSession =
-  defaultStore.getOrCreateSession.bind(defaultStore);
-export const resolveSession = defaultStore.resolveSession.bind(defaultStore);
-export const clearSessionState =
-  defaultStore.clearSessionState.bind(defaultStore);
-export const waitForPendingOp =
-  defaultStore.waitForPendingOp.bind(defaultStore);
-
 export async function retireSession(
   session: SessionEntry,
   hookName: string,
@@ -44,16 +31,16 @@ export async function retireSession(
 ) {
   clearTimers(session);
 
-  await waitForPendingOp(session, `${hookName}_retire_wait`);
+  await defaultStore.waitForPendingOp(session, `${hookName}_retire_wait`);
 
   if (!session.statusMessageId) {
     resetSessionState(session);
     return;
   }
 
-  const operations = new DiscordMessageOperations(getToken);
   const staleMsgId = session.statusMessageId;
-  const deleted = await operations.delete(
+  const deleted = await deleteDiscordStatusMessage(
+    getToken,
     session.channelId,
     staleMsgId,
     session.accountId,
@@ -84,7 +71,7 @@ export function scheduleSessionCleanup(
   }
 
   session.clearTimer = setTimeout(() => {
-    const current = activeSessions.get(contextKey);
+    const current = defaultStore.sessions.get(contextKey);
     if (
       !current ||
       current !== session ||
@@ -107,7 +94,7 @@ export function scheduleSessionCleanup(
         });
       })
       .finally(() => {
-        clearSessionState(
+        defaultStore.clearSessionState(
           contextKey,
           session,
           expectedGeneration,
@@ -122,7 +109,7 @@ export async function clearStatusMessage(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
-  await waitForPendingOp(session, `${hookName}_wait`);
+  await defaultStore.waitForPendingOp(session, `${hookName}_wait`);
 
   // Only clear the maxDisplayTimer, not the session cleanup timer
   if (session.maxDisplayTimer) {
@@ -132,11 +119,11 @@ export async function clearStatusMessage(
 
   if (!session.statusMessageId) return;
 
-  const operations = new DiscordMessageOperations(getToken);
   const msgId = session.statusMessageId;
   logger.debug(`[${hookName}] deleting status message ${msgId}.`);
 
-  const deleted = await operations.delete(
+  const deleted = await deleteDiscordStatusMessage(
+    getToken,
     session.channelId,
     msgId,
     session.accountId,
@@ -158,7 +145,7 @@ function startMaxDisplayTimer(
   }
 
   session.maxDisplayTimer = setTimeout(() => {
-    const current = activeSessions.get(contextKey);
+    const current = defaultStore.sessions.get(contextKey);
     if (!current || current !== session) {
       return;
     }
@@ -176,7 +163,7 @@ function startMaxDisplayTimer(
         });
       })
       .finally(() => {
-        clearSessionState(contextKey, session);
+        defaultStore.clearSessionState(contextKey, session);
       });
   }, maxDisplayMs);
 }
@@ -212,8 +199,6 @@ export async function updateStatusMessage(
 
     if (!content) return;
 
-    const operations = new DiscordMessageOperations(getToken);
-
     const isNewMessage = !session.statusMessageId;
 
     if (isNewMessage && session.finalized && !isFinal) {
@@ -228,11 +213,12 @@ export async function updateStatusMessage(
     }
 
     if (isNewMessage) {
-      if (!isCurrentSession(session)) {
+      if (!defaultStore.isCurrentSession(session)) {
         return;
       }
 
-      const createdId = await operations.sendWithDmFallback(
+      const createdId = await sendDiscordStatusWithDmFallback(
+        getToken,
         session,
         content,
         session.userMessageId,
@@ -242,8 +228,9 @@ export async function updateStatusMessage(
         return;
       }
 
-      if (!isCurrentSession(session)) {
-        await operations.delete(
+      if (!defaultStore.isCurrentSession(session)) {
+        await deleteDiscordStatusMessage(
+          getToken,
           session.channelId,
           createdId,
           session.accountId,
@@ -266,7 +253,7 @@ export async function updateStatusMessage(
       return;
     }
 
-    if (!isCurrentSession(session)) {
+    if (!defaultStore.isCurrentSession(session)) {
       return;
     }
 
@@ -279,7 +266,8 @@ export async function updateStatusMessage(
       return;
     }
 
-    const edited = await operations.edit(
+    const edited = await editDiscordStatusMessage(
+      getToken,
       session.channelId,
       session.statusMessageId,
       content,

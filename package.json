@@ -52,8 +52,7 @@
     "zod": "4.4.3"
   },
   "peerDependencies": {
-    "openclaw": "2026.6.11",
-    "typebox": "1.1.39"
+    "openclaw": "2026.6.11"
   },
   "devDependencies": {
     "typescript": "6.0.3",
