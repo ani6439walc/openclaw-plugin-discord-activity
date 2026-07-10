@@ -578,6 +578,10 @@ export function createHookHandlers(deps: HookDeps) {
         toolEntry.toolName,
         event.toolName,
       );
+      const nextDurationMs =
+        typeof event.durationMs === "number"
+          ? event.durationMs
+          : toolEntry.durationMs;
       if (event.error) {
         toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
           toolCallId: nextToolCallId,
@@ -585,7 +589,7 @@ export function createHookHandlers(deps: HookDeps) {
           params: event.params,
           status: "error",
           error: event.error,
-          durationMs: event.durationMs,
+          durationMs: nextDurationMs,
         });
       } else if (isOrphanReconcile) {
         toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
@@ -594,7 +598,7 @@ export function createHookHandlers(deps: HookDeps) {
           params: event.params,
           status: "orphan-completed",
           error: undefined,
-          durationMs: event.durationMs,
+          durationMs: nextDurationMs,
         });
       } else {
         toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
@@ -603,7 +607,7 @@ export function createHookHandlers(deps: HookDeps) {
           params: event.params,
           status: "completed",
           error: undefined,
-          durationMs: event.durationMs,
+          durationMs: nextDurationMs,
         });
       }
       await updateSessionStatus(session, false);

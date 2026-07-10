@@ -413,7 +413,7 @@ describe("renderStatusContent", () => {
     expect(result).toContain(
       [
         "     - result: |",
-        "         Intent: memory-recent",
+        "         Intent： memory-recent",
         "         ",
         "         Suggested workflow",
       ].join("\n"),

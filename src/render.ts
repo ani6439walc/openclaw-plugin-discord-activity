@@ -110,7 +110,15 @@ function renderSubagentGroup(
   const errorEntry = group.find((e) => e.status === "error" && e.error);
   const errorLine = formatErrorLine(errorEntry);
 
-  return `${icon} ${prefix}: ${parentSuffix}${
+  const totalDuration = realEntries.reduce(
+    (sum, entry) =>
+      sum + (typeof entry.durationMs === "number" ? entry.durationMs : 0),
+    0,
+  );
+  const durationStr =
+    totalDuration > 0 ? ` (${totalDuration.toLocaleString()}ms)` : "";
+
+  return `${icon} ${prefix}: ${parentSuffix}${durationStr}${
     subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
   }${errorLine}`;
 }

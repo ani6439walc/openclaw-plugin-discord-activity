@@ -89,7 +89,7 @@ export function formatParams(
         }
         const lines = displayVal
           .split("\n")
-          .map((line) => `${valueIndent}${line}`)
+          .map((line) => `${valueIndent}${line.replaceAll(/:/g, "：")}`)
           .join("\n");
         return `${keyPrefix}${k}: |\n${lines}`;
       } else {

@@ -568,6 +568,55 @@ describe("createHookHandlers", () => {
       expect(session?.toolHistory[0].status).toBe("completed");
     });
 
+    it("preserves completed tool duration when a duplicate completion omits duration", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+      const params = { command: "openclaw skills list" };
+
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "exec", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "exec", params, durationMs: 538 },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "exec", params },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "exec", params: { command: "pwd" } },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "exec",
+          toolCallId: "call_2",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory[0]).toEqual(
+        expect.objectContaining({
+          toolCallId: "call_1",
+          status: "completed",
+          durationMs: 538,
+        }),
+      );
+      expect(session?.lastRenderedContent).toContain("🚀 exec: ✔ (538ms)");
+    });
+
     it("stores and renders normal tool error details", async () => {
       const fetchMock = createDiscordFetchMock();
       store.contexts.set("discord:channel:123", {
