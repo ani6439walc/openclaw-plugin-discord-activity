@@ -696,7 +696,7 @@ describe("createHookHandlers", () => {
           durationMs: 1500,
         }),
       );
-      expect(session?.lastRenderedContent).toContain("🚀 exec: ✔ (2s)");
+      expect(session?.lastRenderedContent).toContain("🚀 exec: ✔ (1.50s)");
     });
 
     it("falls back to the first orphan observation after duplicate before calls", async () => {
@@ -1340,9 +1340,11 @@ describe("createHookHandlers", () => {
         }),
       );
       expect(session?.lastRenderedContent).toContain(
-        "💡 skill-harness: ✔ (1s)",
+        "💡 skill-harness: ✔ (1.10s)",
       );
-      expect(session?.lastRenderedContent).toContain("- topic-triage: ✔ (1s)");
+      expect(session?.lastRenderedContent).toContain(
+        "- topic-triage: ✔ (1.10s)",
+      );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 

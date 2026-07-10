@@ -11,10 +11,14 @@ function getSubSuffix(status: ToolEntry["status"]): string {
 }
 
 function formatDurationMs(durationMs: number): string {
-  const duration =
-    durationMs < 1000
-      ? `${durationMs.toLocaleString()}ms`
-      : `${Math.round(durationMs / 1000).toLocaleString()}s`;
+  let duration: string;
+  if (durationMs <= 1000) {
+    duration = `${durationMs.toLocaleString()}ms`;
+  } else if (durationMs < 10_000) {
+    duration = `${(Math.round(durationMs / 10) / 100).toFixed(2)}s`;
+  } else {
+    duration = `${(Math.round(durationMs / 100) / 10).toFixed(1)}s`;
+  }
   return ` (${duration})`;
 }
 

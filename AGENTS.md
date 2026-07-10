@@ -77,7 +77,7 @@ Important behavior to preserve:
 - `active-memory` result text renders as `result: <text>`.
 - Codex/OpenClaw-prefixed tool names such as `openclawskill_view` should display as their canonical tool names (`skill_view`) immediately; avoid visible name flicker.
 - Prefer a tool-provided `durationMs`; when it is absent, derive elapsed time from the first observed `before_tool_call`. Preserve that value across duplicate terminal events instead of erasing or recalculating it.
-- Render durations below 1000ms in milliseconds; render durations of 1000ms or more as seconds rounded to the nearest whole number.
+- Render durations up to and including 1000ms in milliseconds. Above 1000ms and under 10 seconds, render seconds with two decimal places; from 10 seconds onward, render seconds with one decimal place.
 - Finalized sessions should not create duplicate status messages from late tool events.
 - Per-session Discord operations must remain serialized through `pendingOp` to avoid create/edit/delete races.
 - DM sessions may need `resolveDmChannel()` before sending.

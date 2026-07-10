@@ -31,10 +31,13 @@ describe("renderStatusContent", () => {
 
   it.each([
     [999, "999ms"],
-    [1000, "1s"],
-    [1499, "1s"],
-    [1500, "2s"],
-    [34_481, "34s"],
+    [1000, "1,000ms"],
+    [1001, "1.00s"],
+    [1494, "1.49s"],
+    [1495, "1.50s"],
+    [9876, "9.88s"],
+    [10_000, "10.0s"],
+    [34_481, "34.5s"],
   ])("formats %ims duration as %s", (durationMs, expected) => {
     const result = renderStatusContent(
       [makeEntry({ status: "completed", durationMs })],

@@ -55,7 +55,7 @@ Rendering rules to preserve:
 - `skill-harness` plain text results render as `result: <text>`.
 - `active-memory` result text renders as `result: <text>`.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
-- Durations below 1000ms render in milliseconds. Durations of 1000ms or more render as seconds rounded to the nearest whole number.
+- Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds render with two decimal places; durations of 10 seconds or more render with one decimal place.
 - Status output keeps up to 6 normal tool entries, 6 `active-memory` child entries, and 6 `skill-harness` child entries independently.
 - Overlong status messages are trimmed to fit the configured Discord message limit.
 
