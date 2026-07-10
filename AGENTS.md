@@ -27,7 +27,7 @@ pnpm run format             # Prettier for md/json/ts files
 
 Run `pnpm run typecheck` and `pnpm run test` before handing off code changes. Run `pnpm run build` when changing plugin registration, package metadata, SDK imports, emitted behavior, or anything that depends on `dist/` output. Run `pnpm run format` after editing Markdown, JSON, or TypeScript.
 
-Current package-shape caveat: `package.json` publishes `dist`, while `tsconfig.json` currently includes root `./*.ts` and `pnpm run build` is plain `tsc`. `pnpm pack --dry-run` therefore includes root tooling outputs such as `dist/vitest.config.*` and `dist/test-helpers.*` unless the build config is tightened and `dist/` is cleaned before compile. If you touch package/build/release behavior, verify with `pnpm run build` and `pnpm pack --dry-run`, and prefer narrowing `tsconfig.json` includes to runtime entries (`api.ts`, `index.ts`, `token.ts`, `src/**/*.ts`) plus a clean build step.
+Package-shape rule: `package.json` publishes `dist`, and `pnpm run build` cleans `dist/` before compiling with `tsconfig.build.json`. The build config intentionally includes only runtime entries (`api.ts`, `index.ts`, `token.ts`, `src/**/*.ts`) while excluding tests and root tooling such as `test-helpers.ts` and `vitest.config.ts`. If you touch package/build/release behavior, verify with `pnpm run build` and `pnpm pack --dry-run`, and check that the tarball does not include `dist/vitest.config.*`, `dist/test-helpers.*`, stale renamed files, or missing runtime files.
 
 ## Source Map
 
@@ -41,6 +41,8 @@ Keep the current module boundaries:
 - `src/parser.ts`: session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.
 - `src/render.ts`: convert tool history into YAML Discord status content.
 - `src/formatting.ts`: icons and parameter formatting helpers.
+- `src/tool-name.ts`: shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.
+- `src/skill-harness-status.ts`: parse `plugin:skill-harness` pipeline events, sanitize visible fields, compute child durations, and merge duplicate phase updates.
 - `src/discord-api.ts`: Discord REST calls, rate-limit retry, server-error retry, and DM channel resolution.
 - `src/discord-message-operations.ts`: token-gated send/edit/delete wrapper around Discord API calls, including DM fallback.
 - `src/tool-history-manager.ts`: focused helper for tool-history add/update/replace/trim operations and subagent groups.
@@ -89,7 +91,7 @@ Important behavior to preserve:
 - Keep `src/plugin.ts` thin. If behavior grows, put it in `hooks.ts`, `session.ts`, or a focused helper module.
 - Keep Discord API logic in `src/discord-api.ts`; do not call `fetch()` directly from hooks or renderers.
 - Keep rendering pure in `src/render.ts` and `src/formatting.ts`; do not add Discord API calls or session mutation there.
-- Keep OpenClaw/Codex tool-name canonicalization consistent between hook dedupe and rendering. If more prefix rules are added, extract a shared helper instead of duplicating divergent regexes.
+- Keep OpenClaw/Codex tool-name canonicalization in `src/tool-name.ts`; both hook dedupe and rendering must use the same helper to avoid regex drift or visible prefixed-name flicker.
 - Keep hook code fail-open. Log non-fatal failures with `logger.warn()` and avoid blocking the main agent reply.
 - Do not remove cleanup guards involving `generation`, `ownerSessionKey`, `finalized`, or `isCurrentSession()` unless tests prove the race is impossible.
 - Do not broaden a bugfix PR with unrelated renderer, store, or SDK refactors.

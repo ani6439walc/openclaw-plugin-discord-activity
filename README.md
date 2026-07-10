@@ -80,22 +80,24 @@ Session and race-safety behavior:
 
 The repository is a small TypeScript plugin with focused runtime modules and colocated tests. The main runtime hotspot is `src/hooks.ts`; keep new behavior in smaller helpers when possible instead of growing hook orchestration unnecessarily.
 
-| Path                                | Responsibility                                                                                                                                                          |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/plugin.ts`                     | Plugin assembly: config resolution, token resolver, companion-plugin enablement checks, shared runtime state, and hook registration.                                    |
-| `src/hooks.ts`                      | OpenClaw hook behavior: session routing, tool lifecycle updates, subagent placeholders/results, orphan reconciliation, finalization, and skill-harness pipeline events. |
-| `src/session.ts`                    | Discord status message lifecycle: send, edit, retire, delete, pending operation serialization, cleanup timers, and max-display handling.                                |
-| `src/store.ts`                      | Active session and Discord context tracking.                                                                                                                            |
-| `src/enhanced-orphans.ts`           | Temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.                                                                  |
-| `src/parser.ts`                     | Session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.                                                    |
-| `src/render.ts`                     | Pure rendering from tool history to YAML status content.                                                                                                                |
-| `src/formatting.ts`                 | Icons and YAML-safe parameter formatting.                                                                                                                               |
-| `src/discord-api.ts`                | Discord REST calls, rate-limit retry, server-error retry, network-error retry, and DM channel resolution.                                                               |
-| `src/discord-message-operations.ts` | Token-gated send/edit/delete operations around the Discord API layer, including DM fallback.                                                                            |
-| `src/tool-history-manager.ts`       | Tool-history add/update/replace/trim helpers and subagent group operations.                                                                                             |
-| `src/config.ts`                     | Zod-backed plugin config parsing and defaults.                                                                                                                          |
-| `src/types.ts`                      | Shared event, session, store, and tool-entry types.                                                                                                                     |
-| `api.ts`, `index.ts`, `token.ts`    | Plugin SDK bridge, exported plugin entrypoint, and Discord token resolution.                                                                                            |
+| Path                                | Responsibility                                                                                                                                |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/plugin.ts`                     | Plugin assembly: config resolution, token resolver, companion-plugin enablement checks, shared runtime state, and hook registration.          |
+| `src/hooks.ts`                      | OpenClaw hook orchestration: session routing, tool lifecycle updates, subagent placeholders/results, orphan reconciliation, and finalization. |
+| `src/session.ts`                    | Discord status message lifecycle: send, edit, retire, delete, pending operation serialization, cleanup timers, and max-display handling.      |
+| `src/store.ts`                      | Active session and Discord context tracking.                                                                                                  |
+| `src/enhanced-orphans.ts`           | Temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.                                        |
+| `src/parser.ts`                     | Session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.                          |
+| `src/render.ts`                     | Pure rendering from tool history to YAML status content.                                                                                      |
+| `src/formatting.ts`                 | Icons and YAML-safe parameter formatting.                                                                                                     |
+| `src/tool-name.ts`                  | Shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.                                                    |
+| `src/skill-harness-status.ts`       | Skill-harness pipeline parsing, visible-field filtering, child duration calculation, and duplicate phase merging.                             |
+| `src/discord-api.ts`                | Discord REST calls, rate-limit retry, server-error retry, network-error retry, and DM channel resolution.                                     |
+| `src/discord-message-operations.ts` | Token-gated send/edit/delete operations around the Discord API layer, including DM fallback.                                                  |
+| `src/tool-history-manager.ts`       | Tool-history add/update/replace/trim helpers and subagent group operations.                                                                   |
+| `src/config.ts`                     | Zod-backed plugin config parsing and defaults.                                                                                                |
+| `src/types.ts`                      | Shared event, session, store, and tool-entry types.                                                                                           |
+| `api.ts`, `index.ts`, `token.ts`    | Plugin SDK bridge, exported plugin entrypoint, and Discord token resolution.                                                                  |
 
 ## Installation
 
@@ -162,7 +164,7 @@ Use `pnpm` for all local commands.
 pnpm run format      # Prettier for Markdown, JSON, and TypeScript
 pnpm run typecheck   # TypeScript, no emit
 pnpm run test        # Full Vitest suite
-pnpm run build       # Compile to dist/
+pnpm run build       # Clean and compile runtime files to dist/
 ```
 
 Before handing off code changes, run at least:
@@ -173,7 +175,7 @@ pnpm run typecheck
 pnpm run test
 ```
 
-Run `pnpm run build` when changing plugin registration, package metadata, SDK imports, emitted behavior, release artifacts, or anything that depends on `dist/` output.
+Run `pnpm run build` when changing plugin registration, package metadata, SDK imports, emitted behavior, release artifacts, or anything that depends on `dist/` output. The build uses `tsconfig.build.json` so publish output stays runtime-only.
 
 Testing map:
 
@@ -186,7 +188,7 @@ Testing map:
 - Plugin registration and manifest-facing behavior: `src/plugin.test.ts` and `src/plugin.integration.test.ts`.
 - Tool-history helper behavior: `src/tool-history-manager.test.ts`.
 
-Package hygiene note: this package publishes `dist/`. The current `tsconfig.json` includes root `./*.ts`, and the build script is plain `tsc`, so `pnpm pack --dry-run` currently includes root tooling outputs such as `dist/vitest.config.*` and `dist/test-helpers.*`. If you change build or release behavior, verify the publish contents and prefer a clean build plus explicit runtime-only TypeScript includes.
+Package hygiene note: this package publishes `dist/`. `pnpm run build` cleans `dist/` and compiles through `tsconfig.build.json`, which includes runtime entries while excluding tests and root tooling. If you change build or release behavior, verify with `pnpm run build` and `pnpm pack --dry-run`; the tarball should not contain outputs such as `dist/vitest.config.*` or `dist/test-helpers.*`.
 
 ## Security and performance
 

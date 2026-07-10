@@ -46,7 +46,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write '**/*.md' '**/*.json' '**/*.ts'",
     "test": "vitest run",
-    "build": "tsc"
+    "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "zod": "4.4.3"

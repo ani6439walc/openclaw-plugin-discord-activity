@@ -31,85 +31,20 @@ import {
   scheduleSessionCleanup,
   updateStatusMessage,
 } from "./session.js";
-import { AGENT_END_DELAY_MS, STATUS_MAX_ENTRIES } from "./constants.js";
+import { AGENT_END_DELAY_MS } from "./constants.js";
 import { ToolHistoryManager } from "./tool-history-manager.js";
-
-const SKILL_HARNESS_EVENT_STREAM = "plugin:skill-harness";
-const SKILL_HARNESS_EVENT_KIND = "skill-harness.pipeline";
-// Keep public Discord status from accidentally exposing raw prompt/context data.
-const SKILL_HARNESS_PARAM_KEYS = new Set([
-  "intent",
-  "domain",
-  "keywords",
-  "complexity",
-  "topic",
-  "changed",
-  "reason",
-  "confidence",
-  "result",
-]);
-
-type ToolDedupeIdentity = Pick<ToolEntry, "toolCallId" | "toolName" | "params">;
-
-function normalizeToolNameForDedupe(toolName: string): string {
-  return toolName.trim().toLowerCase();
-}
-
-function getOpenClawToolSuffix(toolName: string): string | undefined {
-  const trimmed = toolName.trim();
-  const normalized = normalizeToolNameForDedupe(trimmed);
-  if (!normalized.startsWith("openclaw")) {
-    return undefined;
-  }
-
-  let suffix = trimmed.slice("openclaw".length);
-  if (!suffix) {
-    return undefined;
-  }
-
-  if ([".", ":", "/", "_", "-"].includes(suffix[0] ?? "")) {
-    suffix = suffix.slice(1);
-  }
-
-  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(suffix)) {
-    return undefined;
-  }
-
-  return suffix;
-}
-
-function isCodexOpenClawToolName(toolName: string): boolean {
-  return getOpenClawToolSuffix(toolName) !== undefined;
-}
-
-function canonicalToolNameForDedupe(toolName: string): string {
-  return normalizeToolNameForDedupe(
-    getOpenClawToolSuffix(toolName) ?? toolName,
-  );
-}
-
-function preferDisplayToolName(existing: string, incoming: string): string {
-  if (isCodexOpenClawToolName(existing) && !isCodexOpenClawToolName(incoming)) {
-    return incoming;
-  }
-  return existing;
-}
-
-function preferToolCallId(
-  existing: ToolDedupeIdentity,
-  incoming: ToolDedupeIdentity,
-): string {
-  if (existing.toolCallId === incoming.toolCallId) {
-    return existing.toolCallId;
-  }
-  if (
-    isCodexOpenClawToolName(existing.toolName) &&
-    !isCodexOpenClawToolName(incoming.toolName)
-  ) {
-    return incoming.toolCallId;
-  }
-  return existing.toolCallId;
-}
+import {
+  canonicalToolNameForDedupe,
+  isCodexOpenClawToolName,
+  preferDisplayToolName,
+  preferToolCallId,
+  type ToolDedupeIdentity,
+} from "./tool-name.js";
+import {
+  getSkillHarnessPipelineSessionKey,
+  mergeSkillHarnessPipelineEntry,
+  parseSkillHarnessPipelineEntry,
+} from "./skill-harness-status.js";
 
 function isTerminalToolStatus(status: ToolEntry["status"]): boolean {
   return (
@@ -189,62 +124,6 @@ function upsertToolEntry(
   };
   toolHistoryManager.updateEntry(history, existing.toolCallId, updates);
   return { ...existing, ...updates };
-}
-
-function mapPipelineState(value: unknown): ToolEntry["status"] | undefined {
-  if (value === "started") return "pending";
-  if (value === "completed" || value === "skipped") return "completed";
-  if (value === "failed") return "error";
-  return undefined;
-}
-
-function parseSkillHarnessPipelineEntry(
-  event: AgentPipelineEvent,
-): ToolEntry | undefined {
-  if (event.stream !== SKILL_HARNESS_EVENT_STREAM) return;
-  const data = event.data;
-  if (data?.kind !== SKILL_HARNESS_EVENT_KIND) return;
-  if (typeof data.phase !== "string" || !data.phase.trim()) return;
-
-  const status = mapPipelineState(data.state);
-  if (!status) return;
-
-  const params = Object.fromEntries(
-    Object.entries(data).filter(
-      ([key, value]) =>
-        SKILL_HARNESS_PARAM_KEYS.has(key) && value !== undefined,
-    ),
-  );
-
-  return {
-    toolCallId: `skill-harness:${event.runId}:${data.phase}`,
-    toolName: `skill-harness:${data.phase}`,
-    params,
-    status,
-    error: status === "error" ? String(data.reason ?? "failed") : undefined,
-  };
-}
-
-function applySkillHarnessTiming(
-  entry: ToolEntry,
-  existingEntry: ToolEntry | undefined,
-  observedAtMs: number,
-): ToolEntry {
-  const startedAtMs = existingEntry?.startedAtMs ?? observedAtMs;
-  const isFinished = entry.status === "completed" || entry.status === "error";
-  const durationMs = isFinished
-    ? (existingEntry?.durationMs ??
-      (existingEntry?.status !== "pending" ||
-      existingEntry.startedAtMs === undefined
-        ? undefined
-        : Math.max(0, observedAtMs - startedAtMs)))
-    : existingEntry?.durationMs;
-
-  return {
-    ...entry,
-    startedAtMs,
-    durationMs,
-  };
 }
 
 function buildPendingSubagentEntries(
@@ -760,11 +639,7 @@ export function createHookHandlers(deps: HookDeps) {
 
   async function onSkillHarnessPipelineEvent(event: AgentPipelineEvent) {
     const observedAtMs = Date.now();
-    const sessionKey =
-      event.sessionKey ??
-      (typeof event.data?.sessionKey === "string"
-        ? event.data.sessionKey
-        : undefined);
+    const sessionKey = getSkillHarnessPipelineSessionKey(event);
     if (!sessionKey) return;
 
     const entry = parseSkillHarnessPipelineEntry(event);
@@ -783,37 +658,18 @@ export function createHookHandlers(deps: HookDeps) {
       session.toolHistory,
       "skill-harness",
     );
-    const existingEntry = existingChildEntries.find(
-      (tool) => tool.toolCallId === entry.toolCallId,
-    );
-    const timedEntry = applySkillHarnessTiming(
+    const merged = mergeSkillHarnessPipelineEntry(
+      existingChildEntries,
       entry,
-      existingEntry,
       observedAtMs,
     );
-    const nextEntry =
-      existingEntry?.status === "completed" && timedEntry.status === "pending"
-        ? existingEntry
-        : timedEntry;
-    if (
-      existingEntry &&
-      existingEntry.status === nextEntry.status &&
-      existingEntry.error === nextEntry.error &&
-      existingEntry.durationMs === nextEntry.durationMs &&
-      JSON.stringify(existingEntry.params ?? {}) ===
-        JSON.stringify(nextEntry.params ?? {})
-    ) {
+    if (!merged.changed) {
       return;
     }
     toolHistoryManager.replaceSubagentGroup(
       session.toolHistory,
       "skill-harness",
-      [
-        ...existingChildEntries.filter(
-          (tool) => tool.toolCallId !== entry.toolCallId,
-        ),
-        nextEntry,
-      ].slice(-STATUS_MAX_ENTRIES),
+      merged.entries,
     );
     toolHistoryManager.trim(session.toolHistory);
     await updateSessionStatus(session, false);

@@ -1,6 +1,7 @@
 import type { ToolEntry } from "./types.js";
 import { getToolIcon, formatParams } from "./formatting.js";
 import { STATUS_MAX_LENGTH, STATUS_MAX_ENTRIES } from "./constants.js";
+import { getDisplayToolName } from "./tool-name.js";
 
 function getSubSuffix(status: ToolEntry["status"]): string {
   if (status === "error") return "✘";
@@ -33,29 +34,6 @@ function isSubagentToolEntry(entry: ToolEntry, prefix: string): boolean {
 
 function isSubagentResultEntry(entry: ToolEntry, prefix: string): boolean {
   return entry.toolName === `${prefix}:result`;
-}
-
-function getDisplayToolName(toolName: string): string {
-  const trimmed = toolName.trim();
-  const normalized = trimmed.toLowerCase();
-  if (!normalized.startsWith("openclaw")) {
-    return toolName;
-  }
-
-  let suffix = trimmed.slice("openclaw".length);
-  if (!suffix) {
-    return toolName;
-  }
-
-  if ([".", ":", "/", "_", "-"].includes(suffix[0] ?? "")) {
-    suffix = suffix.slice(1);
-  }
-
-  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(suffix)) {
-    return toolName;
-  }
-
-  return suffix;
 }
 
 function sortSubagentChildEntries(
