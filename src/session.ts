@@ -1,7 +1,7 @@
 import { logger } from "../api.js";
 import type { SessionEntry } from "./types.js";
 import {
-  deleteDiscordStatusMessage,
+  deleteDiscordStatusMessageWithResult,
   editDiscordStatusMessage,
   sendDiscordStatusWithDmFallback,
 } from "./discord-message-operations.js";
@@ -9,7 +9,10 @@ import { createSessionStore } from "./store.js";
 import { createOrphanManager } from "./orphans.js";
 import { renderStatusContent } from "./render.js";
 import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
-import { DEFAULT_MAX_STATUS_MESSAGE_LENGTH } from "./constants.js";
+import {
+  DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
+  DELETE_RECOVERY_DELAY_MS,
+} from "./constants.js";
 
 export const defaultStore = createSessionStore();
 export const defaultOrphans = createOrphanManager();
@@ -24,31 +27,137 @@ function resetSessionState(session: SessionEntry) {
   session.finalized = false;
 }
 
+async function runSerializedSessionOperation(
+  session: SessionEntry,
+  hookName: string,
+  operation: () => Promise<void>,
+) {
+  const priorOp = session.pendingOp;
+  const op = (async () => {
+    if (priorOp) {
+      logger.debug(`[${hookName}] waiting for pending op...`);
+      try {
+        await priorOp;
+      } catch (error) {
+        logger.warn(`[${hookName}] pending op failed.`, {
+          error: String(error),
+        });
+      }
+    }
+    await operation();
+  })();
+
+  session.pendingOp = op;
+  try {
+    await op;
+  } finally {
+    if (session.pendingOp === op) {
+      session.pendingOp = undefined;
+    }
+  }
+}
+
+function scheduleDeleteRecovery(
+  session: SessionEntry,
+  messageId: string,
+  hookName: string,
+  getToken: (accountId?: string) => string,
+) {
+  const cleanup = {
+    contextKey: session.contextKey,
+    channelId: session.channelId,
+    messageId,
+    accountId: session.accountId,
+  };
+
+  setTimeout(() => {
+    void deleteDiscordStatusMessageWithResult(
+      getToken,
+      cleanup.channelId,
+      cleanup.messageId,
+      cleanup.accountId,
+    )
+      .then((result) => {
+        if (result.deleted) return;
+        logger.warn("status message cleanup recovery failed.", {
+          contextKey: cleanup.contextKey,
+          channelId: cleanup.channelId,
+          messageId: cleanup.messageId,
+          hookName,
+          attemptCount: 2,
+          terminalReason: result.reason,
+          status: result.status,
+        });
+      })
+      .catch((error) => {
+        logger.warn("status message cleanup recovery threw unexpectedly.", {
+          contextKey: cleanup.contextKey,
+          channelId: cleanup.channelId,
+          messageId: cleanup.messageId,
+          hookName,
+          attemptCount: 2,
+          terminalReason: "unexpected-error",
+          error: String(error),
+        });
+      });
+  }, DELETE_RECOVERY_DELAY_MS);
+}
+
+async function deleteStatusMessageWithRecovery(
+  session: SessionEntry,
+  messageId: string,
+  hookName: string,
+  getToken: (accountId?: string) => string,
+) {
+  const result = await deleteDiscordStatusMessageWithResult(
+    getToken,
+    session.channelId,
+    messageId,
+    session.accountId,
+  );
+  if (!result.deleted && result.retryable) {
+    scheduleDeleteRecovery(session, messageId, hookName, getToken);
+  } else if (!result.deleted) {
+    logger.warn("status message cleanup failed without recovery.", {
+      contextKey: session.contextKey,
+      channelId: session.channelId,
+      messageId,
+      hookName,
+      attemptCount: 1,
+      terminalReason: result.reason,
+      status: result.status,
+    });
+  }
+}
+
 export async function retireSession(
   session: SessionEntry,
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
   clearTimers(session);
+  await runSerializedSessionOperation(
+    session,
+    `${hookName}_retire`,
+    async () => {
+      if (!session.statusMessageId) {
+        resetSessionState(session);
+        return;
+      }
 
-  await defaultStore.waitForPendingOp(session, `${hookName}_retire_wait`);
-
-  if (!session.statusMessageId) {
-    resetSessionState(session);
-    return;
-  }
-
-  const staleMsgId = session.statusMessageId;
-  const deleted = await deleteDiscordStatusMessage(
-    getToken,
-    session.channelId,
-    staleMsgId,
-    session.accountId,
+      const staleMsgId = session.statusMessageId;
+      await deleteStatusMessageWithRecovery(
+        session,
+        staleMsgId,
+        hookName,
+        getToken,
+      );
+      if (session.statusMessageId === staleMsgId) {
+        session.statusMessageId = undefined;
+      }
+      resetSessionState(session);
+    },
   );
-  if (deleted && session.statusMessageId === staleMsgId) {
-    session.statusMessageId = undefined;
-  }
-  resetSessionState(session);
 }
 
 export function scheduleSessionCleanup(
@@ -109,29 +218,24 @@ export async function clearStatusMessage(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
-  await defaultStore.waitForPendingOp(session, `${hookName}_wait`);
+  await runSerializedSessionOperation(session, hookName, async () => {
+    // Only clear the maxDisplayTimer, not the session cleanup timer
+    if (session.maxDisplayTimer) {
+      clearTimeout(session.maxDisplayTimer);
+      session.maxDisplayTimer = undefined;
+    }
 
-  // Only clear the maxDisplayTimer, not the session cleanup timer
-  if (session.maxDisplayTimer) {
-    clearTimeout(session.maxDisplayTimer);
-    session.maxDisplayTimer = undefined;
-  }
+    if (!session.statusMessageId) return;
 
-  if (!session.statusMessageId) return;
+    const msgId = session.statusMessageId;
+    logger.debug(`[${hookName}] deleting status message ${msgId}.`);
 
-  const msgId = session.statusMessageId;
-  logger.debug(`[${hookName}] deleting status message ${msgId}.`);
-
-  const deleted = await deleteDiscordStatusMessage(
-    getToken,
-    session.channelId,
-    msgId,
-    session.accountId,
-  );
-  if (deleted) {
-    session.statusMessageId = undefined;
-  }
-  resetSessionState(session);
+    await deleteStatusMessageWithRecovery(session, msgId, hookName, getToken);
+    if (session.statusMessageId === msgId) {
+      session.statusMessageId = undefined;
+    }
+    resetSessionState(session);
+  });
 }
 
 function startMaxDisplayTimer(
@@ -188,14 +292,11 @@ export async function updateStatusMessage(
       }
     }
 
-    let content = "";
-    while (session.toolHistory.length > 0) {
-      content = renderStatusContent(session.toolHistory, isFinal);
-      if (content.length <= maxStatusMessageLength) {
-        break;
-      }
-      session.toolHistory.shift();
-    }
+    const content = renderStatusContent(
+      session.toolHistory,
+      isFinal,
+      maxStatusMessageLength,
+    );
 
     if (!content) return;
 
@@ -229,11 +330,11 @@ export async function updateStatusMessage(
       }
 
       if (!defaultStore.isCurrentSession(session)) {
-        await deleteDiscordStatusMessage(
-          getToken,
-          session.channelId,
+        await deleteStatusMessageWithRecovery(
+          session,
           createdId,
-          session.accountId,
+          "late_status_create",
+          getToken,
         );
         return;
       }

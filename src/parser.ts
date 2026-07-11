@@ -20,6 +20,37 @@ function extractAssistantText(msg: AgentEventMessage): string | undefined {
   return text || undefined;
 }
 
+function getRecordedDurationMs(msg: AgentEventMessage): number | undefined {
+  if (typeof msg.durationMs === "number") {
+    return msg.durationMs;
+  }
+  if (
+    msg.details !== null &&
+    typeof msg.details === "object" &&
+    "durationMs" in msg.details &&
+    typeof msg.details.durationMs === "number"
+  ) {
+    return msg.details.durationMs;
+  }
+  return undefined;
+}
+
+function getRecordedToolError(msg: AgentEventMessage): string | undefined {
+  if (typeof msg.error === "string" && msg.error.trim()) {
+    return msg.error.trim();
+  }
+  if (
+    msg.details !== null &&
+    typeof msg.details === "object" &&
+    "error" in msg.details &&
+    typeof msg.details.error === "string" &&
+    msg.details.error.trim()
+  ) {
+    return msg.details.error.trim();
+  }
+  return msg.isError ? extractAssistantText(msg) : undefined;
+}
+
 export function getDiscordContextKey(
   sessionKey: string | undefined,
 ): string | undefined {
@@ -105,7 +136,10 @@ export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
   }
 
   const byToolCallId = new Map<string, ToolEntry>();
-  const completion = new Set<string>();
+  const completion = new Map<
+    string,
+    { isError: boolean; error?: string; durationMs?: number }
+  >();
 
   for (const msg of messages) {
     if (msg?.role === "assistant") {
@@ -127,10 +161,20 @@ export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
     }
 
     if (msg?.role === "toolResult" && msg.toolCallId) {
-      completion.add(`active-memory:${msg.toolCallId}`);
-      if (!byToolCallId.has(`active-memory:${msg.toolCallId}`)) {
-        byToolCallId.set(`active-memory:${msg.toolCallId}`, {
-          toolCallId: `active-memory:${msg.toolCallId}`,
+      const prefixedId = `active-memory:${msg.toolCallId}`;
+      const error = getRecordedToolError(msg);
+      const existing = completion.get(prefixedId);
+      completion.set(prefixedId, {
+        isError:
+          existing?.isError === true ||
+          msg.isError === true ||
+          error !== undefined,
+        error: existing?.error ?? error,
+        durationMs: existing?.durationMs ?? getRecordedDurationMs(msg),
+      });
+      if (!byToolCallId.has(prefixedId)) {
+        byToolCallId.set(prefixedId, {
+          toolCallId: prefixedId,
           toolName: `active-memory:${msg.toolName || "unknown"}`,
           params: {},
           status: "pending",
@@ -140,9 +184,11 @@ export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
   }
 
   for (const [toolCallId, entry] of byToolCallId) {
-    if (completion.has(toolCallId)) {
-      entry.status = "completed";
-    }
+    const recorded = completion.get(toolCallId);
+    if (!recorded) continue;
+    entry.status = recorded.isError ? "error" : "completed";
+    entry.error = recorded.error;
+    entry.durationMs = recorded.durationMs;
   }
 
   const entries = Array.from(byToolCallId.values());

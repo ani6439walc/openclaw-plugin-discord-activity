@@ -33,7 +33,7 @@ const DiscordToolStatusConfigSchema = z
       .number()
       .int()
       .min(100)
-      .max(4000)
+      .max(DEFAULT_MAX_STATUS_MESSAGE_LENGTH)
       .catch(DEFAULT_MAX_STATUS_MESSAGE_LENGTH),
     orphanTtlMs: z.number().int().positive().catch(DEFAULT_ORPHAN_TTL_MS),
     maxDisplayMs: z.number().int().min(1000).catch(DEFAULT_MAX_DISPLAY_MS),

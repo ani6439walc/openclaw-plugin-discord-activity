@@ -93,6 +93,69 @@ describe("ToolHistoryManager", () => {
     expect(history[4].toolCallId).toBe("call14");
   });
 
+  it("keeps live failure state when transcript data reports success", () => {
+    const history: ToolEntry[] = [
+      {
+        toolCallId: "call123",
+        toolName: "active-memory:memory_search",
+        params: { query: "live" },
+        status: "error",
+        error: "live failure",
+        durationMs: 42,
+      },
+    ];
+
+    expect(
+      manager.upsertEntries(history, [
+        {
+          toolCallId: "call123",
+          toolName: "active-memory:memory_search",
+          params: { query: "transcript" },
+          status: "completed",
+          durationMs: 99,
+        },
+      ]),
+    ).toEqual([]);
+    expect(history[0]).toEqual(
+      expect.objectContaining({
+        status: "error",
+        error: "live failure",
+        durationMs: 42,
+      }),
+    );
+  });
+
+  it("keeps failure sticky across duplicate new entries", () => {
+    const newEntries = manager.upsertEntries(
+      [],
+      [
+        {
+          toolCallId: "call123",
+          toolName: "active-memory:memory_search",
+          params: {},
+          status: "error",
+          error: "first failure",
+          durationMs: 42,
+        },
+        {
+          toolCallId: "call123",
+          toolName: "active-memory:memory_search",
+          params: {},
+          status: "completed",
+          durationMs: 99,
+        },
+      ],
+    );
+
+    expect(newEntries).toEqual([
+      expect.objectContaining({
+        status: "error",
+        error: "first failure",
+        durationMs: 42,
+      }),
+    ]);
+  });
+
   it("should replace subagent group", () => {
     const history: ToolEntry[] = [
       {
