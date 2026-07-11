@@ -281,6 +281,93 @@ describe("active-memory failure handling", () => {
     );
   });
 
+  it("removes live child entries split from the placeholder before finalizing", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = createHookHandlers({
+      store: defaultStore,
+      orphans: createOrphanManager(),
+      getToken: () => "token",
+      config: resolveConfig({}),
+      isActiveMemoryEnabled: () => false,
+      isSkillHarnessEnabled: () => false,
+    });
+    const sourceSessionKey = "agent:main:discord:channel:123";
+    const activeMemorySessionKey = `${sourceSessionKey}:active-memory:abc`;
+    defaultStore.contexts.set("discord:channel:123", {
+      actualChannelId: "123",
+      sourceSessionKey,
+    });
+    const session = defaultStore.getOrCreateSession(
+      "discord:channel:123",
+      sourceSessionKey,
+    );
+    expect(session).toBeDefined();
+    session?.toolHistory.push(
+      activeMemoryEntry({
+        toolCallId: "active-memory",
+        toolName: "active-memory",
+        params: {},
+        status: "pending",
+      }),
+      activeMemoryEntry({
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        params: {},
+        status: "pending",
+      }),
+      activeMemoryEntry({ toolCallId: "active-memory:memory" }),
+      activeMemoryEntry({
+        toolCallId: "active-memory:wiki",
+        toolName: "active-memory:wiki_search",
+      }),
+    );
+
+    await handlers.onAgentEnd(
+      {
+        success: true,
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "memory",
+                name: "memory_search",
+                arguments: { query: "hello" },
+              },
+              {
+                type: "toolCall",
+                id: "wiki",
+                name: "wiki_search",
+                arguments: { query: "hello" },
+              },
+            ],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "memory",
+            toolName: "memory_search",
+          },
+          { role: "toolResult", toolCallId: "wiki", toolName: "wiki_search" },
+        ],
+      },
+      { sessionKey: activeMemorySessionKey },
+    );
+
+    expect(
+      countOccurrences(session?.lastRenderedContent ?? "", "memory_search: ✔"),
+    ).toBe(1);
+    expect(
+      countOccurrences(session?.lastRenderedContent ?? "", "wiki_search: ✔"),
+    ).toBe(1);
+    expect(
+      session?.toolHistory.filter((entry) =>
+        entry.toolName.startsWith("active-memory:"),
+      ),
+    ).toHaveLength(2);
+  });
+
   it("reconciles transcript tool calls with different ids to live entries", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
     vi.stubGlobal("fetch", fetchMock);

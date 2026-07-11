@@ -211,6 +211,48 @@ describe("ToolHistoryManager", () => {
     expect(history[3].toolName).toBe("another_tool");
   });
 
+  it("replaces non-contiguous subagent entries without leaving duplicates", () => {
+    const memorySearch: ToolEntry = {
+      toolCallId: "active-memory:memory_search",
+      toolName: "active-memory:memory_search",
+      params: { query: "hello" },
+      status: "completed",
+    };
+    const wikiSearch: ToolEntry = {
+      toolCallId: "active-memory:wiki_search",
+      toolName: "active-memory:wiki_search",
+      params: { query: "hello" },
+      status: "completed",
+    };
+    const history: ToolEntry[] = [
+      {
+        toolCallId: "active-memory",
+        toolName: "active-memory",
+        params: {},
+        status: "pending",
+      },
+      {
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        params: {},
+        status: "pending",
+      },
+      memorySearch,
+      wikiSearch,
+    ];
+
+    manager.replaceSubagentGroup(history, "active-memory", [
+      memorySearch,
+      wikiSearch,
+    ]);
+
+    expect(history.map((entry) => entry.toolName)).toEqual([
+      "active-memory:memory_search",
+      "active-memory:wiki_search",
+      "skill-harness",
+    ]);
+  });
+
   it("should find subagent child entries", () => {
     const history: ToolEntry[] = [
       {

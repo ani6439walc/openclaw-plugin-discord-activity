@@ -142,10 +142,8 @@ export class ToolHistoryManager {
       history.push(...replacements);
       return;
     }
-    let endIdx = startIdx;
-    while (endIdx < history.length && predicate(history[endIdx])) {
-      endIdx++;
-    }
-    history.splice(startIdx, endIdx - startIdx, ...replacements);
+    const retained = history.filter((entry) => !predicate(entry));
+    retained.splice(startIdx, 0, ...replacements);
+    history.splice(0, history.length, ...retained);
   }
 }
