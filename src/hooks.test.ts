@@ -1247,7 +1247,8 @@ describe("createHookHandlers", () => {
       ).toBe(2);
     });
 
-    it("maps failed skill-harness pipeline events to error entries", async () => {
+    it("renders canonical skill-harness failures as phase-local errors", async () => {
+      createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
@@ -1268,7 +1269,7 @@ describe("createHookHandlers", () => {
           kind: "skill-harness.pipeline",
           phase: "intent-classification",
           state: "failed",
-          reason: "classifier crashed",
+          error: "classifier crashed",
         },
       });
 
@@ -1282,8 +1283,17 @@ describe("createHookHandlers", () => {
         expect.objectContaining({
           status: "error",
           error: "classifier crashed",
+          params: { error: "classifier crashed" },
         }),
       );
+      expect(entry?.params).not.toHaveProperty("reason");
+      expect(entry?.params).not.toHaveProperty("result");
+
+      const rendered =
+        store.sessions.get("discord:direct:123")?.lastRenderedContent;
+      expect(rendered).toContain("- intent-classification: ✘");
+      expect(rendered).toContain("error: classifier crashed");
+      expect(rendered?.match(/classifier crashed/g)).toHaveLength(1);
     });
 
     it("calculates skill-harness phase duration from first to final pipeline event", async () => {

@@ -123,7 +123,11 @@ function renderSubagentGroup(
       ? getParentSuffix(realEntries)
       : getParentSuffix(group);
   const errorEntry = group.find((e) => e.status === "error" && e.error);
-  const errorLine = formatErrorLine(errorEntry);
+  const errorLine =
+    prefix === "skill-harness" &&
+    errorEntry?.params?.error === errorEntry?.error
+      ? ""
+      : formatErrorLine(errorEntry);
 
   const totalDuration = realEntries.reduce(
     (sum, entry) =>

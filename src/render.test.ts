@@ -301,6 +301,57 @@ describe("renderStatusContent", () => {
     expect(result).toContain("💡 skill-harness: ←");
   });
 
+  it.each([
+    ["topic-triage", "topic checker returned no context"],
+    ["intent-classify", "classifier returned no result"],
+    ["hint-generate", "instruction writer produced no text"],
+  ])("renders %s failure under its phase exactly once", (phase, error) => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: `skill-harness:run-1:${phase}`,
+        toolName: `skill-harness:${phase}`,
+        params: { error },
+        status: "error",
+        error,
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+
+    expect(result).toContain("💡 skill-harness: ✘");
+    expect(result).toContain(`   - ${phase}: ✘`);
+    expect(result).toContain(`     - error: ${error}`);
+    expect(result.split(error)).toHaveLength(2);
+  });
+
+  it("keeps multiple skill-harness errors associated with their phases", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "skill-harness:run-1:topic-triage",
+        toolName: "skill-harness:topic-triage",
+        params: { error: "topic checker returned no context" },
+        status: "error",
+        error: "topic checker returned no context",
+      },
+      {
+        toolCallId: "skill-harness:run-1:intent-classify",
+        toolName: "skill-harness:intent-classify",
+        params: { error: "classifier returned no result" },
+        status: "error",
+        error: "classifier returned no result",
+      },
+    ];
+
+    const result = renderStatusContent(entries, true);
+
+    expect(result).toContain("   - topic-triage: ✘");
+    expect(result).toContain("     - error: topic checker returned no context");
+    expect(result).toContain("   - intent-classify: ✘");
+    expect(result).toContain("     - error: classifier returned no result");
+    expect(result.match(/topic checker returned no context/g)).toHaveLength(1);
+    expect(result.match(/classifier returned no result/g)).toHaveLength(1);
+  });
+
   it("renders skill-harness plain text result with a result label", () => {
     const entries: ToolEntry[] = [
       {
