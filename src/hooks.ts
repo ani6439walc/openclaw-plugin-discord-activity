@@ -94,6 +94,45 @@ function stableParamsKey(params: unknown): string {
   return JSON.stringify(stableValue(params ?? {}));
 }
 
+function reconcileActiveMemoryTranscriptEntries(
+  history: readonly ToolEntry[],
+  entries: readonly ToolEntry[],
+): ToolEntry[] {
+  const liveChildren = history.filter(
+    (entry) =>
+      entry.toolName.startsWith("active-memory:") &&
+      entry.toolName !== "active-memory:result",
+  );
+  const claimed = new Set<ToolEntry>();
+
+  return entries.map((entry) => {
+    const exact = liveChildren.find(
+      (candidate) =>
+        !claimed.has(candidate) && candidate.toolCallId === entry.toolCallId,
+    );
+    if (exact) {
+      claimed.add(exact);
+      return entry;
+    }
+    if (entry.toolName === "active-memory:result") {
+      return entry;
+    }
+
+    const semanticMatch = liveChildren.find(
+      (candidate) =>
+        !claimed.has(candidate) &&
+        candidate.toolName === entry.toolName &&
+        stableParamsKey(candidate.params) === stableParamsKey(entry.params),
+    );
+    if (!semanticMatch) {
+      return entry;
+    }
+
+    claimed.add(semanticMatch);
+    return { ...entry, toolCallId: semanticMatch.toolCallId };
+  });
+}
+
 function isDuplicateCodexOpenClawToolEntry(
   existing: ToolDedupeIdentity,
   incoming: ToolDedupeIdentity,
@@ -653,7 +692,10 @@ export function createHookHandlers(deps: HookDeps) {
           : undefined;
         if (session) {
           clearSessionTimer(session);
-          const entries = parseActiveMemoryToolEntries(event);
+          const entries = reconcileActiveMemoryTranscriptEntries(
+            session.toolHistory,
+            parseActiveMemoryToolEntries(event),
+          );
           const preservedPlaceholder = session.toolHistory.find(
             (t) => t.toolCallId === "active-memory",
           );

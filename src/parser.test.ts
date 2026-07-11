@@ -2,6 +2,32 @@ import { describe, expect, it } from "vitest";
 import { parseActiveMemoryToolEntries } from "./parser.js";
 
 describe("parseActiveMemoryToolEntries", () => {
+  it("normalizes JSON-string tool arguments", () => {
+    const entries = parseActiveMemoryToolEntries({
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "functions.memory_search:0",
+              name: "memory_search",
+              arguments:
+                '{"query":"你好","corpus":"memory","maxResults":5,"minScore":0.2}',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(entries[0]?.params).toEqual({
+      query: "你好",
+      corpus: "memory",
+      maxResults: 5,
+      minScore: 0.2,
+    });
+  });
+
   it("keeps an earlier transcript failure sticky across duplicate success results", () => {
     const entries = parseActiveMemoryToolEntries({
       messages: [

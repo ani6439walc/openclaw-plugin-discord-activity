@@ -51,6 +51,17 @@ function getRecordedToolError(msg: AgentEventMessage): string | undefined {
   return msg.isError ? extractAssistantText(msg) : undefined;
 }
 
+function parseToolCallArguments(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value ?? {};
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
 export function getDiscordContextKey(
   sessionKey: string | undefined,
 ): string | undefined {
@@ -152,7 +163,7 @@ export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
           byToolCallId.set(prefixedId, {
             toolCallId: prefixedId,
             toolName: `active-memory:${item.name}`,
-            params: item.arguments ?? {},
+            params: parseToolCallArguments(item.arguments),
             status: "pending",
           });
         }

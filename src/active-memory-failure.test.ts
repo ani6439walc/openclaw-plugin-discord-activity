@@ -280,4 +280,133 @@ describe("active-memory failure handling", () => {
       "error: live database failure",
     );
   });
+
+  it("reconciles transcript tool calls with different ids to live entries", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = createHookHandlers({
+      store: defaultStore,
+      orphans: createOrphanManager(),
+      getToken: () => "token",
+      config: resolveConfig({}),
+      isActiveMemoryEnabled: () => false,
+      isSkillHarnessEnabled: () => false,
+    });
+    const sourceSessionKey = "agent:main:discord:channel:123";
+    const activeMemorySessionKey = `${sourceSessionKey}:active-memory:abc`;
+    defaultStore.contexts.set("discord:channel:123", {
+      actualChannelId: "123",
+      sourceSessionKey,
+    });
+    const session = defaultStore.getOrCreateSession(
+      "discord:channel:123",
+      sourceSessionKey,
+    );
+    expect(session).toBeDefined();
+
+    const calls = [
+      {
+        liveId: "live_memory",
+        transcriptId: "functions.memory_search:0",
+        toolName: "memory_search",
+        params: {
+          query: "你好",
+          corpus: "memory",
+          maxResults: 5,
+          minScore: 0.2,
+        },
+        durationMs: 2_270,
+      },
+      {
+        liveId: "live_wiki",
+        transcriptId: "functions.wiki_search:1",
+        toolName: "wiki_search",
+        params: { query: "你好", maxResults: 5 },
+        durationMs: 2_380,
+      },
+      {
+        liveId: "live_memory_repeat",
+        transcriptId: "functions.memory_search:2",
+        toolName: "memory_search",
+        params: {
+          query: "你好",
+          corpus: "memory",
+          maxResults: 5,
+          minScore: 0.2,
+        },
+        durationMs: 2_410,
+      },
+    ];
+
+    for (const call of calls) {
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: call.liveId,
+          toolName: call.toolName,
+          params: call.params,
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          toolCallId: call.liveId,
+          toolName: call.toolName,
+        },
+      );
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: call.liveId,
+          toolName: call.toolName,
+          params: call.params,
+          durationMs: call.durationMs,
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          toolCallId: call.liveId,
+          toolName: call.toolName,
+        },
+      );
+    }
+
+    await handlers.onAgentEnd(
+      {
+        success: true,
+        durationMs: 9_310,
+        messages: [
+          {
+            role: "assistant",
+            content: calls.map((call) => ({
+              type: "toolCall",
+              id: call.transcriptId,
+              name: call.toolName,
+              arguments: JSON.stringify(call.params),
+            })),
+          },
+          ...calls.map((call) => ({
+            role: "toolResult",
+            toolCallId: call.transcriptId,
+            toolName: call.toolName,
+            durationMs: call.durationMs,
+          })),
+          { role: "assistant", content: "NONE" },
+        ],
+      },
+      { sessionKey: activeMemorySessionKey },
+    );
+
+    expect(
+      countOccurrences(session?.lastRenderedContent ?? "", "memory_search: ✔"),
+    ).toBe(2);
+    expect(
+      countOccurrences(session?.lastRenderedContent ?? "", "wiki_search: ✔"),
+    ).toBe(1);
+    expect(
+      session?.toolHistory.filter(
+        (entry) => entry.toolName === "active-memory:memory_search",
+      ),
+    ).toHaveLength(2);
+    expect(
+      session?.toolHistory.filter(
+        (entry) => entry.toolName === "active-memory:wiki_search",
+      ),
+    ).toHaveLength(1);
+  });
 });
