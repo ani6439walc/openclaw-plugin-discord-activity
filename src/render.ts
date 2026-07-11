@@ -236,6 +236,17 @@ const CLOSING_FENCE = "\n```";
 
 type StatusLine = { text: string; protected: boolean };
 
+function truncateWithEllipsis(text: string, maxLength: number): string {
+  if (maxLength <= 1) return "…";
+  const contentLimit = maxLength - 1;
+  let content = "";
+  for (const character of text) {
+    if (content.length + character.length > contentLimit) break;
+    content += character;
+  }
+  return `${content}…`;
+}
+
 function renderBoundedStatus(
   contentParts: readonly string[],
   requestedMaxLength: number,
@@ -314,9 +325,9 @@ function renderBoundedStatus(
     }
     const reduction = Math.min(getRenderedLength() - maxLength, maxReduction);
     const nextLength = line.text.length - reduction;
-    retainedCharacters -= reduction;
-    line.text =
-      nextLength === 1 ? "…" : `${line.text.slice(0, nextLength - 1)}…`;
+    const nextText = truncateWithEllipsis(line.text, nextLength);
+    retainedCharacters += nextText.length - line.text.length;
+    line.text = nextText;
   }
 
   const body = lines

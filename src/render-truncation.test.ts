@@ -112,6 +112,24 @@ describe("bounded status rendering", () => {
     expect(result).toContain("web_search: ✔");
   });
 
+  it("does not split surrogate pairs when truncating status headers", () => {
+    const malformedSurrogate =
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
+    const history = [
+      entry({
+        toolCallId: "emoji",
+        toolName: `emoji_${"😀".repeat(100)}`,
+      }),
+      entry({ toolCallId: "new", toolName: "web_search" }),
+    ];
+
+    for (let maxLength = 100; maxLength <= 130; maxLength += 1) {
+      expect(renderStatusContent(history, true, maxLength)).not.toMatch(
+        malformedSurrogate,
+      );
+    }
+  });
+
   it("honors a custom limit without mutating session history", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
     vi.stubGlobal("fetch", fetchMock);
