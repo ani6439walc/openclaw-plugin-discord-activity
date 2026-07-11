@@ -217,7 +217,8 @@ describe("updateStatusMessage", () => {
 
     expect(session.toolHistory).toHaveLength(14);
     expect(session.lastRenderedContent).not.toContain("memory_search_0");
-    expect(session.lastRenderedContent).toContain("memory_search_1");
+    expect(session.lastRenderedContent).not.toContain("memory_search_6");
+    expect(session.lastRenderedContent).not.toContain("🧩 active-memory");
     expect(session.lastRenderedContent).not.toContain("normal_tool_0");
     expect(session.lastRenderedContent).toContain("normal_tool_1");
   });

@@ -209,14 +209,7 @@ describe("renderStatusContent", () => {
     );
   });
 
-  it("limits normal entries separately from subagent child entries", () => {
-    const normalEntries = Array.from({ length: 7 }, (_, index) =>
-      makeEntry({
-        toolCallId: `normal_${index}`,
-        toolName: `normal_tool_${index}`,
-        status: "completed",
-      }),
-    );
+  it("shows up to three entries per subagent group before the main agent starts", () => {
     const activeMemoryEntries: ToolEntry[] = Array.from(
       { length: 7 },
       (_, index) => ({
@@ -237,16 +230,92 @@ describe("renderStatusContent", () => {
     );
 
     const result = renderStatusContent(
-      [...activeMemoryEntries, ...skillHarnessEntries, ...normalEntries],
+      [...activeMemoryEntries, ...skillHarnessEntries],
       true,
     );
 
-    expect(result).not.toContain("normal_tool_0");
-    expect(result).toContain("normal_tool_1");
+    expect(result).not.toContain("memory_search_3");
+    expect(result).toContain("memory_search_4");
+    expect(result).not.toContain("phase_3");
+    expect(result).toContain("phase_4");
+  });
+
+  it("keeps each subagent child limit independent from outer status slots", () => {
+    const subagentEntries: ToolEntry[] = [
+      ...Array.from({ length: 5 }, (_, index) => ({
+        toolCallId: `active-memory:mem_${index}`,
+        toolName: `active-memory:memory_search_${index}`,
+        params: {},
+        status: "completed" as const,
+      })),
+      {
+        toolCallId: "skill-harness:phase",
+        toolName: "skill-harness:topic-triage",
+        params: {},
+        status: "completed",
+      } as const,
+    ];
+    const normalEntries = Array.from({ length: 4 }, (_, index) =>
+      makeEntry({
+        toolCallId: `normal_${index}`,
+        toolName: `normal_tool_${index}`,
+        status: "completed",
+      }),
+    );
+
+    const result = renderStatusContent(
+      [...subagentEntries, ...normalEntries],
+      true,
+    );
+
+    expect(result).toContain("🧩 active-memory: ✔");
+    expect(result).toContain("💡 skill-harness: ✔");
     expect(result).not.toContain("memory_search_0");
-    expect(result).toContain("memory_search_1");
-    expect(result).not.toContain("phase_0");
-    expect(result).toContain("phase_1");
+    expect(result).not.toContain("memory_search_1");
+    expect(result).toContain("memory_search_2");
+    expect(result).toContain("topic-triage");
+    expect(result).toContain("normal_tool_0");
+    expect(result).toContain("normal_tool_3");
+  });
+
+  it("rolls out whole subagent groups as normal tools fill six outer slots", () => {
+    const subagentEntries = [
+      makeEntry({
+        toolCallId: "active-memory:memory",
+        toolName: "active-memory:memory_search",
+        status: "completed",
+      }),
+      makeEntry({
+        toolCallId: "skill-harness:phase",
+        toolName: "skill-harness:topic-triage",
+        status: "completed",
+      }),
+    ];
+    const normalEntries = Array.from({ length: 6 }, (_, index) =>
+      makeEntry({
+        toolCallId: `normal_${index}`,
+        toolName: `normal_tool_${index}`,
+        status: "completed",
+      }),
+    );
+
+    const withFiveNormalTools = renderStatusContent(
+      [...subagentEntries, ...normalEntries.slice(0, 5)],
+      true,
+    );
+    expect(withFiveNormalTools).not.toContain("🧩 active-memory");
+    expect(withFiveNormalTools).toContain("💡 skill-harness: ✔");
+    expect(withFiveNormalTools).toContain("topic-triage");
+    expect(withFiveNormalTools).toContain("normal_tool_4");
+
+    const withSixNormalTools = renderStatusContent(
+      [...subagentEntries, ...normalEntries],
+      true,
+    );
+    expect(withSixNormalTools).not.toContain("🧩 active-memory");
+    expect(withSixNormalTools).not.toContain("💡 skill-harness");
+    expect(withSixNormalTools).toContain("normal_tool_0");
+    expect(withSixNormalTools).toContain("normal_tool_5");
   });
 
   it("keeps subagent result entries at the end when limiting child entries", () => {
@@ -267,9 +336,8 @@ describe("renderStatusContent", () => {
 
     const result = renderStatusContent(entries, true);
 
-    expect(result).not.toContain("memory_search_0");
-    expect(result).not.toContain("memory_search_1");
-    expect(result).toContain("memory_search_2");
+    expect(result).not.toContain("memory_search_4");
+    expect(result).toContain("memory_search_5");
     expect(result.indexOf("memory_search_6")).toBeLessThan(
       result.indexOf("- result: final result"),
     );

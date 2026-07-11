@@ -481,10 +481,11 @@ describe("active-memory failure handling", () => {
 
     expect(
       countOccurrences(session?.lastRenderedContent ?? "", "memory_search: ✔"),
-    ).toBe(2);
+    ).toBe(1);
     expect(
       countOccurrences(session?.lastRenderedContent ?? "", "wiki_search: ✔"),
     ).toBe(1);
+    expect(session?.lastRenderedContent).toContain("- result: NONE");
     expect(
       session?.toolHistory.filter(
         (entry) => entry.toolName === "active-memory:memory_search",

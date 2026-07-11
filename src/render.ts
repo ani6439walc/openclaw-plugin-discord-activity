@@ -1,6 +1,10 @@
 import type { ToolEntry } from "./types.js";
 import { getToolIcon, formatParams } from "./formatting.js";
-import { STATUS_MAX_LENGTH, STATUS_MAX_ENTRIES } from "./constants.js";
+import {
+  STATUS_MAX_LENGTH,
+  STATUS_MAX_ENTRIES,
+  STATUS_MAX_SUBAGENT_ENTRIES,
+} from "./constants.js";
 import { getDisplayToolName } from "./tool-name.js";
 
 function getSubSuffix(status: ToolEntry["status"]): string {
@@ -76,7 +80,7 @@ function sortSubagentChildEntries(
   const resultEntries = entries.filter((entry) =>
     isSubagentResultEntry(entry, prefix),
   );
-  return [...toolEntries, ...resultEntries].slice(-STATUS_MAX_ENTRIES);
+  return [...toolEntries, ...resultEntries].slice(-STATUS_MAX_SUBAGENT_ENTRIES);
 }
 
 function renderSkillHarnessResult(entry: ToolEntry): string {
@@ -345,8 +349,25 @@ export function renderStatusContent(
 ): string {
   const contentParts: string[] = [];
   const subagentGroups = getSubagentGroupEntries(toolHistory);
+  const normalEntries = toolHistory
+    .filter(
+      (t) =>
+        !(
+          isSubagentToolEntry(t, "active-memory") ||
+          isSubagentToolEntry(t, "skill-harness") ||
+          isMainAgentEntry(t)
+        ),
+    )
+    .slice(-STATUS_MAX_ENTRIES);
+  const subagentGroupBudget = STATUS_MAX_ENTRIES - normalEntries.length;
+  const visibleSubagentGroups =
+    subagentGroupBudget >= subagentGroups.length
+      ? subagentGroups
+      : subagentGroupBudget > 0
+        ? subagentGroups.slice(-subagentGroupBudget)
+        : [];
 
-  for (const group of subagentGroups) {
+  for (const group of visibleSubagentGroups) {
     if (group.name === "active-memory") {
       contentParts.push(renderActiveMemoryGroup(group.entries, isFinal));
     } else {
@@ -358,17 +379,6 @@ export function renderStatusContent(
   if (mainAgentFailure?.status === "error") {
     contentParts.push(renderMainAgentFailure(mainAgentFailure));
   }
-
-  const normalEntries = toolHistory
-    .filter(
-      (t) =>
-        !(
-          isSubagentToolEntry(t, "active-memory") ||
-          isSubagentToolEntry(t, "skill-harness") ||
-          isMainAgentEntry(t)
-        ),
-    )
-    .slice(-STATUS_MAX_ENTRIES);
 
   for (const [index, entry] of normalEntries.entries()) {
     const isLast = index === normalEntries.length - 1;

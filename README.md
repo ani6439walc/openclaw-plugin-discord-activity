@@ -59,7 +59,7 @@ Rendering rules to preserve:
 - Failed `active-memory` child tools keep their own phase-local errors and durations. A distinct parent failure is also shown; identical parent/child error text is rendered once.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds render with two decimal places; durations of 10 seconds or more render with one decimal place.
-- Status output keeps up to 6 normal tool entries, 6 `active-memory` child entries, and 6 `skill-harness` child entries independently.
+- Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. At the outer level, each complete internal group counts as one entry alongside each normal tool in a shared 6-entry budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group; retained `toolHistory` is unchanged.
 - Overlong status messages remain within the configured limit, retain status headers where possible, end with a complete YAML fence, and use `... N more` for omitted detail lines without deleting retained tool history.
 
 ## How it works

@@ -88,7 +88,7 @@ Important behavior to preserve:
 - DM sessions may need `resolveDmChannel()` before sending.
 - Missing Discord token or Discord API failures should fail open by logging and skipping status updates, not by blocking the agent flow.
 - Treat Discord delete `404` as success. Only `429`, `5xx`, and network exhaustion may schedule one detached delete recovery after `DELETE_RECOVERY_DELAY_MS` (5 seconds); missing tokens and `401`/`403` are terminal. Detached recovery must use captured immutable identifiers and must not mutate session maps.
-- Status messages are limited to `STATUS_MAX_ENTRIES` (6 entries) independently for normal tools, `active-memory` children, and `skill-harness` children, plus `STATUS_MAX_LENGTH` (1700 characters) to prevent excessive message length. Bounded rendering must preserve a complete YAML fence, retain status headers where possible, emit `... N more` for omitted details, and never trim `toolHistory` merely to fit display length.
+- Each `active-memory` and `skill-harness` group independently displays up to `STATUS_MAX_SUBAGENT_ENTRIES` (3 children). At the outer level, each complete internal group counts as one entry alongside each normal tool in the shared `STATUS_MAX_ENTRIES` (6 entries) budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group. `STATUS_MAX_LENGTH` (1700 characters) independently prevents excessive message length. Bounded rendering must preserve a complete YAML fence, retain visible status headers where possible, emit `... N more` for omitted details, and never trim `toolHistory` merely to fit display length.
 
 ## Coding Rules
 
