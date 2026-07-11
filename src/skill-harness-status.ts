@@ -34,6 +34,12 @@ function mapPipelineState(value: unknown): ToolEntry["status"] | undefined {
   return undefined;
 }
 
+function getNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
 export function parseSkillHarnessPipelineEntry(
   event: AgentPipelineEvent,
 ): ToolEntry | undefined {
@@ -51,13 +57,25 @@ export function parseSkillHarnessPipelineEntry(
         SKILL_HARNESS_PARAM_KEYS.has(key) && value !== undefined,
     ),
   );
+  const error =
+    status === "error"
+      ? (getNonEmptyString(data.error) ??
+        getNonEmptyString(data.reason) ??
+        getNonEmptyString(data.result))
+      : undefined;
+  if (status === "error") {
+    delete params.reason;
+    delete params.result;
+    if (error) params.error = error;
+    else delete params.error;
+  }
 
   return {
     toolCallId: `skill-harness:${event.runId}:${data.phase}`,
     toolName: `skill-harness:${data.phase}`,
     params,
     status,
-    error: status === "error" ? String(data.reason ?? "failed") : undefined,
+    error,
   };
 }
 

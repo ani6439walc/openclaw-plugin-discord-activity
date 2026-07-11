@@ -53,6 +53,7 @@ Rendering rules to preserve:
 - `active-memory` and `skill-harness` group order is stable.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
+- Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.
 - `active-memory` result text renders as `result: <text>`.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds render with two decimal places; durations of 10 seconds or more render with one decimal place.
