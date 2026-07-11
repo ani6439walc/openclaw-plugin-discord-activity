@@ -20,9 +20,9 @@
       "maxStatusMessageLength": {
         "type": "integer",
         "minimum": 100,
-        "maximum": 4000,
+        "maximum": 1700,
         "default": 1700,
-        "description": "Maximum length of the Discord status message content"
+        "description": "Maximum length of Discord status message content, capped at 1700 characters"
       },
       "orphanTtlMs": {
         "type": "integer",

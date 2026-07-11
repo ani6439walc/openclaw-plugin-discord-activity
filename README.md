@@ -23,7 +23,7 @@ The plugin is designed to fail open: if Discord credentials are missing or Disco
 
 ## What it shows
 
-Status messages are Discord YAML code blocks. Internal subagent groups appear before normal tools:
+Status messages are Discord YAML code blocks. Internal subagent groups appear first, followed by a main-agent failure when present, then normal tools:
 
 ```yaml
 🧩 active-memory: ✔
@@ -51,14 +51,16 @@ Rendering rules to preserve:
 
 - Normal tools render after `active-memory` and `skill-harness` groups.
 - `active-memory` and `skill-harness` group order is stable.
+- A failed main agent renders as `🤖 agent: ✘` after internal groups and before normal tools. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
 - Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.
 - `active-memory` result text renders as `result: <text>`.
+- Failed `active-memory` child tools keep their own phase-local errors and durations. A distinct parent failure is also shown; identical parent/child error text is rendered once.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds render with two decimal places; durations of 10 seconds or more render with one decimal place.
 - Status output keeps up to 6 normal tool entries, 6 `active-memory` child entries, and 6 `skill-harness` child entries independently.
-- Overlong status messages are trimmed to fit the configured Discord message limit.
+- Overlong status messages remain within the configured limit, retain status headers where possible, end with a complete YAML fence, and use `... N more` for omitted detail lines without deleting retained tool history.
 
 ## How it works
 
@@ -68,7 +70,7 @@ The plugin listens to OpenClaw runtime events and maps them to one active Discor
 2. **`before_tool_call`** adds a pending tool entry. If the Discord session is not known yet, the tool call is stored as an orphan.
 3. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves or derives completed duration data, and updates the status message.
 4. **`before_agent_reply` / `message_sending`** finalize visible status before the final user-facing reply is sent.
-5. **`agent_end`** handles main-session cleanup and captures final `active-memory` output from its internal session.
+5. **`agent_end`** records main-agent failure state, handles main-session cleanup, and captures final `active-memory` output and failure details from its internal session.
 6. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
 
 Session and race-safety behavior:
@@ -78,6 +80,8 @@ Session and race-safety behavior:
 - Finalized sessions do not create duplicate status messages from late tool events.
 - Direct-message sessions can resolve a Discord DM channel before sending.
 - Codex/OpenClaw-prefixed tool names such as `openclawskill_view` display immediately as canonical names such as `skill_view`.
+- Discord deletes treat `404` as already deleted. Retryable `429`, `5xx`, and network failures use the normal bounded API retry policy, then schedule one detached recovery attempt after 5 seconds. Missing tokens and `401`/`403` failures do not schedule delayed retries.
+- Detached delete recovery captures the original channel, message, account, and session identifiers, so it cannot delete or mutate a replacement session's status message.
 
 ## Architecture
 
@@ -142,12 +146,14 @@ The plugin manifest activates on startup for the `discord` channel:
 
 Discord bot credentials are resolved through OpenClaw account/secret configuration by the plugin SDK. Keep Discord credentials in the OpenClaw Discord channel/account configuration or secret store; do not hard-code credentials in this plugin.
 
+This release targets OpenClaw/plugin SDK `2026.6.11`, declares `2026.6.11` as the minimum gateway version, and loads `openclaw/plugin-sdk/plugin-entry` plus `openclaw/plugin-sdk/runtime-env` directly. The integration suite verifies those entrypoints and version declarations together.
+
 ## Configuration
 
 | Property                 | Type     | Default  | Description                                                        |
 | ------------------------ | -------- | -------- | ------------------------------------------------------------------ |
 | `maxToolHistoryLength`   | `number` | `30`     | Maximum number of tool entries retained in memory before trimming. |
-| `maxStatusMessageLength` | `number` | `1700`   | Maximum rendered Discord status message length.                    |
+| `maxStatusMessageLength` | `number` | `1700`   | Maximum rendered status length; allowed range is 100–1700.         |
 | `maxDisplayMs`           | `number` | `600000` | Maximum time a status message may remain before force cleanup.     |
 | `orphanTtlMs`            | `number` | `300000` | Time to keep orphaned tool calls while waiting for a session link. |
 

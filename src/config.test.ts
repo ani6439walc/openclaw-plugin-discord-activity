@@ -76,12 +76,16 @@ describe("resolveConfig", () => {
     expect(
       resolveConfig({
         maxToolHistoryLength: 50,
-        maxStatusMessageLength: 4000,
+        maxStatusMessageLength: DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
       }),
     ).toEqual({
       ...DEFAULT_CONFIG,
       maxToolHistoryLength: 50,
-      maxStatusMessageLength: 4000,
+      maxStatusMessageLength: DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
     });
+
+    expect(resolveConfig({ maxStatusMessageLength: 1701 })).toEqual(
+      DEFAULT_CONFIG,
+    );
   });
 });

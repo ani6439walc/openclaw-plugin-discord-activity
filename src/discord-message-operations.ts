@@ -4,8 +4,10 @@ import {
   sendMessage as sendDiscordMessage,
   editMessage as editDiscordMessage,
   deleteMessage as deleteDiscordMessage,
+  deleteMessageWithResult as deleteDiscordMessageWithResult,
   resolveDmChannel as resolveDmChannelApi,
 } from "./discord-api.js";
+import type { DeleteMessageResult } from "./discord-api.js";
 import { extractUserIdFromDirectSessionKey } from "./parser.js";
 
 export async function editDiscordStatusMessage(
@@ -24,10 +26,13 @@ export async function editDiscordStatusMessage(
     return false;
   }
 
-  await editDiscordMessage(channelId, messageId, content, token);
-  return true;
+  return await editDiscordMessage(channelId, messageId, content, token);
 }
 
+/**
+ * @deprecated Compatibility wrapper; use deleteDiscordStatusMessageWithResult
+ * for internal failure classification.
+ */
 export async function deleteDiscordStatusMessage(
   getToken: GetTokenFn,
   channelId: string,
@@ -44,6 +49,40 @@ export async function deleteDiscordStatusMessage(
   }
 
   return await deleteDiscordMessage(channelId, messageId, token);
+}
+
+export async function deleteDiscordStatusMessageWithResult(
+  getToken: GetTokenFn,
+  channelId: string,
+  messageId: string,
+  accountId?: string,
+): Promise<DeleteMessageResult> {
+  let token: string;
+  try {
+    token = getToken(accountId);
+  } catch (error) {
+    logger.warn("Unable to resolve Discord token; skipping status delete.", {
+      error: String(error),
+    });
+    return {
+      deleted: false,
+      retryable: false,
+      reason: "token-resolution-error",
+    };
+  }
+  if (!token) {
+    logger.warn("deleteDiscordStatusMessage: no token available", {
+      channelId,
+      messageId,
+    });
+    return {
+      deleted: false,
+      retryable: false,
+      reason: "missing-token",
+    };
+  }
+
+  return await deleteDiscordMessageWithResult(channelId, messageId, token);
 }
 
 export async function sendDiscordStatusWithDmFallback(

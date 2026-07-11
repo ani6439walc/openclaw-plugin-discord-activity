@@ -4,6 +4,7 @@ export type ChannelMeta = {
   senderId?: string;
   accountId?: string;
   sourceSessionKey?: string;
+  runId?: string;
 };
 
 export type ToolEntry = {
@@ -31,6 +32,10 @@ export type AgentEventMessage = {
   content?: string | AgentMessageContentItem[];
   toolCallId?: string;
   toolName?: string;
+  isError?: boolean;
+  error?: string;
+  durationMs?: number;
+  details?: unknown;
 };
 
 export type OrphanEntry = {
@@ -48,6 +53,8 @@ export type SessionEntry = {
   accountId?: string;
   ownerSessionKey: string;
   generation: number;
+  runId?: string;
+  supersededRunIds?: Set<string>;
   statusMessageId?: string;
   lastRenderedContent?: string;
   finalized?: boolean;
@@ -114,6 +121,7 @@ export type MessageContext = {
   accountId?: string;
   conversationId?: string;
   sessionKey?: string;
+  runId?: string;
   messageId?: string;
   senderId?: string;
   messageProvider?: string;

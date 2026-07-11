@@ -37,9 +37,11 @@ export class ToolHistoryManager {
       );
       if (existingInHistory) {
         this.updateEntry(history, entry.toolCallId, {
-          status: entry.status,
+          status: existingInHistory.status === "error" ? "error" : entry.status,
           params: entry.params,
           toolName: entry.toolName,
+          error: existingInHistory.error ?? entry.error,
+          durationMs: existingInHistory.durationMs ?? entry.durationMs,
         });
       } else {
         const existingInNew = newEntries.find(
@@ -49,9 +51,11 @@ export class ToolHistoryManager {
           const idx = newEntries.indexOf(existingInNew);
           newEntries[idx] = {
             ...newEntries[idx],
-            status: entry.status,
+            status: existingInNew.status === "error" ? "error" : entry.status,
             params: entry.params,
             toolName: entry.toolName,
+            error: existingInNew.error ?? entry.error,
+            durationMs: existingInNew.durationMs ?? entry.durationMs,
           };
         } else {
           newEntries.push(entry);
@@ -138,10 +142,8 @@ export class ToolHistoryManager {
       history.push(...replacements);
       return;
     }
-    let endIdx = startIdx;
-    while (endIdx < history.length && predicate(history[endIdx])) {
-      endIdx++;
-    }
-    history.splice(startIdx, endIdx - startIdx, ...replacements);
+    const retained = history.filter((entry) => !predicate(entry));
+    retained.splice(startIdx, 0, ...replacements);
+    history.splice(0, history.length, ...retained);
   }
 }

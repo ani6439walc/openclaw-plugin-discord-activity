@@ -129,7 +129,34 @@ describe("updateStatusMessage", () => {
     expect(session.lastRenderedContent).toBe(expectedContent);
   });
 
-  it("trims rendered status content using the configured max length", async () => {
+  it("retries identical content after a failed edit", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ message: "Forbidden" }, 403))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const toolHistory = [createToolEntry({ status: "completed" })];
+    const expectedContent = renderStatusContent(toolHistory, true);
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory,
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", true, 60_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(session.lastRenderedContent).toBe("old-content");
+
+    await updateStatusMessage(session, () => "token", true, 60_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(session.lastRenderedContent).toBe(expectedContent);
+  });
+
+  it("bounds rendered status content without trimming tool history", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -152,9 +179,12 @@ describe("updateStatusMessage", () => {
     await updateStatusMessage(session, () => "token", true, 60_000, 120);
 
     expect(session.toolHistory.map((entry) => entry.toolCallId)).toEqual([
+      "call_drop",
       "call_keep",
     ]);
     expect(session.lastRenderedContent?.length).toBeLessThanOrEqual(120);
+    expect(session.lastRenderedContent).toMatch(/\.\.\. \d+ more/);
+    expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
   });
 
   it("does not trim tool history just because total entries exceed the display entry limit", async () => {

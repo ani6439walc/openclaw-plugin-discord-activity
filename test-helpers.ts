@@ -82,13 +82,13 @@ export function createMockChannelMeta(
 
 export function createMockDiscordApi(): {
   sendMessage: Mock<() => Promise<string>>;
-  editMessage: Mock<() => Promise<undefined>>;
+  editMessage: Mock<() => Promise<boolean>>;
   deleteMessage: Mock<() => Promise<boolean>>;
   resolveDmChannel: Mock<() => Promise<string>>;
 } {
   return {
     sendMessage: vi.fn().mockResolvedValue("msg_status_001"),
-    editMessage: vi.fn().mockResolvedValue(undefined),
+    editMessage: vi.fn().mockResolvedValue(true),
     deleteMessage: vi.fn().mockResolvedValue(true),
     resolveDmChannel: vi.fn().mockResolvedValue("dm_channel_001"),
   };

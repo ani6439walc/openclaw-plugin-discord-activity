@@ -156,7 +156,7 @@ export async function editMessage(
   messageId: string,
   content: string,
   token: string,
-) {
+): Promise<boolean> {
   try {
     const res = await discordApiRequest(
       `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
@@ -176,19 +176,29 @@ export async function editMessage(
         status: res.status,
         error: data,
       });
+      return false;
     }
+    return true;
   } catch (err) {
     logger.warn("editMessage error.", {
       error: String(err),
     });
+    return false;
   }
 }
 
-export async function deleteMessage(
+export type DeleteMessageResult = {
+  deleted: boolean;
+  retryable: boolean;
+  status?: number;
+  reason: string;
+};
+
+export async function deleteMessageWithResult(
   channelId: string,
   messageId: string,
   token: string,
-): Promise<boolean> {
+): Promise<DeleteMessageResult> {
   try {
     const res = await discordApiRequest(
       `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
@@ -198,17 +208,40 @@ export async function deleteMessage(
       },
       "deleteMessage",
     );
-    if (!res.ok) {
-      logger.warn("deleteMessage failed.", {
+    if (res.ok || res.status === 404) {
+      return {
+        deleted: true,
+        retryable: false,
         status: res.status,
-      });
-      return false;
+        reason: res.ok ? "deleted" : "not-found",
+      };
     }
-    return true;
+    logger.warn("deleteMessage failed.", {
+      status: res.status,
+    });
+    return {
+      deleted: false,
+      retryable: res.status === 429 || res.status >= 500,
+      status: res.status,
+      reason: `http-${res.status}`,
+    };
   } catch (err) {
     logger.warn("deleteMessage error.", {
       error: String(err),
     });
-    return false;
+    return {
+      deleted: false,
+      retryable: true,
+      reason: "network-error",
+    };
   }
+}
+
+/** @deprecated Compatibility wrapper; use deleteMessageWithResult internally. */
+export async function deleteMessage(
+  channelId: string,
+  messageId: string,
+  token: string,
+): Promise<boolean> {
+  return (await deleteMessageWithResult(channelId, messageId, token)).deleted;
 }

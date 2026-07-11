@@ -34,6 +34,20 @@ function formatErrorLine(entry: ToolEntry | undefined): string {
     : "";
 }
 
+function formatNestedErrorLine(entry: ToolEntry): string {
+  if (
+    entry.status !== "error" ||
+    !entry.error ||
+    entry.params?.error === entry.error
+  ) {
+    return "";
+  }
+  return `\n${formatParams(
+    { error: entry.error },
+    { first: "     - ", rest: "       " },
+  )}`;
+}
+
 function getParentSuffix(group: readonly ToolEntry[]): string {
   const hasError = group.some((entry) => entry.status === "error");
   const hasPending = group.some((entry) => entry.status === "pending");
@@ -46,6 +60,10 @@ function isSubagentToolEntry(entry: ToolEntry, prefix: string): boolean {
 
 function isSubagentResultEntry(entry: ToolEntry, prefix: string): boolean {
   return entry.toolName === `${prefix}:result`;
+}
+
+function isMainAgentEntry(entry: ToolEntry): boolean {
+  return entry.toolCallId === "agent" && entry.toolName === "agent";
 }
 
 function sortSubagentChildEntries(
@@ -104,7 +122,7 @@ function renderNestedToolEntry(
     first: "     - ",
     rest: "       ",
   });
-  return `   - ${strippedName}: ${getSubSuffix(entry.status)}${formatDuration(entry)}${pStr ? "\n" + pStr : ""}`;
+  return `   - ${strippedName}: ${getSubSuffix(entry.status)}${formatDuration(entry)}${pStr ? "\n" + pStr : ""}${formatNestedErrorLine(entry)}`;
 }
 
 function renderSubagentGroup(
@@ -114,20 +132,24 @@ function renderSubagentGroup(
   renderResult?: (entry: ToolEntry) => string,
 ): string {
   const realEntries = group.filter((e) => e.toolName.startsWith(`${prefix}:`));
-  const subEntryStrs = sortSubagentChildEntries(realEntries, prefix).map(
-    (entry) => renderNestedToolEntry(entry, prefix, renderResult),
+  const displayedEntries = sortSubagentChildEntries(realEntries, prefix);
+  const subEntryStrs = displayedEntries.map((entry) =>
+    renderNestedToolEntry(entry, prefix, renderResult),
   );
   const parentSuffix = group.some((entry) => entry.status === "error")
     ? "✘"
     : realEntries.length
       ? getParentSuffix(realEntries)
       : getParentSuffix(group);
-  const errorEntry = group.find((e) => e.status === "error" && e.error);
-  const errorLine =
-    prefix === "skill-harness" &&
-    errorEntry?.params?.error === errorEntry?.error
-      ? ""
-      : formatErrorLine(errorEntry);
+  const parentErrorEntry = group.find(
+    (entry) =>
+      entry.toolName === prefix && entry.status === "error" && entry.error,
+  );
+  const errorLine = displayedEntries.some(
+    (entry) => entry.error === parentErrorEntry?.error,
+  )
+    ? ""
+    : formatErrorLine(parentErrorEntry);
 
   const totalDuration = realEntries.reduce(
     (sum, entry) =>
@@ -162,6 +184,10 @@ function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
   const dur = formatDuration(t);
   const errorLine = formatErrorLine(t);
   return `${icon} ${toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}${errorLine}`;
+}
+
+function renderMainAgentFailure(entry: ToolEntry): string {
+  return `🤖 agent: ✘${formatErrorLine(entry)}`;
 }
 
 function renderActiveMemoryGroup(
@@ -205,9 +231,117 @@ function getSubagentGroupEntries(
   return groups.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const OPENING_FENCE = "```yaml\n";
+const CLOSING_FENCE = "\n```";
+
+type StatusLine = { text: string; protected: boolean };
+
+function truncateWithEllipsis(text: string, maxLength: number): string {
+  if (maxLength <= 1) return "…";
+  const contentLimit = maxLength - 1;
+  let content = "";
+  for (const character of text) {
+    if (content.length + character.length > contentLimit) break;
+    content += character;
+  }
+  return `${content}…`;
+}
+
+function renderBoundedStatus(
+  contentParts: readonly string[],
+  requestedMaxLength: number,
+): string {
+  const maxLength = Math.max(
+    Math.min(requestedMaxLength, STATUS_MAX_LENGTH),
+    OPENING_FENCE.length + CLOSING_FENCE.length,
+  );
+  const lines = contentParts.flatMap((part, partIndex) => [
+    ...(partIndex > 0 ? [{ text: "", protected: false }] : []),
+    ...part.split("\n").map((text, lineIndex) => ({
+      text,
+      protected: lineIndex === 0 || /^\s+- .*: (?:←|✔|✘|♻︎)/u.test(text),
+    })),
+  ]);
+  const retained = lines.map(() => true);
+  let retainedCount = lines.length;
+  let retainedCharacters = lines.reduce(
+    (total, line) => total + line.text.length,
+    0,
+  );
+  let omittedLineCount = 0;
+
+  const getMarker = () =>
+    omittedLineCount > 0 ? `... ${omittedLineCount} more` : "";
+  const getRenderedLength = () => {
+    const marker = getMarker();
+    return (
+      OPENING_FENCE.length +
+      retainedCharacters +
+      Math.max(0, retainedCount - 1) +
+      (marker ? marker.length + (retainedCount > 0 ? 1 : 0) : 0) +
+      CLOSING_FENCE.length
+    );
+  };
+
+  const omitLine = (index: number) => {
+    if (!retained[index]) return;
+    retained[index] = false;
+    retainedCount -= 1;
+    retainedCharacters -= lines[index].text.length;
+    if (lines[index].text.trim()) {
+      omittedLineCount += 1;
+    }
+  };
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (getRenderedLength() <= maxLength) break;
+    const line = lines[index];
+    if (!line.protected && line.text.trim()) omitLine(index);
+  }
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (getRenderedLength() <= maxLength) break;
+    const line = lines[index];
+    if (!line.protected && !line.text.trim()) omitLine(index);
+  }
+
+  while (getRenderedLength() > maxLength && retainedCount > 0) {
+    let longestIndex = -1;
+    for (let index = 0; index < lines.length; index += 1) {
+      if (
+        retained[index] &&
+        (longestIndex < 0 ||
+          lines[index].text.length > lines[longestIndex].text.length)
+      ) {
+        longestIndex = index;
+      }
+    }
+    if (longestIndex < 0) break;
+
+    const line = lines[longestIndex];
+    const maxReduction = line.text.length - 1;
+    if (maxReduction <= 0) {
+      omitLine(longestIndex);
+      continue;
+    }
+    const reduction = Math.min(getRenderedLength() - maxLength, maxReduction);
+    const nextLength = line.text.length - reduction;
+    const nextText = truncateWithEllipsis(line.text, nextLength);
+    retainedCharacters += nextText.length - line.text.length;
+    line.text = nextText;
+  }
+
+  const body = lines
+    .filter((_, index) => retained[index])
+    .map((line) => line.text);
+  const marker = getMarker();
+  if (marker) body.push(marker);
+  return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
+}
+
 export function renderStatusContent(
   toolHistory: readonly ToolEntry[],
   isFinal: boolean,
+  maxLength = STATUS_MAX_LENGTH,
 ): string {
   const contentParts: string[] = [];
   const subagentGroups = getSubagentGroupEntries(toolHistory);
@@ -220,12 +354,18 @@ export function renderStatusContent(
     }
   }
 
+  const mainAgentFailure = toolHistory.filter(isMainAgentEntry).at(-1);
+  if (mainAgentFailure?.status === "error") {
+    contentParts.push(renderMainAgentFailure(mainAgentFailure));
+  }
+
   const normalEntries = toolHistory
     .filter(
       (t) =>
         !(
           isSubagentToolEntry(t, "active-memory") ||
-          isSubagentToolEntry(t, "skill-harness")
+          isSubagentToolEntry(t, "skill-harness") ||
+          isMainAgentEntry(t)
         ),
     )
     .slice(-STATUS_MAX_ENTRIES);
@@ -235,7 +375,7 @@ export function renderStatusContent(
     contentParts.push(renderEntry(entry, isLast, isFinal));
   }
 
-  return "```yaml\n" + contentParts.join("\n\n") + "\n```";
+  return renderBoundedStatus(contentParts, maxLength);
 }
 
 export function isContentTooLong(
