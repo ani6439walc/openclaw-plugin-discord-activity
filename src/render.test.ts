@@ -288,9 +288,9 @@ describe("compact scalar rows", () => {
 
     expect(result).toContain(
       "changed: false · reason: same-topic · domain: health\n" +
-        "       ├─ complexity: low\n" +
-        '       ├─ keywords: ["weight","clinic"]\n' +
-        "       └─ topic: Update corrected weight tracking",
+        "      ├─ complexity: low\n" +
+        '      ├─ keywords: ["weight","clinic"]\n' +
+        "      └─ topic: Update corrected weight tracking",
     );
   });
 
@@ -315,7 +315,7 @@ describe("compact scalar rows", () => {
 
     expect(result).toContain(
       "intent: update · complexity: low\n" +
-        "       └─ reason: explicit correction",
+        "      └─ reason: explicit correction",
     );
   });
 
@@ -388,8 +388,8 @@ describe("multiline values", () => {
     expect(result).toContain(
       [
         "   ├─ command: |",
-        "   │   pnpm run typecheck",
-        "   │   pnpm run test",
+        "   │  pnpm run typecheck",
+        "   │  pnpm run test",
         "   └─ cwd: /repo",
       ].join("\n"),
     );
@@ -474,13 +474,13 @@ describe("ANSI internal group contract", () => {
       [
         "🧩 active-memory ✘",
         "   ├─ memory_search ✔ [100ms]",
-        "   │   ├─ limit: 5",
-        "   │   └─ query: hello",
+        "   │  ├─ limit: 5",
+        "   │  └─ query: hello",
         "   ├─ memory_write ✘",
-        "   │   └─ error: permission denied",
+        "   │  └─ error: permission denied",
         "   ├─ result: |",
-        "   │   first line",
-        "   │   second line",
+        "   │  first line",
+        "   │  second line",
         "   └─ error: parent timeout",
       ].join("\n"),
     );
@@ -1151,10 +1151,10 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain(
       [
-        "       └─ result: |",
-        "           Intent: memory-recent",
-        "           ",
-        "           Suggested workflow",
+        "      └─ result: |",
+        "         Intent: memory-recent",
+        "         ",
+        "         Suggested workflow",
       ].join("\n"),
     );
   });

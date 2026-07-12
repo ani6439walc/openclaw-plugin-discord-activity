@@ -311,7 +311,7 @@ function renderStatusNodes(
   return visible.flatMap((node, index) => {
     const isLast = index === visible.length - 1;
     const connector = isLast ? "└─" : "├─";
-    const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
+    const childPrefix = `${prefix}${isLast ? "   " : " │ "}`;
     return [
       `${prefix} ${connector} ${node.text}`,
       ...node.continuationLines.map((line) => `${childPrefix} ${line}`),
