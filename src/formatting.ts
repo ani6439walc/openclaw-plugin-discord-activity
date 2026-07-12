@@ -44,6 +44,21 @@ export function getToolIcon(name: string): string {
   return "⚙️";
 }
 
+const MULTILINE_PARAM_MAX_CHARACTERS = 750;
+const SINGLE_LINE_PARAM_MAX_CHARACTERS = 150;
+
+function truncateWithOmittedCount(
+  value: string,
+  maxCharacters: number,
+): string {
+  const characters = [...value];
+  if (characters.length <= maxCharacters) return value;
+
+  const omittedCount = characters.length - maxCharacters;
+  const unit = omittedCount === 1 ? "char" : "chars";
+  return `${characters.slice(0, maxCharacters).join("")}... ${omittedCount} ${unit} more`;
+}
+
 function shouldQuoteYamlString(value: string): boolean {
   return (
     value === "" ||
@@ -83,17 +98,17 @@ export function formatParams(
       val = val.trim();
 
       if (val.includes("\n")) {
-        let displayVal = val;
-        if (displayVal.length > 1000) {
-          displayVal = displayVal.substring(0, 1000) + "... (truncated)";
-        }
+        const displayVal = truncateWithOmittedCount(
+          val,
+          MULTILINE_PARAM_MAX_CHARACTERS,
+        );
         const lines = displayVal
           .split("\n")
           .map((line) => `${valueIndent}${line.replaceAll(/:/g, "：")}`)
           .join("\n");
         return `${keyPrefix}${k}: |\n${lines}`;
       } else {
-        if (val.length > 200) val = val.substring(0, 200) + "...";
+        val = truncateWithOmittedCount(val, SINGLE_LINE_PARAM_MAX_CHARACTERS);
         if (typeof v === "string") val = formatYamlScalar(val);
         return `${keyPrefix}${k}: ${val}`;
       }

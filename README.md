@@ -60,7 +60,8 @@ Rendering rules to preserve:
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds render with two decimal places; durations of 10 seconds or more render with one decimal place.
 - Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. At the outer level, each complete internal group counts as one entry alongside each normal tool in a shared 6-entry budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group; retained `toolHistory` is unchanged.
-- Overlong status messages remain within the configured limit, retain status headers where possible, end with a complete YAML fence, and use `... N more` for omitted detail lines without deleting retained tool history.
+- Parameter, result, and error values report exact omitted Unicode-character counts as `... N chars more` (`char` when singular) without splitting surrogate pairs. Single-line values keep up to 150 characters; multiline values keep up to 750.
+- Overlong status messages remain within the configured limit, retain status headers where possible, end with a complete YAML fence, and use `... N lines more` (`line` when singular) for omitted detail lines without deleting retained tool history.
 
 ## How it works
 

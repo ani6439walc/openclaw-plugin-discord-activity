@@ -274,8 +274,11 @@ function renderBoundedStatus(
   );
   let omittedLineCount = 0;
 
-  const getMarker = () =>
-    omittedLineCount > 0 ? `... ${omittedLineCount} more` : "";
+  const getMarker = () => {
+    if (omittedLineCount <= 0) return "";
+    const unit = omittedLineCount === 1 ? "line" : "lines";
+    return `... ${omittedLineCount} ${unit} more`;
+  };
   const getRenderedLength = () => {
     const marker = getMarker();
     return (

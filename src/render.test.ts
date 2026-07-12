@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderStatusContent, isContentTooLong } from "./render.js";
+import { formatParams } from "./formatting.js";
 import type { ToolEntry } from "./types.js";
 
 function makeEntry(overrides: Partial<ToolEntry> = {}): ToolEntry {
@@ -13,6 +14,29 @@ function makeEntry(overrides: Partial<ToolEntry> = {}): ToolEntry {
 }
 
 describe("renderStatusContent", () => {
+  it("reports the exact number of omitted Unicode characters", () => {
+    const value = `${"a".repeat(749)}😀\n${"b".repeat(6)}`;
+
+    const result = formatParams({ result: value });
+
+    expect(result).toContain(`😀... 7 chars more`);
+    expect(result).not.toContain("(truncated)");
+    expect(result).not.toMatch(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
+    );
+  });
+
+  it("reports omitted Unicode characters for single-line values", () => {
+    const value = `${"a".repeat(149)}😀${"b".repeat(6)}`;
+
+    const result = formatParams({ query: value });
+
+    expect(result).toContain(`😀... 6 chars more`);
+    expect(result).not.toMatch(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
+    );
+  });
+
   it("renders a single pending tool", () => {
     const result = renderStatusContent([makeEntry()], false);
     expect(result).toContain("bash");

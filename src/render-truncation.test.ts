@@ -67,7 +67,7 @@ describe("bounded status rendering", () => {
     expect(result).toContain("💡 skill-harness: ✔");
     expect(result).toContain("🤖 agent: ✘");
     expect(result).toContain("terminal: ✔");
-    expect(result).toMatch(/\.\.\. \d+ more/);
+    expect(result).toMatch(/\.\.\. \d+ lines more/);
     expect(result.startsWith("```yaml\n")).toBe(true);
     expect(result.endsWith("\n```")).toBe(true);
   });
@@ -157,7 +157,7 @@ describe("bounded status rendering", () => {
     expect(session.lastRenderedContent?.length).toBeLessThanOrEqual(120);
     expect(session.lastRenderedContent).toContain("terminal: ✔");
     expect(session.lastRenderedContent).toContain("web_search: ✔");
-    expect(session.lastRenderedContent).toMatch(/\.\.\. \d+ more/);
+    expect(session.lastRenderedContent).toMatch(/\.\.\. \d+ lines more/);
     expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
   });
 });
