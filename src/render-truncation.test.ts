@@ -87,8 +87,8 @@ describe("bounded status rendering", () => {
 
     expect(result.length).toBeLessThanOrEqual(1700);
     const plain = stripAnsi(result);
-    expect(plain).toContain("🧩 active-memory ✘");
-    expect(plain).toContain("💡 skill-harness ✔");
+    expect(plain).toContain("🧩 active-memory ▸ ✘");
+    expect(plain).toContain("💡 skill-harness ▸ ✔");
     expect(plain).toContain("🤖 agent ✘");
     expect(plain).toContain("terminal ✔");
     expect(result).toMatch(/\(\+\d+ lines?\)/u);
@@ -255,7 +255,7 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("not-a-failure");
   });
 
-  it("restores a deduplicated parent error after removing its child copy", () => {
+  it("collapses a deduplicated error group to its failed header", () => {
     const result = renderStatusContent(
       [
         entry({
@@ -278,8 +278,10 @@ describe("bounded status rendering", () => {
     const plain = stripAnsi(result);
 
     expect(result.length).toBeLessThanOrEqual(162);
-    expect(plain).toContain("memory failed");
-    expect(plain.match(/memory failed/gu)).toHaveLength(1);
+    expect(plain).toContain("🧩 active-memory ▸ ✘");
+    expect(plain).not.toContain("memory_search");
+    expect(plain).not.toContain("memory failed");
+    expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
   });
 
   it("removes compact and multiline nodes atomically with exact line counts", () => {
@@ -310,6 +312,124 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("line 1");
     expect(plain).toContain("   └─ error: important failure");
     expect(result).toContain(`${GRAY}(+5 lines)${RESET}`);
+  });
+
+  it("collapses a subagent group before removing any of its details", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          durationMs: 26_800,
+        }),
+        entry({
+          toolCallId: "active-memory:search",
+          toolName: "active-memory:memory_search",
+          params: {
+            limit: 5,
+            query: "project notes ".repeat(8),
+          },
+        }),
+        entry({
+          toolCallId: "active-memory:result",
+          toolName: "active-memory:result",
+          params: { text: "Relevant memory found" },
+        }),
+        entry({
+          toolCallId: "normal",
+          toolName: "skill_view",
+          params: { name: "gcp-cert-exam" },
+        }),
+      ],
+      true,
+      180,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).toContain("🧩 active-memory ▸ ✔ [26.8s]");
+    expect(result).toContain(`${GRAY}▸${RESET}`);
+    expect(plain).not.toContain("memory_search");
+    expect(plain).not.toContain("Relevant memory found");
+    expect(plain).toContain("⚙️ skill_view ✔");
+    expect(plain).toContain("name: gcp-cert-exam");
+    expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
+  });
+
+  it("collapses multiple subagent groups without counting their details", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+        }),
+        entry({
+          toolCallId: "active-memory:search",
+          toolName: "active-memory:memory_search",
+          params: { query: "a".repeat(70) },
+        }),
+        entry({
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
+        }),
+        entry({
+          toolCallId: "skill-harness:triage",
+          toolName: "skill-harness:topic-triage",
+          params: { topic: "t".repeat(70) },
+        }),
+        entry({
+          toolCallId: "normal",
+          toolName: "skill_view",
+          params: { name: "gcp-cert-exam" },
+        }),
+      ],
+      true,
+      200,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).toContain("🧩 active-memory ▸ ✔");
+    expect(plain).toContain("💡 skill-harness ▸ ✔");
+    expect(result.split(`${GRAY}▸${RESET}`)).toHaveLength(3);
+    expect(plain).not.toContain("memory_search");
+    expect(plain).not.toContain("topic-triage");
+    expect(plain).toContain("name: gcp-cert-exam");
+    expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
+  });
+
+  it("counts only ordinary details omitted after a subagent collapses", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+        }),
+        entry({
+          toolCallId: "active-memory:search",
+          toolName: "active-memory:memory_search",
+          params: {
+            limit: 5,
+            query: "project notes ".repeat(8),
+          },
+        }),
+        entry({
+          toolCallId: "normal",
+          toolName: "bash",
+          params: {
+            older: `old-${"o".repeat(60)}`,
+            newer: `new-${"n".repeat(60)}`,
+          },
+        }),
+      ],
+      true,
+      220,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).toContain("🧩 active-memory ▸ ✔");
+    expect(plain).not.toContain("memory_search");
+    expect(plain).not.toContain("old-");
+    expect(plain).toContain("new-");
+    expect(result).toContain(`${GRAY}(+1 line)${RESET}`);
   });
 
   it("removes older equal-priority details before newer details", () => {
