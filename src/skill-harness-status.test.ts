@@ -72,11 +72,12 @@ describe("parseSkillHarnessPipelineEntry", () => {
     expect(entry?.error).toBeUndefined();
   });
 
-  it("preserves completed reason and result fields", () => {
+  it("preserves completed reason, basis, and result fields", () => {
     const entry = parseSkillHarnessPipelineEntry(
       makePipelineEvent({
         state: "completed",
         reason: "classification matched",
+        basis: "explicit request",
         result: "generated hint",
         error: "stale failure",
       }),
@@ -87,6 +88,7 @@ describe("parseSkillHarnessPipelineEntry", () => {
         status: "completed",
         params: {
           reason: "classification matched",
+          basis: "explicit request",
           result: "generated hint",
         },
       }),

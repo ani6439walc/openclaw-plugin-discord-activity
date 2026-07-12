@@ -1,3 +1,6 @@
+import { sanitizeInlineText, sanitizeVisibleText } from "./ansi.js";
+import { getDisplayToolName } from "./tool-name.js";
+
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
   if (n.includes("web_search")) return "🔎";
@@ -11,37 +14,190 @@ export function getToolIcon(name: string): string {
     if (n.includes("status")) return "📡";
     return "📒";
   }
-  if (n.includes("deepwiki")) {
-    if (n.includes("ask")) return "🐙";
-    return "📚";
-  }
-  if (n.includes("context7")) {
-    if (n.includes("resolve")) return "🪧";
-    return "🗞️";
-  }
-  if (n.includes("google-developer")) {
-    if (n.includes("search") || n.includes("answer")) return "🔭";
-    return "📂";
-  }
   if (n.includes("read")) return "📖";
   if (n.includes("write")) return "✍️";
   if (n.includes("edit")) return "🛠️";
   if (n.includes("diff")) return "⚖️";
   if (n.includes("exec")) return "🚀";
   if (n.includes("process")) return "⏳";
-  if (n.includes("image_generate")) return "🧪";
   if (n.includes("image")) return "🖼️";
   if (n.includes("pdf")) return "📜";
   if (n.includes("message")) return "✉️";
-  if (n.includes("sequential")) return "🔗";
-  if (n.includes("session_status")) return "🎬";
-  if (n.includes("sessions_history")) return "🕰️";
-  if (n.includes("sessions_list")) return "🔖";
-  if (n.includes("sessions_send")) return "🛸";
-  if (n.includes("sessions_spawn")) return "🐣";
-  if (n.includes("sessions_yield")) return "🏁";
-  if (n.includes("agents_list") || n.includes("subagents")) return "👥";
+  if (n.includes("session")) {
+    if (n.includes("history")) return "🕰️";
+    if (n.includes("list")) return "🔖";
+    if (n.includes("send")) return "🛸";
+    if (n.includes("yield")) return "🏁";
+    return "🎬";
+  }
+  if (n.includes("agent")) return "👥";
   return "⚙️";
+}
+
+const SINGLE_LINE_DISPLAY_LIMIT = 70;
+const PATH_HEAD_LIMIT = 20;
+const PATH_TAIL_LIMIT = 50;
+
+const COMPACT_STRING_FIELDS_BY_TOOL: Readonly<
+  Record<string, readonly string[]>
+> = {
+  "skill-harness:topic-triage": ["reason", "domain", "complexity"],
+  "skill-harness:intent-classify": ["intent", "complexity"],
+  memory_search: ["corpus"],
+};
+
+export type DisplayField = {
+  key: string;
+  value: string;
+  multilineLines?: string[];
+  omittedHint?: string;
+  truncated: boolean;
+  compactEligible: boolean;
+};
+
+function isPathKey(key: string): boolean {
+  return (
+    key === "path" ||
+    key === "file_path" ||
+    key === "filePath" ||
+    key === "workdir" ||
+    key === "cwd" ||
+    /(?:_|-)path$/u.test(key)
+  );
+}
+
+function serializeDisplayValue(value: unknown): string {
+  if (typeof value === "string") return value || '""';
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized ?? String(value);
+  } catch {
+    try {
+      return String(value);
+    } catch {
+      return "[unserializable]";
+    }
+  }
+}
+
+function omissionHint(count: number): string {
+  return ` (+${count} ${count === 1 ? "char" : "chars"})`;
+}
+
+function formatSingleLineValue(
+  key: string,
+  value: unknown,
+): Pick<DisplayField, "value" | "omittedHint" | "truncated"> {
+  const serialized = sanitizeInlineText(serializeDisplayValue(value));
+  const characters = [...serialized];
+  if (characters.length <= SINGLE_LINE_DISPLAY_LIMIT) {
+    return { value: serialized, truncated: false };
+  }
+
+  if (isPathKey(key)) {
+    const omitted = characters.length - PATH_HEAD_LIMIT - PATH_TAIL_LIMIT;
+    return {
+      value: `${characters.slice(0, PATH_HEAD_LIMIT).join("")}...${characters.slice(-PATH_TAIL_LIMIT).join("")}`,
+      omittedHint: omissionHint(omitted),
+      truncated: true,
+    };
+  }
+
+  const omitted = characters.length - SINGLE_LINE_DISPLAY_LIMIT;
+  return {
+    value: `${characters.slice(0, SINGLE_LINE_DISPLAY_LIMIT).join("")}...`,
+    omittedHint: omissionHint(omitted),
+    truncated: true,
+  };
+}
+
+function formatMultilineValue(
+  value: string,
+): Pick<
+  DisplayField,
+  "value" | "multilineLines" | "omittedHint" | "truncated"
+> {
+  const sourceLines = sanitizeVisibleText(value)
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .split("\n");
+  let omitted = 0;
+  const multilineLines = sourceLines.slice(0, 5).map((line) => {
+    const characters = [...line];
+    let retained = "";
+    let retainedSourceCharacters = 0;
+    let displayWidth = 0;
+    for (const character of characters) {
+      const displayedCharacter = character === "\t" ? "\\t" : character;
+      const characterWidth = [...displayedCharacter].length;
+      if (displayWidth + characterWidth > 70) break;
+      retained += displayedCharacter;
+      displayWidth += characterWidth;
+      retainedSourceCharacters += 1;
+    }
+    if (retainedSourceCharacters === characters.length) return retained;
+    omitted += characters.length - retainedSourceCharacters;
+    return `${retained}...`;
+  });
+  for (const hiddenLine of sourceLines.slice(5)) {
+    omitted += 1 + [...hiddenLine].length;
+  }
+
+  return {
+    value: "|",
+    multilineLines,
+    omittedHint: omitted > 0 ? omissionHint(omitted) : undefined,
+    truncated: omitted > 0,
+  };
+}
+
+function getCompactStringFields(
+  toolName: string | undefined,
+): readonly string[] {
+  if (!toolName) return [];
+  const displayName = toolName.startsWith("active-memory:")
+    ? getDisplayToolName(toolName.slice("active-memory:".length))
+    : getDisplayToolName(toolName);
+  return COMPACT_STRING_FIELDS_BY_TOOL[displayName.toLowerCase()] ?? [];
+}
+
+export function formatDisplayFields(
+  params: unknown,
+  options: { toolName?: string } = {},
+): DisplayField[] {
+  if (!params || typeof params !== "object") return [];
+  const compactStringFields = getCompactStringFields(options.toolName);
+
+  return Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([rawKey, value]) => {
+      const isMultiline =
+        typeof value === "string" &&
+        (rawKey === "command" || rawKey === "result" || rawKey === "error") &&
+        /[\r\n]/u.test(value);
+      const formatted = isMultiline
+        ? formatMultilineValue(value)
+        : formatSingleLineValue(rawKey, value);
+      const numericText =
+        typeof value === "number" && Number.isFinite(value)
+          ? String(value)
+          : "";
+      return {
+        key: sanitizeInlineText(rawKey),
+        ...formatted,
+        compactEligible:
+          !isMultiline &&
+          (typeof value === "boolean" ||
+            (numericText !== "" && [...numericText].length <= 12) ||
+            (typeof value === "string" &&
+              !formatted.truncated &&
+              compactStringFields.includes(rawKey))),
+      };
+    });
 }
 
 const MULTILINE_PARAM_MAX_CHARACTERS = 750;

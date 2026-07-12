@@ -183,7 +183,7 @@ describe("updateStatusMessage", () => {
       "call_keep",
     ]);
     expect(session.lastRenderedContent?.length).toBeLessThanOrEqual(120);
-    expect(session.lastRenderedContent).toMatch(/\.\.\. \d+ lines more/);
+    expect(session.lastRenderedContent).toMatch(/\(\+\d+ lines?\)/u);
     expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
   });
 

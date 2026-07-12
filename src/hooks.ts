@@ -699,19 +699,30 @@ export function createHookHandlers(deps: HookDeps) {
           const preservedPlaceholder = session.toolHistory.find(
             (t) => t.toolCallId === "active-memory",
           );
-          const parentFailure: ToolEntry | undefined =
+          const parentEntry: ToolEntry | undefined =
             event.error || event.success === false
               ? {
                   toolCallId: "active-memory",
                   toolName: "active-memory",
                   params: preservedPlaceholder?.params ?? {},
                   status: "error",
+                  startedAtMs: preservedPlaceholder?.startedAtMs,
                   durationMs: event.durationMs,
                   error: event.error,
                 }
-              : undefined;
+              : preservedPlaceholder || typeof event.durationMs === "number"
+                ? {
+                    toolCallId: "active-memory",
+                    toolName: "active-memory",
+                    params: preservedPlaceholder?.params ?? {},
+                    status: "completed",
+                    startedAtMs: preservedPlaceholder?.startedAtMs,
+                    durationMs:
+                      event.durationMs ?? preservedPlaceholder?.durationMs,
+                  }
+                : undefined;
 
-          if (entries.length > 0 || parentFailure) {
+          if (entries.length > 0 || parentEntry) {
             const newEntries =
               entries.length > 0
                 ? toolHistoryManager.upsertEntries(session.toolHistory, entries)
@@ -722,7 +733,7 @@ export function createHookHandlers(deps: HookDeps) {
             toolHistoryManager.replaceSubagentGroup(
               session.toolHistory,
               "active-memory",
-              parentFailure ? [parentFailure, ...childEntries] : childEntries,
+              parentEntry ? [parentEntry, ...childEntries] : childEntries,
             );
             toolHistoryManager.trim(session.toolHistory);
           }

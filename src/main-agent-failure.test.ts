@@ -23,6 +23,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function stripAnsi(content: string): string {
+  return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
+}
+
 describe("main agent failure rendering", () => {
   afterEach(() => {
     defaultStore.sessions.clear();
@@ -58,10 +62,11 @@ describe("main agent failure rendering", () => {
       true,
     );
 
-    expect(result).toContain("🤖 agent: ✘");
-    expect(result).toContain("error: provider timeout");
-    expect(result).toContain("bash: ✘");
-    expect(result).toContain("error: permission denied");
+    const plain = stripAnsi(result);
+    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).toContain("error: provider timeout");
+    expect(plain).toContain("bash ✘");
+    expect(plain).toContain("error: permission denied");
     expect(result.indexOf("active-memory")).toBeLessThan(
       result.indexOf("skill-harness"),
     );
@@ -83,8 +88,8 @@ describe("main agent failure rendering", () => {
       true,
     );
 
-    expect(result).toContain("🤖 agent: ✘");
-    expect(result).not.toContain("error:");
+    expect(stripAnsi(result)).toContain("🤖 agent ✘");
+    expect(stripAnsi(result)).not.toContain("error:");
   });
 
   it("does not count the agent failure against the normal tool display limit", () => {
@@ -106,7 +111,7 @@ describe("main agent failure rendering", () => {
       true,
     );
 
-    expect(result).toContain("🤖 agent: ✘");
+    expect(stripAnsi(result)).toContain("🤖 agent ✘");
     expect(result).not.toContain("normal_0");
     for (let index = 1; index < 7; index += 1) {
       expect(result).toContain(`normal_${index}`);
@@ -145,8 +150,9 @@ describe("main agent failure rendering", () => {
         error: "provider timeout",
       }),
     );
-    expect(session?.lastRenderedContent).toContain("🤖 agent: ✘");
-    expect(session?.lastRenderedContent).toContain("error: provider timeout");
+    const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
+    expect(plainContent).toContain("🤖 agent ✘");
+    expect(plainContent).toContain("error: provider timeout");
     expect(session?.clearTimer).toBeDefined();
   });
 
