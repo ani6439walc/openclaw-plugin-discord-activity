@@ -24,9 +24,9 @@ function formatDurationMs(durationMs: number): string {
   if (durationMs <= 1000) {
     duration = `${durationMs.toLocaleString()}ms`;
   } else if (durationMs < 10_000) {
-    duration = `${(Math.round(durationMs / 10) / 100).toFixed(2)}s`;
+    duration = `${Math.round(durationMs / 10) / 100}s`;
   } else {
-    duration = `${(Math.round(durationMs / 100) / 10).toFixed(1)}s`;
+    duration = `${Math.round(durationMs / 100) / 10}s`;
   }
   return duration;
 }

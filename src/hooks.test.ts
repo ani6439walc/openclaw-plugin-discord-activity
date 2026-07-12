@@ -714,7 +714,7 @@ describe("createHookHandlers", () => {
         }),
       );
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "🚀 exec ✔ [1.50s]",
+        "🚀 exec ✔ [1.5s]",
       );
     });
 
@@ -1366,8 +1366,8 @@ describe("createHookHandlers", () => {
         }),
       );
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("💡 skill-harness ✔ [1.10s]");
-      expect(plainContent).toContain("topic-triage ✔ [1.10s]");
+      expect(plainContent).toContain("💡 skill-harness ✔ [1.1s]");
+      expect(plainContent).toContain("topic-triage ✔ [1.1s]");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 

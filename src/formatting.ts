@@ -3,34 +3,48 @@ import { getDisplayToolName } from "./tool-name.js";
 
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
-  if (n.includes("web_search")) return "🔎";
-  if (n.includes("web_fetch")) return "🗳️";
+
+  // Web & Communication
   if (n.includes("browser")) return "🌎";
-  if (n.includes("memory")) return "🧠";
-  if (n.includes("wiki")) {
-    if (n.includes("search")) return "🕵️";
-    if (n.includes("apply")) return "🧱";
-    if (n.includes("lint")) return "🧼";
-    if (n.includes("status")) return "📡";
-    return "📒";
-  }
+  if (n.includes("web_search")) return "🔍";
+  if (n.includes("web_fetch")) return "📥";
+  if (n.includes("message")) return "✉️";
+
+  // File Operations (Read, Write, Edit, Patch, Diff)
   if (n.includes("read")) return "📖";
   if (n.includes("write")) return "✍️";
-  if (n.includes("edit")) return "🛠️";
-  if (n.includes("diff")) return "⚖️";
-  if (n.includes("exec")) return "🚀";
-  if (n.includes("process")) return "⏳";
+  if (n.includes("edit")) return "✏️";
+  if (n.includes("apply_patch")) return "✂️";
+  if (n.includes("diff")) return "🔀";
+
+  // Media & Formats
   if (n.includes("image")) return "🖼️";
   if (n.includes("pdf")) return "📜";
-  if (n.includes("message")) return "✉️";
+
+  // Execution & Process
+  if (n.includes("exec")) return "🚀";
+  if (n.includes("process")) return "⏳";
+
+  // Knowledge, Memory & Wiki
+  if (n.includes("memory")) return "🧠";
+  if (n.includes("wiki")) {
+    if (n.includes("search")) return "🔍";
+    if (n.includes("apply")) return "💾";
+    if (n.includes("lint")) return "🧹";
+    if (n.includes("status")) return "📊";
+    return "📚";
+  }
+
+  // Session & Agent management
   if (n.includes("session")) {
-    if (n.includes("history")) return "🕰️";
-    if (n.includes("list")) return "🔖";
+    if (n.includes("history")) return "📜";
+    if (n.includes("list")) return "📋";
     if (n.includes("send")) return "🛸";
     if (n.includes("yield")) return "🏁";
-    return "🎬";
+    return "💬";
   }
   if (n.includes("agent")) return "👥";
+
   return "⚙️";
 }
 

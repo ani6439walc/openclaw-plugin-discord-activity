@@ -33,7 +33,7 @@ describe("tool icon categories", () => {
     ["google-developer-search", "⚙️"],
     ["image_generate", "🖼️"],
     ["sequential_thinking", "⚙️"],
-    ["sessions_spawn", "🎬"],
+    ["sessions_spawn", "💬"],
     ["subagents", "👥"],
   ])("maps %s to %s", (toolName, icon) => {
     expect(getToolIcon(toolName)).toBe(icon);
@@ -74,7 +74,7 @@ describe("ANSI main-tool contract", () => {
     expect(result).toBe(
       [
         "```ansi",
-        `${BOLD_CYAN}⚙️ bash${RESET} ${GREEN}✔${RESET} ${YELLOW}[1.00s]${RESET}`,
+        `${BOLD_CYAN}⚙️ bash${RESET} ${GREEN}✔${RESET} ${YELLOW}[1s]${RESET}`,
         `    ├─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
         `    └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
         "```",
@@ -570,7 +570,7 @@ describe("group wall-clock duration", () => {
       ),
     );
 
-    expect(result.split("\n")[1]).toBe("💡 skill-harness ✔ [3.00s]");
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ✔ [3s]");
   });
 
   it("omits the parent duration when child timing is incomplete", () => {
@@ -636,11 +636,11 @@ describe("renderStatusContent", () => {
   it.each([
     [999, "999ms"],
     [1000, "1,000ms"],
-    [1001, "1.00s"],
+    [1001, "1s"],
     [1494, "1.49s"],
-    [1495, "1.50s"],
+    [1495, "1.5s"],
     [9876, "9.88s"],
-    [10_000, "10.0s"],
+    [10_000, "10s"],
     [34_481, "34.5s"],
   ])("formats %ims duration as %s", (durationMs, expected) => {
     const result = renderStatusContent(
