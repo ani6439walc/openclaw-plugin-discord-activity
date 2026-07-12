@@ -310,7 +310,7 @@ describe("multiline values", () => {
     );
 
     expect(result).toContain(`${"a".repeat(70)}...`);
-    expect(result).toContain("line 5 (+7 chars)");
+    expect(result).toContain("line 5 (+8 chars)");
     expect(result).not.toContain("hidden");
   });
 

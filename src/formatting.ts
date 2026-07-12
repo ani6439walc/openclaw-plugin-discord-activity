@@ -135,7 +135,7 @@ function formatMultilineValue(
     return `${retained}...`;
   });
   for (const hiddenLine of sourceLines.slice(5)) {
-    omitted += [...hiddenLine].length;
+    omitted += 1 + [...hiddenLine].length;
   }
 
   return {
