@@ -25,17 +25,17 @@ Status messages are Discord ANSI code blocks. Internal subagent groups appear fi
 
 ```ansi
 🧩 active-memory ✔ [120ms]
- ├─ memory_search ✔ [120ms]
- │   └─ query: project notes
- └─ result: Relevant memory found
+   ├─ memory_search ✔ [120ms]
+   │   └─ query: project notes
+   └─ result: Relevant memory found
 
 💡 skill-harness ✔
- └─ intent ✔
-     ├─ reason: User asked for a review
-     └─ confidence: 0.92
+   └─ intent ✔
+       ├─ reason: User asked for a review
+       └─ confidence: 0.92
 
 🔎 web_search ✔ [450ms]
- └─ query: OpenClaw plugin SDK
+   └─ query: OpenClaw plugin SDK
 ```
 
 Status markers:
