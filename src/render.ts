@@ -89,9 +89,7 @@ function renderMainField(field: DisplayField): string {
   if (field.multilineLines) {
     return `${ansiSpan(keyStyle, `${field.key}:`)} |`;
   }
-  const value = field.truncated
-    ? field.value
-    : ansiSpan(ANSI.green, field.value);
+  const value = ansiSpan(ANSI.green, field.value);
   const hint = field.omittedHint ? ansiSpan(ANSI.gray, field.omittedHint) : "";
   return `${ansiSpan(keyStyle, `${field.key}:`)} ${value}${hint}`;
 }

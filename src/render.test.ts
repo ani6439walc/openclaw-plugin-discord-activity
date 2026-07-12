@@ -21,6 +21,7 @@ const GREEN = "\u001b[32m";
 const YELLOW = "\u001b[33m";
 const RED = "\u001b[31m";
 const CYAN = "\u001b[36m";
+const GRAY = "\u001b[30m";
 
 function stripAnsi(content: string): string {
   return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
@@ -144,6 +145,23 @@ describe("display-value formatting", () => {
     expect(result).toContain(`${"a".repeat(69)}😀... (+2 chars)`);
     expect(result).not.toMatch(
       /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
+    );
+  });
+
+  it("keeps truncated string values green and their omission hint gray", () => {
+    const retained = "a".repeat(70);
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: { query: `${retained}x` },
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toContain(
+      `${GREEN}${retained}...${RESET}${GRAY} (+1 char)${RESET}`,
     );
   });
 
@@ -294,6 +312,23 @@ describe("multiline values", () => {
     expect(result).toContain(`${"a".repeat(70)}...`);
     expect(result).toContain("line 5 (+7 chars)");
     expect(result).not.toContain("hidden");
+  });
+
+  it("bounds escaped tabs by display width while counting omitted source code points", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            params: { command: `${"\t".repeat(35)}x\nnext` },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result).toContain(`${"\\t".repeat(35)}...`);
+    expect(result).toContain("next (+1 char)");
   });
 });
 

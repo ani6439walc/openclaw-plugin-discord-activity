@@ -119,9 +119,19 @@ function formatMultilineValue(
   let omitted = 0;
   const multilineLines = sourceLines.slice(0, 5).map((line) => {
     const characters = [...line];
-    const retained = characters.slice(0, 70).join("").replaceAll("\t", "\\t");
-    if (characters.length <= 70) return retained;
-    omitted += characters.length - 70;
+    let retained = "";
+    let retainedSourceCharacters = 0;
+    let displayWidth = 0;
+    for (const character of characters) {
+      const displayedCharacter = character === "\t" ? "\\t" : character;
+      const characterWidth = [...displayedCharacter].length;
+      if (displayWidth + characterWidth > 70) break;
+      retained += displayedCharacter;
+      displayWidth += characterWidth;
+      retainedSourceCharacters += 1;
+    }
+    if (retainedSourceCharacters === characters.length) return retained;
+    omitted += characters.length - retainedSourceCharacters;
     return `${retained}...`;
   });
   for (const hiddenLine of sourceLines.slice(5)) {
