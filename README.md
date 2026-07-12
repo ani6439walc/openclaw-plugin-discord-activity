@@ -1,8 +1,7 @@
 # Discord Tool Status Plugin for OpenClaw
 
-[![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://github.com/openclaw/openclaw)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[ClawHub: Discord Tool Status](https://clawhub.ai/wei840222/plugins/discord-tool-status)
+[![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://clawhub.ai/wei840222/plugins/discord-tool-status)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)  
 
 Discord Tool Status is an OpenClaw plugin that shows live agent/tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
 
