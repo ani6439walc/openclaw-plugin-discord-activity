@@ -263,6 +263,109 @@ describe("compact scalar rows", () => {
       `${MAGENTA}limit:${RESET} ${GREEN}50${RESET} · ${MAGENTA}enabled:${RESET} ${GREEN}true${RESET}`,
     );
   });
+
+  it("packs allowlisted topic-triage enum fields before ordinary fields", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "skill-harness:run-1:topic-triage",
+            toolName: "skill-harness:topic-triage",
+            params: {
+              changed: false,
+              reason: "same-topic",
+              domain: "health",
+              complexity: "low",
+              keywords: ["weight", "clinic"],
+              topic: "Update corrected weight tracking",
+            },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result).toContain(
+      "changed: false · reason: same-topic · domain: health\n" +
+        "     ├─ complexity: low\n" +
+        '     ├─ keywords: ["weight","clinic"]\n' +
+        "     └─ topic: Update corrected weight tracking",
+    );
+  });
+
+  it("packs allowlisted intent-classify enum fields", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "skill-harness:run-1:intent-classify",
+            toolName: "skill-harness:intent-classify",
+            params: {
+              intent: "update",
+              complexity: "low",
+              reason: "explicit correction",
+            },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result).toContain(
+      "intent: update · complexity: low\n" +
+        "     └─ reason: explicit correction",
+    );
+  });
+
+  it.each(["memory_search", "active-memory:memory_search"])(
+    "packs %s corpus with numeric metadata",
+    (toolName) => {
+      const result = stripAnsi(
+        renderStatusContent(
+          [
+            makeEntry({
+              toolCallId: "active-memory:search",
+              toolName,
+              params: {
+                minScore: 0.2,
+                maxResults: 5,
+                query: "weight clinic",
+                corpus: "memory",
+              },
+              status: "completed",
+            }),
+          ],
+          true,
+        ),
+      );
+
+      const compactRow = "minScore: 0.2 · maxResults: 5 · corpus: memory";
+      expect(result).toContain(compactRow);
+      expect(result.indexOf(compactRow)).toBeLessThan(
+        result.indexOf("query: weight clinic"),
+      );
+    },
+  );
+
+  it("does not compact an allowlisted key for an unrelated tool", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolName: "other",
+            params: { limit: 5, corpus: "memory" },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result).toContain(" ├─ limit: 5\n └─ corpus: memory");
+    expect(result).not.toContain("limit: 5 · corpus: memory");
+  });
 });
 
 describe("multiline values", () => {

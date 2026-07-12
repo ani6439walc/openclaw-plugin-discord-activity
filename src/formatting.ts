@@ -1,4 +1,5 @@
 import { sanitizeInlineText, sanitizeVisibleText } from "./ansi.js";
+import { getDisplayToolName } from "./tool-name.js";
 
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
@@ -36,6 +37,14 @@ export function getToolIcon(name: string): string {
 const SINGLE_LINE_DISPLAY_LIMIT = 70;
 const PATH_HEAD_LIMIT = 20;
 const PATH_TAIL_LIMIT = 50;
+
+const COMPACT_STRING_FIELDS_BY_TOOL: Readonly<
+  Record<string, readonly string[]>
+> = {
+  "skill-harness:topic-triage": ["reason", "domain", "complexity"],
+  "skill-harness:intent-classify": ["intent", "complexity"],
+  memory_search: ["corpus"],
+};
 
 export type DisplayField = {
   key: string;
@@ -146,8 +155,22 @@ function formatMultilineValue(
   };
 }
 
-export function formatDisplayFields(params: unknown): DisplayField[] {
+function getCompactStringFields(
+  toolName: string | undefined,
+): readonly string[] {
+  if (!toolName) return [];
+  const displayName = toolName.startsWith("active-memory:")
+    ? getDisplayToolName(toolName.slice("active-memory:".length))
+    : getDisplayToolName(toolName);
+  return COMPACT_STRING_FIELDS_BY_TOOL[displayName.toLowerCase()] ?? [];
+}
+
+export function formatDisplayFields(
+  params: unknown,
+  options: { toolName?: string } = {},
+): DisplayField[] {
   if (!params || typeof params !== "object") return [];
+  const compactStringFields = getCompactStringFields(options.toolName);
 
   return Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== null)
@@ -169,7 +192,10 @@ export function formatDisplayFields(params: unknown): DisplayField[] {
         compactEligible:
           !isMultiline &&
           (typeof value === "boolean" ||
-            (numericText !== "" && [...numericText].length <= 12)),
+            (numericText !== "" && [...numericText].length <= 12) ||
+            (typeof value === "string" &&
+              !formatted.truncated &&
+              compactStringFields.includes(rawKey))),
       };
     });
 }

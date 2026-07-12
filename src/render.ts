@@ -171,19 +171,20 @@ function createEntryFieldNodes(
   errorPriority: DetailPriority,
   sourceIndex: number,
 ): { nodes: StatusNode[]; errorNode?: StatusNode } {
-  const nodes = packMainFields(formatDisplayFields(entry.params)).map(
-    (row, index) =>
-      createFieldNode(
-        row,
-        entry.status === "error" &&
-          entry.error !== undefined &&
-          entry.params?.error === entry.error &&
-          row.some((field) => field.key === "error")
-          ? errorPriority
-          : 0,
-        sourceIndex,
-        index,
-      ),
+  const nodes = packMainFields(
+    formatDisplayFields(entry.params, { toolName: entry.toolName }),
+  ).map((row, index) =>
+    createFieldNode(
+      row,
+      entry.status === "error" &&
+        entry.error !== undefined &&
+        entry.params?.error === entry.error &&
+        row.some((field) => field.key === "error")
+        ? errorPriority
+        : 0,
+      sourceIndex,
+      index,
+    ),
   );
   let errorNode = nodes.find((node) => node.priority === errorPriority);
 
