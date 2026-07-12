@@ -75,8 +75,8 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${GREEN}✔${RESET} ${YELLOW}[1.00s]${RESET}`,
-        ` ├─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
-        ` └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
+        `   ├─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
+        `   └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -111,7 +111,7 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${RED}✘${RESET}`,
-        ` └─ ${RED}error:${RESET} ${GREEN}permission denied${RESET}`,
+        `   └─ ${RED}error:${RESET} ${GREEN}permission denied${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -218,10 +218,10 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      " ├─ limit: 50 · offset: 0 · caseSensitive: false\n" +
-        " ├─ retries: 2\n" +
-        " ├─ query: renderStatusContent\n" +
-        " └─ path: src",
+      "   ├─ limit: 50 · offset: 0 · caseSensitive: false\n" +
+        "   ├─ retries: 2\n" +
+        "   ├─ query: renderStatusContent\n" +
+        "   └─ path: src",
     );
   });
 
@@ -243,8 +243,8 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      " ├─ firstMetadataKey123456: 1 · secondMetadataKey12345: 2\n" +
-        " └─ thirdMetadataKey123456: 3",
+      "   ├─ firstMetadataKey123456: 1 · secondMetadataKey12345: 2\n" +
+        "   └─ thirdMetadataKey123456: 3",
     );
   });
 
@@ -288,9 +288,9 @@ describe("compact scalar rows", () => {
 
     expect(result).toContain(
       "changed: false · reason: same-topic · domain: health\n" +
-        "     ├─ complexity: low\n" +
-        '     ├─ keywords: ["weight","clinic"]\n' +
-        "     └─ topic: Update corrected weight tracking",
+        "       ├─ complexity: low\n" +
+        '       ├─ keywords: ["weight","clinic"]\n' +
+        "       └─ topic: Update corrected weight tracking",
     );
   });
 
@@ -315,7 +315,7 @@ describe("compact scalar rows", () => {
 
     expect(result).toContain(
       "intent: update · complexity: low\n" +
-        "     └─ reason: explicit correction",
+        "       └─ reason: explicit correction",
     );
   });
 
@@ -363,7 +363,7 @@ describe("compact scalar rows", () => {
       ),
     );
 
-    expect(result).toContain(" ├─ limit: 5\n └─ corpus: memory");
+    expect(result).toContain("   ├─ limit: 5\n   └─ corpus: memory");
     expect(result).not.toContain("limit: 5 · corpus: memory");
   });
 });
@@ -387,10 +387,10 @@ describe("multiline values", () => {
 
     expect(result).toContain(
       [
-        " ├─ command: |",
-        " │   pnpm run typecheck",
-        " │   pnpm run test",
-        " └─ cwd: /repo",
+        "   ├─ command: |",
+        "   │   pnpm run typecheck",
+        "   │   pnpm run test",
+        "   └─ cwd: /repo",
       ].join("\n"),
     );
   });
@@ -473,15 +473,15 @@ describe("ANSI internal group contract", () => {
     expect(stripAnsi(result)).toContain(
       [
         "🧩 active-memory ✘",
-        " ├─ memory_search ✔ [100ms]",
-        " │   ├─ limit: 5",
-        " │   └─ query: hello",
-        " ├─ memory_write ✘",
-        " │   └─ error: permission denied",
-        " ├─ result: |",
-        " │   first line",
-        " │   second line",
-        " └─ error: parent timeout",
+        "   ├─ memory_search ✔ [100ms]",
+        "   │   ├─ limit: 5",
+        "   │   └─ query: hello",
+        "   ├─ memory_write ✘",
+        "   │   └─ error: permission denied",
+        "   ├─ result: |",
+        "   │   first line",
+        "   │   second line",
+        "   └─ error: parent timeout",
       ].join("\n"),
     );
     expect(result).toContain(
@@ -510,7 +510,7 @@ describe("ANSI internal group contract", () => {
       [
         "```ansi",
         `${BOLD_BLUE}🤖 agent${RESET} ${RED}✘${RESET}`,
-        ` └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
+        `   └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -1151,10 +1151,10 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain(
       [
-        "     └─ result: |",
-        "         Intent: memory-recent",
-        "         ",
-        "         Suggested workflow",
+        "       └─ result: |",
+        "           Intent: memory-recent",
+        "           ",
+        "           Suggested workflow",
       ].join("\n"),
     );
   });

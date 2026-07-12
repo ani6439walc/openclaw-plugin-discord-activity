@@ -4,6 +4,9 @@ import { defaultStore, updateStatusMessage } from "./session.js";
 import { createMockSessionEntry, createToolEntry } from "../test-helpers.js";
 import type { ToolEntry } from "./types.js";
 
+const RESET = "\u001b[0m";
+const GRAY = "\u001b[30m";
+
 function entry(overrides: Partial<ToolEntry>): ToolEntry {
   return {
     toolCallId: "call_1",
@@ -88,7 +91,7 @@ describe("bounded status rendering", () => {
     expect(plain).toContain("💡 skill-harness ✔");
     expect(plain).toContain("🤖 agent ✘");
     expect(plain).toContain("terminal ✔");
-    expect(result).toMatch(/\.\.\. \d+ lines more/);
+    expect(result).toMatch(/\(\+\d+ lines?\)/u);
     expect(result.startsWith("```ansi\n")).toBe(true);
     expect(result.endsWith("\n```")).toBe(true);
   });
@@ -180,7 +183,7 @@ describe("bounded status rendering", () => {
     const plain = stripAnsi(session.lastRenderedContent ?? "");
     expect(plain).toContain("terminal ✔");
     expect(plain).toContain("web_search ✔");
-    expect(session.lastRenderedContent).toMatch(/\.\.\. \d+ lines more/);
+    expect(session.lastRenderedContent).toMatch(/\(\+\d+ lines?\)/u);
     expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
   });
 
@@ -244,7 +247,7 @@ describe("bounded status rendering", () => {
         }),
       ],
       true,
-      135,
+      150,
     );
     const plain = stripAnsi(result);
 
@@ -270,11 +273,11 @@ describe("bounded status rendering", () => {
         }),
       ],
       true,
-      147,
+      162,
     );
     const plain = stripAnsi(result);
 
-    expect(result.length).toBeLessThanOrEqual(147);
+    expect(result.length).toBeLessThanOrEqual(162);
     expect(plain).toContain("memory failed");
     expect(plain.match(/memory failed/gu)).toHaveLength(1);
   });
@@ -305,8 +308,8 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("three:");
     expect(plain).not.toContain("command:");
     expect(plain).not.toContain("line 1");
-    expect(plain).toContain(" └─ error: important failure");
-    expect(plain).toContain("... 5 lines more");
+    expect(plain).toContain("   └─ error: important failure");
+    expect(result).toContain(`${GRAY}(+5 lines)${RESET}`);
   });
 
   it("removes older equal-priority details before newer details", () => {
@@ -383,7 +386,7 @@ describe("bounded status rendering", () => {
     );
 
     expect(result.length).toBeLessThanOrEqual(1700);
-    expect(result).toMatch(/\.\.\. \d+ lines more/u);
+    expect(result).toMatch(/\(\+\d+ lines?\)/u);
   });
 
   it("renders deep-frozen history deterministically without mutation", () => {

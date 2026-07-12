@@ -300,10 +300,12 @@ function createFieldNode(
   };
 }
 
+const ROOT_TREE_PREFIX = "  ";
+
 function renderStatusNodes(
   nodes: readonly StatusNode[],
   removed: ReadonlySet<StatusNode>,
-  prefix = "",
+  prefix = ROOT_TREE_PREFIX,
 ): string[] {
   const visible = nodes.filter((node) => isStatusNodeVisible(node, removed));
   return visible.flatMap((node, index) => {
@@ -479,7 +481,7 @@ const CLOSING_FENCE = "\n```";
 function getOmissionMarker(omittedLineCount: number): string {
   if (omittedLineCount <= 0) return "";
   const unit = omittedLineCount === 1 ? "line" : "lines";
-  return `... ${omittedLineCount} ${unit} more`;
+  return ansiSpan(ANSI.gray, `(+${omittedLineCount} ${unit})`);
 }
 
 function renderBlocks(

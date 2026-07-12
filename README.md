@@ -49,6 +49,7 @@ Rendering rules to preserve:
 
 - Normal tools render after `active-memory` and `skill-harness` groups.
 - `active-memory` and `skill-harness` group order is stable.
+- Each top-level tree connector starts under the first text character after the header emoji and separating space; nested connectors preserve that alignment.
 - A failed main agent renders as `🤖 agent ✘` after internal groups and before normal tools. It is an additional protected block outside the shared 6-entry tool/group budget. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
@@ -61,7 +62,7 @@ Rendering rules to preserve:
 - Parameter, result, and error values report exact omitted Unicode code-point counts as `(+N chars)` (`char` when singular) without splitting surrogate pairs. Single-line values keep up to 70 code points. Multiline values keep up to five lines and 70 code points per retained line.
 - Compact metadata rows pack booleans, finite numbers of up to 12 code points, and explicitly allowlisted short enum strings. String eligibility is scoped by tool or `skill-harness` phase; matching field names from unrelated tools remain on separate rows.
 - Overlong status messages remove complete semantic detail nodes instead of slicing rendered lines. Ordinary parameters roll out before results, errors, nested tool headers, and top-level status headers; equal-priority details roll out oldest first. Compact scalar rows and multiline values remain atomic, and tree connectors are recomputed after removal.
-- Bounded output includes ANSI and omission-marker overhead in every length check, ends with a complete ANSI fence, emits the exact number of omitted nonblank rendered lines as `... N lines more` (`line` when singular), sanitizes untrusted visible text, and never mutates retained `toolHistory` merely to fit the display.
+- Bounded output includes ANSI and omission-marker overhead in every length check, ends with a complete ANSI fence, emits the exact number of omitted nonblank rendered lines as a gray `(+N lines)` marker (`line` when singular), sanitizes untrusted visible text, and never mutates retained `toolHistory` merely to fit the display.
 
 ## How it works
 
