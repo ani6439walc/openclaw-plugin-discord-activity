@@ -2,6 +2,7 @@
 
 [![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://github.com/openclaw/openclaw)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[ClawHub: Discord Tool Status](https://clawhub.ai/wei840222/plugins/discord-tool-status)
 
 Discord Tool Status is an OpenClaw plugin that shows live agent/tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
 
@@ -21,7 +22,15 @@ The plugin is designed to fail open: if Discord credentials are missing or Disco
 
 ## What it shows
 
-Status messages are Discord ANSI code blocks. Internal subagent groups appear first, followed by a main-agent failure when present, then normal tools:
+Status messages are Discord ANSI code blocks. Internal subagent groups appear first, followed by a main-agent failure when present, then normal tools.
+
+### Example display
+
+The image below is an example of how a live tool-status message appears in Discord:
+
+![Discord Tool Status showing nested companion workflows, tool durations, compact metadata, and exact truncation hints](https://raw.githubusercontent.com/ani6439walc/openclaw-plugin-discord-tool-status/main/example.png)
+
+This example shows `active-memory` and `skill-harness` groups, nested tool parameters, compact metadata rows, duration badges, and exact character-omission hints in one continuously edited Discord message. The same structure in simplified text form is:
 
 ```ansi
 🧩 active-memory ✔ [120ms]
@@ -34,7 +43,7 @@ Status messages are Discord ANSI code blocks. Internal subagent groups appear fi
         ├─ reason: User asked for a review
         └─ confidence: 0.92
 
-🔎 web_search ✔ [450ms]
+🔍 web_search ✔ [450ms]
     └─ query: OpenClaw plugin SDK
 ```
 
@@ -110,7 +119,13 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 
 ## Installation
 
-Install the plugin package wherever your OpenClaw deployment loads local plugins, then install dependencies and build the extension:
+Install the published plugin from [ClawHub](https://clawhub.ai/wei840222/plugins/discord-tool-status):
+
+```bash
+openclaw plugins install clawhub:discord-tool-status
+```
+
+For local development, install the plugin package wherever your OpenClaw deployment loads local plugins, then install dependencies and build the extension:
 
 ```bash
 pnpm install
