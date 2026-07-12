@@ -255,6 +255,7 @@ type StatusBlock = {
   header: StatusHeader;
   children: StatusNode[];
   sourceIndex: number;
+  collapseChildrenAtomically?: boolean;
 };
 
 function sanitizeHeaderToken(value: string): string {
@@ -263,7 +264,11 @@ function sanitizeHeaderToken(value: string): string {
 
 function renderStatusHeader(
   header: StatusHeader,
-  options: { includeDuration?: boolean; name?: string } = {},
+  options: {
+    collapsed?: boolean;
+    includeDuration?: boolean;
+    name?: string;
+  } = {},
 ): string {
   const name = options.name ?? header.name;
   const label = name ? `${header.icon} ${name}` : header.icon;
@@ -271,7 +276,8 @@ function renderStatusHeader(
     options.includeDuration !== false && typeof header.durationMs === "number"
       ? formatDurationBadge(header.durationMs)
       : "";
-  return `${ansiSpan(header.nameStyle, label)} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
+  const collapsed = options.collapsed ? ` ${ansiSpan(ANSI.gray, "▸")}` : "";
+  return `${ansiSpan(header.nameStyle, label)}${collapsed} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
 }
 
 function createFieldNode(
@@ -300,7 +306,7 @@ function createFieldNode(
   };
 }
 
-const ROOT_TREE_PREFIX = "  ";
+const ROOT_TREE_PREFIX = "   ";
 
 function renderStatusNodes(
   nodes: readonly StatusNode[],
@@ -311,7 +317,7 @@ function renderStatusNodes(
   return visible.flatMap((node, index) => {
     const isLast = index === visible.length - 1;
     const connector = isLast ? "└─" : "├─";
-    const childPrefix = `${prefix}${isLast ? "   " : " │ "}`;
+    const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
     return [
       `${prefix} ${connector} ${node.text}`,
       ...node.continuationLines.map((line) => `${childPrefix} ${line}`),
@@ -405,6 +411,7 @@ function renderSubagentGroup(
     sourceIndex: Math.min(
       ...group.map((entry) => sourceIndexes.get(entry) ?? 0),
     ),
+    collapseChildrenAtomically: true,
   };
 }
 
@@ -489,8 +496,14 @@ function renderBlocks(
   removed: ReadonlySet<StatusNode>,
   omittedLineCount: number,
   headerOverrides?: readonly string[],
+  collapsedBlocks: ReadonlySet<StatusBlock> = new Set(),
 ): string {
-  const body = getRenderedBodyLines(blocks, removed, headerOverrides);
+  const body = getRenderedBodyLines(
+    blocks,
+    removed,
+    headerOverrides,
+    collapsedBlocks,
+  );
   const marker = getOmissionMarker(omittedLineCount);
   if (marker) body.push(marker);
   return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
@@ -500,11 +513,17 @@ function getRenderedBodyLines(
   blocks: readonly StatusBlock[],
   removed: ReadonlySet<StatusNode>,
   headerOverrides?: readonly string[],
+  collapsedBlocks: ReadonlySet<StatusBlock> = new Set(),
 ): string[] {
   return blocks.flatMap((block, index) => [
     ...(index > 0 ? [""] : []),
-    headerOverrides?.[index] ?? renderStatusHeader(block.header),
-    ...renderStatusNodes(block.children, removed),
+    headerOverrides?.[index] ??
+      renderStatusHeader(block.header, {
+        collapsed: collapsedBlocks.has(block),
+      }),
+    ...(collapsedBlocks.has(block)
+      ? []
+      : renderStatusNodes(block.children, removed)),
   ]);
 }
 
@@ -516,15 +535,21 @@ function countNonblankLines(lines: readonly string[]): number {
 
 function collectRemovalCandidates(
   blocks: readonly StatusBlock[],
-): StatusNode[] {
-  const candidates: Array<{ node: StatusNode; traversalOrder: number }> = [];
+): Array<{ block: StatusBlock; node: StatusNode }> {
+  const candidates: Array<{
+    block: StatusBlock;
+    node: StatusNode;
+    traversalOrder: number;
+  }> = [];
   let traversalOrder = 0;
-  const visit = (node: StatusNode) => {
-    candidates.push({ node, traversalOrder });
+  const visit = (block: StatusBlock, node: StatusNode) => {
+    candidates.push({ block, node, traversalOrder });
     traversalOrder += 1;
-    node.children.forEach(visit);
+    node.children.forEach((child) => visit(block, child));
   };
-  for (const block of blocks) block.children.forEach(visit);
+  for (const block of blocks) {
+    block.children.forEach((node) => visit(block, node));
+  }
   return candidates
     .sort(
       (a, b) =>
@@ -533,7 +558,7 @@ function collectRemovalCandidates(
         a.node.fieldIndex - b.node.fieldIndex ||
         a.traversalOrder - b.traversalOrder,
     )
-    .map(({ node }) => node);
+    .map(({ block, node }) => ({ block, node }));
 }
 
 function truncateHeaderName(name: string, maxLength: number): string {
@@ -549,6 +574,7 @@ function truncateHeaderName(name: string, maxLength: number): string {
 
 type EmergencyHeader = {
   block: StatusBlock;
+  collapsed: boolean;
   includeDuration: boolean;
   name: string;
 };
@@ -560,6 +586,7 @@ function renderHeaderOnly(
   const body = headers.flatMap((header, index) => [
     ...(index > 0 ? [""] : []),
     renderStatusHeader(header.block.header, {
+      collapsed: header.collapsed,
       includeDuration: header.includeDuration,
       name: header.name,
     }),
@@ -573,9 +600,11 @@ function renderEmergencyHeaders(
   blocks: readonly StatusBlock[],
   baselineLineCount: number,
   maxLength: number,
+  collapsedBlocks: ReadonlySet<StatusBlock>,
 ): string {
   const headers: EmergencyHeader[] = blocks.map((block) => ({
     block,
+    collapsed: collapsedBlocks.has(block),
     includeDuration: true,
     name: block.header.name,
   }));
@@ -655,38 +684,67 @@ function renderBoundedStatus(
   }
   const maxLength = Math.min(requestedMaxLength, STATUS_MAX_LENGTH);
   const removed = new Set<StatusNode>();
-  const baselineLineCount = countNonblankLines(
-    getRenderedBodyLines(blocks, removed),
-  );
+  const collapsedBlocks = new Set<StatusBlock>();
   const candidates = collectRemovalCandidates(blocks);
+  const applyRemovalCandidate = (candidate: (typeof candidates)[number]) => {
+    if (collapsedBlocks.has(candidate.block)) return 0;
+    if (!isStatusNodeVisible(candidate.node, removed)) return 0;
+    if (candidate.block.collapseChildrenAtomically) {
+      const removedNodeCount = candidates.filter(
+        ({ block, node }) =>
+          block === candidate.block && isStatusNodeVisible(node, removed),
+      ).length;
+      collapsedBlocks.add(candidate.block);
+      return removedNodeCount;
+    }
+    removed.add(candidate.node);
+    return 1;
+  };
   let batchRemovals = Math.max(
     0,
     candidates.length - MAX_ITERATIVE_BOUNDING_NODES,
   );
   for (const candidate of candidates) {
     if (batchRemovals === 0) break;
-    if (!isStatusNodeVisible(candidate, removed)) continue;
-    removed.add(candidate);
-    batchRemovals -= 1;
+    batchRemovals = Math.max(
+      0,
+      batchRemovals - applyRemovalCandidate(candidate),
+    );
   }
 
   const renderCurrent = () => {
-    const currentLineCount = countNonblankLines(
-      getRenderedBodyLines(blocks, removed),
+    const baselineLineCount = countNonblankLines(
+      getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
     );
-    return renderBlocks(blocks, removed, baselineLineCount - currentLineCount);
+    const currentLineCount = countNonblankLines(
+      getRenderedBodyLines(blocks, removed, undefined, collapsedBlocks),
+    );
+    return renderBlocks(
+      blocks,
+      removed,
+      baselineLineCount - currentLineCount,
+      undefined,
+      collapsedBlocks,
+    );
   };
   let rendered = renderCurrent();
 
   for (const candidate of candidates) {
     if (rendered.length <= maxLength) return rendered;
-    if (!isStatusNodeVisible(candidate, removed)) continue;
-    removed.add(candidate);
+    if (applyRemovalCandidate(candidate) === 0) continue;
     rendered = renderCurrent();
   }
 
   if (rendered.length <= maxLength) return rendered;
-  return renderEmergencyHeaders(blocks, baselineLineCount, maxLength);
+  const baselineLineCount = countNonblankLines(
+    getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
+  );
+  return renderEmergencyHeaders(
+    blocks,
+    baselineLineCount,
+    maxLength,
+    collapsedBlocks,
+  );
 }
 
 export function renderStatusContent(

@@ -25,17 +25,17 @@ Status messages are Discord ANSI code blocks. Internal subagent groups appear fi
 
 ```ansi
 🧩 active-memory ✔ [120ms]
-   ├─ memory_search ✔ [120ms]
-   │  └─ query: project notes
-   └─ result: Relevant memory found
+    ├─ memory_search ✔ [120ms]
+    │   └─ query: project notes
+    └─ result: Relevant memory found
 
 💡 skill-harness ✔
-   └─ intent ✔
-      ├─ reason: User asked for a review
-      └─ confidence: 0.92
+    └─ intent ✔
+        ├─ reason: User asked for a review
+        └─ confidence: 0.92
 
 🔎 web_search ✔ [450ms]
-   └─ query: OpenClaw plugin SDK
+    └─ query: OpenClaw plugin SDK
 ```
 
 Status markers:
@@ -49,7 +49,7 @@ Rendering rules to preserve:
 
 - Normal tools render after `active-memory` and `skill-harness` groups.
 - `active-memory` and `skill-harness` group order is stable.
-- Each top-level tree connector starts under the first text character after the header emoji and separating space; nested connectors preserve that alignment.
+- Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.
 - A failed main agent renders as `🤖 agent ✘` after internal groups and before normal tools. It is an additional protected block outside the shared 6-entry tool/group budget. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
@@ -61,7 +61,7 @@ Rendering rules to preserve:
 - Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. At the outer level, each complete internal group counts as one entry alongside each normal tool in a shared 6-entry budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group; retained `toolHistory` is unchanged.
 - Parameter, result, and error values report exact omitted Unicode code-point counts as `(+N chars)` (`char` when singular) without splitting surrogate pairs. Single-line values keep up to 70 code points. Multiline values keep up to five lines and 70 code points per retained line.
 - Compact metadata rows pack booleans, finite numbers of up to 12 code points, and explicitly allowlisted short enum strings. String eligibility is scoped by tool or `skill-harness` phase; matching field names from unrelated tools remain on separate rows.
-- Overlong status messages remove complete semantic detail nodes instead of slicing rendered lines. Ordinary parameters roll out before results, errors, nested tool headers, and top-level status headers; equal-priority details roll out oldest first. Compact scalar rows and multiline values remain atomic, and tree connectors are recomputed after removal.
+- Overlong status messages keep internal subagent groups atomic: before global bounding would remove any `active-memory` or `skill-harness` detail, the complete group collapses to its status-and-duration header with a gray `▸` between the group name and status. Collapsed group details do not contribute to the omission marker. Remaining ordinary parameters roll out before results, errors, nested tool headers, and top-level status headers; equal-priority details roll out oldest first. Compact scalar rows and multiline values remain atomic, and tree connectors are recomputed after removal.
 - Bounded output includes ANSI and omission-marker overhead in every length check, ends with a complete ANSI fence, emits the exact number of omitted nonblank rendered lines as a gray `(+N lines)` marker (`line` when singular), sanitizes untrusted visible text, and never mutates retained `toolHistory` merely to fit the display.
 
 ## How it works
