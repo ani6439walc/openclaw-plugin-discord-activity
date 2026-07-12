@@ -71,14 +71,14 @@ Important behavior to preserve:
 
 - Status messages are ANSI code blocks. Sanitize untrusted tool names and visible values before inserting them; never allow an external ANSI sequence, control character, newline, or backtick to escape the renderer's own structure.
 - Normal tools render after internal subagent groups and any main-agent failure.
-- `active-memory` and `skill-harness` groups stay in stable order before `🤖 agent: ✘` and normal tools.
+- `active-memory` and `skill-harness` groups stay in stable order before `💥 agent ✘` and normal tools.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`; do not let them become unlabeled list items.
 - Failed `skill-harness` phases render one concrete phase-local `error`. The canonical producer field is `error`; tolerate legacy failed-event `reason` and `result` with `error → reason → result` precedence, and do not repeat the same error at group level.
 - `active-memory` result text renders as `result: <text>`.
 - Failed `active-memory` children preserve live terminal `error` and `durationMs` when final transcript parsing omits or contradicts them. Render each child error phase-locally, keep distinct parent errors, and deduplicate identical parent/child text.
 - Final `active-memory` transcripts may use tool-call IDs that differ from live hook events. Reconcile them occurrence-by-occurrence by tool name and stable parameters without collapsing genuinely repeated calls.
-- Main-agent failure renders once as `🤖 agent ✘`; show `event.error` when provided and do not invent missing details. It is a protected block outside the shared 6-entry tool/group budget.
+- Main-agent failure renders once as `💥 agent ✘`; show `event.error` when provided and do not invent missing details. It is a protected block outside the shared 6-entry tool/group budget.
 - Codex/OpenClaw-prefixed tool names such as `openclawskill_view` should display as their canonical tool names (`skill_view`) immediately; avoid visible name flicker.
 - Prefer a tool-provided `durationMs`; when it is absent, derive elapsed time from the first observed `before_tool_call`. Preserve that value across duplicate terminal events instead of erasing or recalculating it.
 - Render durations up to and including 1000ms in milliseconds. Above 1000ms and under 10 seconds, round seconds to at most two decimal places; from 10 seconds onward, round to at most one decimal place. Omit trailing fractional zeros and a leftover decimal point.

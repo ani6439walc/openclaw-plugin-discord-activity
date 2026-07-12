@@ -90,7 +90,7 @@ describe("bounded status rendering", () => {
     const plain = stripAnsi(result);
     expect(plain).toContain("🧩 active-memory ▸ ✘");
     expect(plain).toContain("💡 skill-harness ▸ ✔");
-    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).toContain("💥 agent ✘");
     expect(plain).toContain("terminal ✔");
     expect(result).toMatch(/\(\+\d+ lines?\)/u);
     expect(result.startsWith("```ansi\n")).toBe(true);
@@ -134,7 +134,7 @@ describe("bounded status rendering", () => {
 
     expect(result.length).toBeLessThanOrEqual(120);
     const plain = stripAnsi(result);
-    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).toContain("💥 agent ✘");
     expect(plain).toContain("web_search ✔");
   });
 
@@ -470,7 +470,7 @@ describe("bounded status rendering", () => {
     ];
     const plain = stripAnsi(renderStatusContent(history, true));
 
-    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).toContain("💥 agent ✘");
     expect(plain).not.toContain("tool_0");
     for (let index = 1; index < 7; index += 1) {
       expect(plain).toContain(`tool_${index}`);

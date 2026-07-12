@@ -509,7 +509,7 @@ describe("ANSI internal group contract", () => {
     expect(result).toBe(
       [
         "```ansi",
-        `${BOLD_BLUE}🤖 agent${RESET} ${RED}✘${RESET}`,
+        `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`,
         `    └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
         "```",
       ].join("\n"),

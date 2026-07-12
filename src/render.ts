@@ -441,7 +441,7 @@ function createMainAgentFailureBlock(
   sourceIndex: number,
 ): StatusBlock {
   const header: StatusHeader = {
-    icon: "🤖",
+    icon: "💥",
     name: "agent",
     nameStyle: ANSI.boldBlue,
     status: "✘",

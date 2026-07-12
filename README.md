@@ -58,7 +58,7 @@ Rendering rules to preserve:
 - Normal tools render after `active-memory` and `skill-harness` groups.
 - `active-memory` and `skill-harness` group order is stable.
 - Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.
-- A failed main agent renders as `🤖 agent ✘` after internal groups and before normal tools. It is an additional protected block outside the shared 6-entry tool/group budget. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
+- A failed main agent renders as `💥 agent ✘` after internal groups and before normal tools. It is an additional protected block outside the shared 6-entry tool/group budget. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
 - Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.

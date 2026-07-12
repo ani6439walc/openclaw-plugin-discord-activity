@@ -63,7 +63,7 @@ describe("main agent failure rendering", () => {
     );
 
     const plain = stripAnsi(result);
-    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).toContain("💥 agent ✘");
     expect(plain).toContain("error: provider timeout");
     expect(plain).toContain("bash ✘");
     expect(plain).toContain("error: permission denied");
@@ -71,9 +71,9 @@ describe("main agent failure rendering", () => {
       result.indexOf("skill-harness"),
     );
     expect(result.indexOf("skill-harness")).toBeLessThan(
-      result.indexOf("🤖 agent"),
+      result.indexOf("💥 agent"),
     );
-    expect(result.indexOf("🤖 agent")).toBeLessThan(result.indexOf("bash"));
+    expect(result.indexOf("💥 agent")).toBeLessThan(result.indexOf("bash"));
   });
 
   it("does not invent an error detail when the failure has none", () => {
@@ -88,7 +88,7 @@ describe("main agent failure rendering", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("🤖 agent ✘");
+    expect(stripAnsi(result)).toContain("💥 agent ✘");
     expect(stripAnsi(result)).not.toContain("error:");
   });
 
@@ -111,7 +111,7 @@ describe("main agent failure rendering", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("🤖 agent ✘");
+    expect(stripAnsi(result)).toContain("💥 agent ✘");
     expect(result).not.toContain("normal_0");
     for (let index = 1; index < 7; index += 1) {
       expect(result).toContain(`normal_${index}`);
@@ -151,7 +151,7 @@ describe("main agent failure rendering", () => {
       }),
     );
     const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-    expect(plainContent).toContain("🤖 agent ✘");
+    expect(plainContent).toContain("💥 agent ✘");
     expect(plainContent).toContain("error: provider timeout");
     expect(session?.clearTimer).toBeDefined();
   });
