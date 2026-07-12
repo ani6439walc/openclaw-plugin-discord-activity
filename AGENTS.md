@@ -1,6 +1,6 @@
 # Agent Guide: Discord Tool Status
 
-This repository is an OpenClaw plugin. It shows live tool-call status in Discord by creating one YAML-formatted status message per Discord conversation, editing it as tools run, folding in internal `active-memory` and `skill-harness` subagent status, and deleting the message after the agent finishes.
+This repository is an OpenClaw plugin. It shows live tool-call status in Discord by creating one ANSI-colored status message per Discord conversation, editing it as tools run, folding in internal `active-memory` and `skill-harness` subagent status, and deleting the message after the agent finishes.
 
 Use this file as the working contract for coding agents. The README explains the product behavior; this guide explains how to change the code safely.
 
@@ -39,7 +39,7 @@ Keep the current module boundaries:
 - `src/store.ts`: active session and Discord context tracking.
 - `src/orphans.ts`: temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.
 - `src/parser.ts`: session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result/error extraction.
-- `src/render.ts`: convert tool history into bounded YAML Discord status content without mutating history.
+- `src/render.ts`: convert tool history into bounded semantic ANSI Discord status content without mutating history.
 - `src/formatting.ts`: icons and parameter formatting helpers.
 - `src/tool-name.ts`: shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.
 - `src/skill-harness-status.ts`: parse `plugin:skill-harness` pipeline events, sanitize visible fields, compute child durations, and merge duplicate phase updates.
@@ -69,7 +69,7 @@ The core flow is:
 
 Important behavior to preserve:
 
-- Status messages are YAML code blocks.
+- Status messages are ANSI code blocks. Sanitize untrusted tool names and visible values before inserting them; never allow an external ANSI sequence, control character, newline, or backtick to escape the renderer's own structure.
 - Normal tools render after internal subagent groups and any main-agent failure.
 - `active-memory` and `skill-harness` groups stay in stable order before `🤖 agent: ✘` and normal tools.
 - `skill-harness` JSON object results flatten to key-value fields.
@@ -78,7 +78,7 @@ Important behavior to preserve:
 - `active-memory` result text renders as `result: <text>`.
 - Failed `active-memory` children preserve live terminal `error` and `durationMs` when final transcript parsing omits or contradicts them. Render each child error phase-locally, keep distinct parent errors, and deduplicate identical parent/child text.
 - Final `active-memory` transcripts may use tool-call IDs that differ from live hook events. Reconcile them occurrence-by-occurrence by tool name and stable parameters without collapsing genuinely repeated calls.
-- Main-agent failure renders once as `🤖 agent: ✘`; show `event.error` when provided and do not invent missing details.
+- Main-agent failure renders once as `🤖 agent ✘`; show `event.error` when provided and do not invent missing details. It is a protected block outside the shared 6-entry tool/group budget.
 - Codex/OpenClaw-prefixed tool names such as `openclawskill_view` should display as their canonical tool names (`skill_view`) immediately; avoid visible name flicker.
 - Prefer a tool-provided `durationMs`; when it is absent, derive elapsed time from the first observed `before_tool_call`. Preserve that value across duplicate terminal events instead of erasing or recalculating it.
 - Render durations up to and including 1000ms in milliseconds. Above 1000ms and under 10 seconds, render seconds with two decimal places; from 10 seconds onward, render seconds with one decimal place.
@@ -88,8 +88,10 @@ Important behavior to preserve:
 - DM sessions may need `resolveDmChannel()` before sending.
 - Missing Discord token or Discord API failures should fail open by logging and skipping status updates, not by blocking the agent flow.
 - Treat Discord delete `404` as success. Only `429`, `5xx`, and network exhaustion may schedule one detached delete recovery after `DELETE_RECOVERY_DELAY_MS` (5 seconds); missing tokens and `401`/`403` are terminal. Detached recovery must use captured immutable identifiers and must not mutate session maps.
-- Each `active-memory` and `skill-harness` group independently displays up to `STATUS_MAX_SUBAGENT_ENTRIES` (3 children). At the outer level, each complete internal group counts as one entry alongside each normal tool in the shared `STATUS_MAX_ENTRIES` (6 entries) budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group. `STATUS_MAX_LENGTH` (1700 characters) independently prevents excessive message length. Bounded rendering must preserve a complete YAML fence, retain visible status headers where possible, emit `... N lines more` (`line` when singular) for omitted details, and never trim `toolHistory` merely to fit display length.
-- Parameter, result, and error values append `... N chars more` (`char` when singular), where `N` is the exact omitted Unicode code-point count. Single-line values keep up to 150 code points and multiline values keep up to 750. Truncation must not split surrogate pairs.
+- Each `active-memory` and `skill-harness` group independently displays up to `STATUS_MAX_SUBAGENT_ENTRIES` (3 children). At the outer level, each complete internal group counts as one entry alongside each normal tool in the shared `STATUS_MAX_ENTRIES` (6 entries) budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group. `STATUS_MAX_LENGTH` (1700 characters) independently prevents excessive message length.
+- Global bounding operates on semantic nodes before tree connectors are rendered. Remove ordinary parameters before result, child-error, parent/main-error, and nested-header nodes; among equal priorities remove the older source detail first. Compact scalar rows and multiline fields are atomic. Re-render connectors after every semantic removal. A parent error suppressed by an identical child error must become visible again if bounding removes the child copy.
+- The omission marker is the exact difference in nonblank physical lines between the locally truncated baseline and final bounded body. ANSI sequences, fences, blank separators, and marker width participate in length checks. Preserve top-level icon/name/status headers where possible; emergency fallback removes durations, compresses or removes older tool/group names, and keeps complete ANSI sequences and fences. Direct renderer limits below the 12-code-unit empty-fence minimum are invalid; at direct test-only limits below the runtime minimum, an empty ANSI fence is the final fallback when no marker or header fits. Runtime config remains constrained to 100–1700.
+- Parameter, result, and error values append `(+N chars)` (`char` when singular), where `N` is the exact omitted Unicode code-point count. Single-line values keep up to 70 code points. Multiline values keep at most five lines and 70 code points per retained line. Truncation must not split surrogate pairs.
 
 ## Coding Rules
 

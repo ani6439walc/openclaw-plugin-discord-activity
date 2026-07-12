@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderStatusContent, isContentTooLong } from "./render.js";
-import { formatParams } from "./formatting.js";
+import { formatParams, getToolIcon } from "./formatting.js";
 import type { ToolEntry } from "./types.js";
 
 function makeEntry(overrides: Partial<ToolEntry> = {}): ToolEntry {
@@ -12,6 +12,448 @@ function makeEntry(overrides: Partial<ToolEntry> = {}): ToolEntry {
     ...overrides,
   };
 }
+
+const RESET = "\u001b[0m";
+const BOLD_BLUE = "\u001b[1;34m";
+const BOLD_CYAN = "\u001b[1;36m";
+const MAGENTA = "\u001b[35m";
+const GREEN = "\u001b[32m";
+const YELLOW = "\u001b[33m";
+const RED = "\u001b[31m";
+const CYAN = "\u001b[36m";
+
+function stripAnsi(content: string): string {
+  return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
+}
+
+describe("tool icon compatibility", () => {
+  it.each([
+    ["context7_resolve_library_id", "🪧"],
+    ["google-developer-search", "🔭"],
+    ["image_generate", "🧪"],
+    ["sequential_thinking", "🔗"],
+    ["sessions_spawn", "🐣"],
+    ["subagents", "👥"],
+  ])("preserves the %s icon", (toolName, icon) => {
+    expect(getToolIcon(toolName)).toBe(icon);
+  });
+});
+
+describe("ANSI main-tool contract", () => {
+  it("fails open when both JSON and string serialization throw", () => {
+    const hostile = {
+      toJSON() {
+        throw new Error("json failed");
+      },
+      toString() {
+        throw new Error("string failed");
+      },
+    };
+
+    const result = renderStatusContent(
+      [makeEntry({ params: { payload: hostile }, status: "completed" })],
+      true,
+    );
+
+    expect(stripAnsi(result)).toContain("payload: [unserializable]");
+  });
+
+  it("renders a completed main tool as an exact ANSI tree", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: { command: "ls", cwd: "/repo" },
+          status: "completed",
+          durationMs: 1001,
+        }),
+      ],
+      false,
+    );
+
+    expect(result).toBe(
+      [
+        "```ansi",
+        `${BOLD_CYAN}⚙️ bash${RESET} ${GREEN}✔${RESET} ${YELLOW}[1.00s]${RESET}`,
+        ` ├─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
+        ` └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("renders a pending main tool without a duration", () => {
+    const result = renderStatusContent(
+      [makeEntry({ params: {}, status: "pending" })],
+      false,
+    );
+
+    expect(result).toBe(
+      ["```ansi", `${BOLD_CYAN}⚙️ bash${RESET} ${YELLOW}←${RESET}`, "```"].join(
+        "\n",
+      ),
+    );
+  });
+
+  it("renders a failed main tool with an error child", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: {},
+          status: "error",
+          error: "permission denied",
+        }),
+      ],
+      false,
+    );
+
+    expect(result).toBe(
+      [
+        "```ansi",
+        `${BOLD_CYAN}⚙️ bash${RESET} ${RED}✘${RESET}`,
+        ` └─ ${RED}error:${RESET} ${GREEN}permission denied${RESET}`,
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("renders an orphan-completed main tool with the recycle glyph", () => {
+    const result = renderStatusContent(
+      [makeEntry({ params: {}, status: "orphan-completed" })],
+      false,
+    );
+
+    expect(result).toBe(
+      ["```ansi", `${BOLD_CYAN}⚙️ bash${RESET} ${CYAN}♻︎${RESET}`, "```"].join(
+        "\n",
+      ),
+    );
+  });
+});
+
+describe("display-value formatting", () => {
+  it("truncates ordinary values by Unicode code point with an exact hint", () => {
+    const value = `${"a".repeat(69)}😀${"b".repeat(2)}`;
+
+    const result = stripAnsi(
+      renderStatusContent(
+        [makeEntry({ params: { query: value }, status: "completed" })],
+        true,
+      ),
+    );
+
+    expect(result).toContain(`${"a".repeat(69)}😀... (+2 chars)`);
+    expect(result).not.toMatch(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
+    );
+  });
+
+  it("uses head-tail truncation only for recognized path keys", () => {
+    const path = `${"a".repeat(20)}${"m".repeat(10)}${"z".repeat(50)}`;
+
+    const result = stripAnsi(
+      renderStatusContent(
+        [makeEntry({ params: { path }, status: "completed" })],
+        true,
+      ),
+    );
+
+    expect(result).toContain(
+      `path: ${"a".repeat(20)}...${"z".repeat(50)} (+10 chars)`,
+    );
+  });
+
+  it("sanitizes ANSI, control characters, fences, newlines, and tabs", () => {
+    const value = "safe\u001b[31mred\u001b[0m```end\u0000\tline\nnext";
+
+    const result = renderStatusContent(
+      [makeEntry({ params: { query: value }, status: "completed" })],
+      true,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).toContain("query: saferedˋˋˋend\\tline\\nnext");
+    expect(result.match(/```/g)).toHaveLength(2);
+    expect(result).not.toContain("\u0000");
+    expect(result).not.toContain("\u001b[31mred");
+  });
+});
+
+describe("compact scalar rows", () => {
+  it("moves eligible scalars first and packs at most three per row", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            params: {
+              query: "renderStatusContent",
+              limit: 50,
+              offset: 0,
+              caseSensitive: false,
+              retries: 2,
+              path: "src",
+            },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result).toContain(
+      " ├─ limit: 50 · offset: 0 · caseSensitive: false\n" +
+        " ├─ retries: 2\n" +
+        " ├─ query: renderStatusContent\n" +
+        " └─ path: src",
+    );
+  });
+
+  it("wraps a compact row before its visible content exceeds 70 code points", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            params: {
+              firstMetadataKey123456: 1,
+              secondMetadataKey12345: 2,
+              thirdMetadataKey123456: 3,
+            },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result).toContain(
+      " ├─ firstMetadataKey123456: 1 · secondMetadataKey12345: 2\n" +
+        " └─ thirdMetadataKey123456: 3",
+    );
+  });
+
+  it("keeps the compact separator in the default color", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: { limit: 50, enabled: true },
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toContain(
+      `${MAGENTA}limit:${RESET} ${GREEN}50${RESET} · ${MAGENTA}enabled:${RESET} ${GREEN}true${RESET}`,
+    );
+  });
+});
+
+describe("multiline values", () => {
+  it("renders command lines with an unbroken connector before a sibling", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            params: {
+              command: "pnpm run typecheck\npnpm run test",
+              cwd: "/repo",
+            },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result).toContain(
+      [
+        " ├─ command: |",
+        " │   pnpm run typecheck",
+        " │   pnpm run test",
+        " └─ cwd: /repo",
+      ].join("\n"),
+    );
+  });
+
+  it("limits multiline values to five lines and 70 code points per line", () => {
+    const command = [
+      `${"a".repeat(70)}x`,
+      "line 2",
+      "line 3",
+      "line 4",
+      "line 5",
+      "hidden",
+    ].join("\r\n");
+
+    const result = stripAnsi(
+      renderStatusContent(
+        [makeEntry({ params: { command }, status: "completed" })],
+        true,
+      ),
+    );
+
+    expect(result).toContain(`${"a".repeat(70)}...`);
+    expect(result).toContain("line 5 (+7 chars)");
+    expect(result).not.toContain("hidden");
+  });
+});
+
+describe("ANSI internal group contract", () => {
+  it("renders child tools, result, and a distinct parent error as complete trees", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          params: {},
+          status: "error",
+          error: "parent timeout",
+        }),
+        makeEntry({
+          toolCallId: "active-memory:search",
+          toolName: "active-memory:memory_search",
+          params: { query: "hello", limit: 5 },
+          status: "completed",
+          durationMs: 100,
+        }),
+        makeEntry({
+          toolCallId: "active-memory:write",
+          toolName: "active-memory:memory_write",
+          params: {},
+          status: "error",
+          error: "permission denied",
+        }),
+        makeEntry({
+          toolCallId: "active-memory:result",
+          toolName: "active-memory:result",
+          params: { text: "first line\nsecond line" },
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+
+    expect(stripAnsi(result)).toContain(
+      [
+        "🧩 active-memory ✘",
+        " ├─ memory_search ✔ [100ms]",
+        " │   ├─ limit: 5",
+        " │   └─ query: hello",
+        " ├─ memory_write ✘",
+        " │   └─ error: permission denied",
+        " ├─ result: |",
+        " │   first line",
+        " │   second line",
+        " └─ error: parent timeout",
+      ].join("\n"),
+    );
+    expect(result).toContain(
+      `${BOLD_CYAN}🧩 active-memory${RESET} ${RED}✘${RESET}`,
+    );
+    expect(result).toContain(
+      `${CYAN}memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,
+    );
+  });
+
+  it("renders a main-agent failure in bold blue with an error child", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          toolCallId: "agent",
+          toolName: "agent",
+          params: {},
+          status: "error",
+          error: "provider timeout",
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toBe(
+      [
+        "```ansi",
+        `${BOLD_BLUE}🤖 agent${RESET} ${RED}✘${RESET}`,
+        ` └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
+        "```",
+      ].join("\n"),
+    );
+  });
+});
+
+describe("group wall-clock duration", () => {
+  it("prefers an authoritative parent duration over child timings", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "active-memory",
+            toolName: "active-memory",
+            params: {},
+            status: "completed",
+            durationMs: 9_310,
+          }),
+          makeEntry({
+            toolCallId: "memory-1",
+            toolName: "active-memory:memory_search",
+            params: {},
+            status: "completed",
+            startedAtMs: 1_000,
+            durationMs: 2_000,
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result.split("\n")[1]).toBe("🧩 active-memory ✔ [9.31s]");
+  });
+
+  it("uses the child wall-clock envelope instead of summing durations", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "phase-1",
+            toolName: "skill-harness:phase-1",
+            params: {},
+            status: "completed",
+            startedAtMs: 1_000,
+            durationMs: 1_000,
+          }),
+          makeEntry({
+            toolCallId: "phase-2",
+            toolName: "skill-harness:phase-2",
+            params: {},
+            status: "completed",
+            startedAtMs: 1_500,
+            durationMs: 2_500,
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ✔ [3.00s]");
+  });
+
+  it("omits the parent duration when child timing is incomplete", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "phase-1",
+            toolName: "skill-harness:phase-1",
+            params: {},
+            status: "completed",
+            durationMs: 1_000,
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ✔");
+  });
+});
 
 describe("renderStatusContent", () => {
   it("reports the exact number of omitted Unicode characters", () => {
@@ -41,7 +483,7 @@ describe("renderStatusContent", () => {
     const result = renderStatusContent([makeEntry()], false);
     expect(result).toContain("bash");
     expect(result).toContain("←");
-    expect(result).toContain("```yaml");
+    expect(result).toContain("```ansi");
   });
 
   it("renders completed tool with checkmark when final", () => {
@@ -68,7 +510,7 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(result).toContain(`(${expected})`);
+    expect(stripAnsi(result)).toContain(`[${expected}]`);
   });
 
   it("renders error tool with x mark", () => {
@@ -86,11 +528,11 @@ describe("renderStatusContent", () => {
       ],
       false,
     );
-    expect(result).toContain("bash: ✘");
-    expect(result).toContain("error: permission denied");
+    expect(stripAnsi(result)).toContain("⚙️ bash ✘");
+    expect(stripAnsi(result)).toContain("error: permission denied");
   });
 
-  it("quotes single-line string params containing colons", () => {
+  it("leaves single-line string params containing colons unquoted", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -101,10 +543,10 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(result).toContain('query: "site:example.com status:open"');
+    expect(stripAnsi(result)).toContain("query: site:example.com status:open");
   });
 
-  it("quotes error messages containing colons", () => {
+  it("leaves error messages containing colons unquoted", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -115,10 +557,10 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(result).toContain('   - error: "failed: timeout"');
+    expect(stripAnsi(result)).toContain("└─ error: failed: timeout");
   });
 
-  it("quotes strings that begin with YAML indicators or numeric literal syntax", () => {
+  it("does not apply YAML quoting to ordinary strings", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -135,11 +577,12 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(result).toContain('quoted: "\\\"already quoted\\\""');
-    expect(result).toContain('dash: "- item"');
-    expect(result).toContain('question: "? key"');
-    expect(result).toContain('hex: "0x1A"');
-    expect(result).toContain('octal: "0o77"');
+    const plain = stripAnsi(result);
+    expect(plain).toContain('quoted: "already quoted"');
+    expect(plain).toContain("dash: - item");
+    expect(plain).toContain("question: ? key");
+    expect(plain).toContain("hex: 0x1A");
+    expect(plain).toContain("octal: 0o77");
   });
 
   it("renders orphan-completed with recycle mark", () => {
@@ -166,7 +609,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧩 active-memory: ✔");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ✔");
     expect(result).toContain("memory_search");
     expect(result).toContain("memory_read");
   });
@@ -187,11 +630,11 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
+    const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain("memory_search");
-    expect(result).toContain("- result: 每日早報重跑已觸發");
+    expect(result).toContain("result: 每日早報重跑已觸發");
     expect(result.indexOf("memory_search")).toBeLessThan(
-      result.indexOf("- result: 每日早報重跑已觸發"),
+      result.indexOf("result: 每日早報重跑已觸發"),
     );
   });
 
@@ -223,13 +666,13 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
+    const result = stripAnsi(renderStatusContent(entries, true));
 
     expect(result.indexOf("memory_search")).toBeLessThan(
-      result.indexOf("- result: NONE"),
+      result.indexOf("result: NONE"),
     );
     expect(result.indexOf("topic-triage")).toBeLessThan(
-      result.indexOf("- intent: answer-question"),
+      result.indexOf("intent: answer-question"),
     );
   });
 
@@ -292,8 +735,8 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(result).toContain("🧩 active-memory: ✔");
-    expect(result).toContain("💡 skill-harness: ✔");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ✔");
+    expect(stripAnsi(result)).toContain("💡 skill-harness ✔");
     expect(result).not.toContain("memory_search_0");
     expect(result).not.toContain("memory_search_1");
     expect(result).toContain("memory_search_2");
@@ -328,7 +771,7 @@ describe("renderStatusContent", () => {
       true,
     );
     expect(withFiveNormalTools).not.toContain("🧩 active-memory");
-    expect(withFiveNormalTools).toContain("💡 skill-harness: ✔");
+    expect(stripAnsi(withFiveNormalTools)).toContain("💡 skill-harness ✔");
     expect(withFiveNormalTools).toContain("topic-triage");
     expect(withFiveNormalTools).toContain("normal_tool_4");
 
@@ -358,12 +801,13 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
+    const result = stripAnsi(renderStatusContent(entries, true));
 
-    expect(result).not.toContain("memory_search_4");
+    expect(result).not.toContain("memory_search_3");
+    expect(result).toContain("memory_search_4");
     expect(result).toContain("memory_search_5");
     expect(result.indexOf("memory_search_6")).toBeLessThan(
-      result.indexOf("- result: final result"),
+      result.indexOf("result: final result"),
     );
   });
 
@@ -377,7 +821,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(result).toContain("🧩 active-memory: ←");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ←");
   });
 
   it("renders skill-harness group with pending suffix", () => {
@@ -390,7 +834,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(result).toContain("💡 skill-harness: ←");
+    expect(stripAnsi(result)).toContain("💡 skill-harness ←");
   });
 
   it.each([
@@ -408,11 +852,11 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
+    const result = stripAnsi(renderStatusContent(entries, true));
 
-    expect(result).toContain("💡 skill-harness: ✘");
-    expect(result).toContain(`   - ${phase}: ✘`);
-    expect(result).toContain(`     - error: ${error}`);
+    expect(result).toContain("💡 skill-harness ✘");
+    expect(result).toContain(`${phase} ✘`);
+    expect(result).toContain(`error: ${error}`);
     expect(result.split(error)).toHaveLength(2);
   });
 
@@ -434,12 +878,12 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
+    const result = stripAnsi(renderStatusContent(entries, true));
 
-    expect(result).toContain("   - topic-triage: ✘");
-    expect(result).toContain("     - error: topic checker returned no context");
-    expect(result).toContain("   - intent-classify: ✘");
-    expect(result).toContain("     - error: classifier returned no result");
+    expect(result).toContain("topic-triage ✘");
+    expect(result).toContain("error: topic checker returned no context");
+    expect(result).toContain("intent-classify ✘");
+    expect(result).toContain("error: classifier returned no result");
     expect(result.match(/topic checker returned no context/g)).toHaveLength(1);
     expect(result.match(/classifier returned no result/g)).toHaveLength(1);
   });
@@ -453,12 +897,12 @@ describe("renderStatusContent", () => {
         status: "completed",
       },
     ];
-    const result = renderStatusContent(entries, true);
-    expect(result).toContain("💡 skill-harness: ✔");
-    expect(result).toContain('- result: "INTENT:RESEARCH | GOAL: docs"');
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain("💡 skill-harness ✔");
+    expect(result).toContain("result: INTENT:RESEARCH | GOAL: docs");
   });
 
-  it("quotes skill-harness JSON object string fields containing colons", () => {
+  it("renders skill-harness JSON object strings containing colons", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "skill-harness:result",
@@ -473,11 +917,9 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
-    expect(result).toContain("- intent: skill-lifecycle");
-    expect(result).toContain(
-      '     reason: "User said: keep templates separate"',
-    );
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain("intent: skill-lifecycle");
+    expect(result).toContain("reason: User said: keep templates separate");
   });
 
   it("renders skill-harness result as key-value when JSON object", () => {
@@ -491,10 +933,10 @@ describe("renderStatusContent", () => {
         status: "completed",
       },
     ];
-    const result = renderStatusContent(entries, true);
-    expect(result).toContain("💡 skill-harness: ✔");
-    expect(result).toContain("- intent: RESEARCH");
-    expect(result).toContain("     confidence: 0.9");
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain("💡 skill-harness ✔");
+    expect(result).toContain("intent: RESEARCH");
+    expect(result).toContain("confidence: 0.9");
   });
 
   it("renders multiple skill-harness JSON results without result wrappers", () => {
@@ -528,15 +970,13 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
-    expect(result).toContain("💡 skill-harness: ✔");
-    expect(result).toContain('- keywords: ["收巡","codex"]');
-    expect(result).toContain(
-      "     topic: user requesting to check or review codex",
-    );
-    expect(result).toContain("- intent: code-review");
-    expect(result).toContain("     confidence: 0.75");
-    expect(result).not.toContain("- result:");
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain("💡 skill-harness ✔");
+    expect(result).toContain('keywords: ["收巡","codex"]');
+    expect(result).toContain("topic: user requesting to check or review codex");
+    expect(result).toContain("intent: code-review");
+    expect(result).toContain("confidence: 0.75");
+    expect(result).not.toContain("result:");
   });
 
   it("renders string array skill-harness fields inline", () => {
@@ -553,8 +993,8 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
-    expect(result).toContain('       keywords: ["再看","一次"]');
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain('keywords: ["再看","一次"]');
     expect(result).not.toContain("keywords: |");
   });
 
@@ -570,11 +1010,11 @@ describe("renderStatusContent", () => {
       },
     ];
 
-    const result = renderStatusContent(entries, true);
+    const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain(
       [
-        "     - result: |",
-        "         Intent： memory-recent",
+        "     └─ result: |",
+        "         Intent: memory-recent",
         "         ",
         "         Suggested workflow",
       ].join("\n"),
@@ -591,7 +1031,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧩 active-memory: ✘");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ✘");
   });
 
   it("renders active-memory error with error message detail", () => {
@@ -605,8 +1045,8 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(result).toContain("🧩 active-memory: ✘");
-    expect(result).toContain("error: timed out after 15000ms");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ✘");
+    expect(stripAnsi(result)).toContain("error: timed out after 15000ms");
   });
 
   it("renders mixed normal and active-memory entries", () => {

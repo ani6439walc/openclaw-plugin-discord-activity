@@ -1,5 +1,10 @@
 import type { ToolEntry } from "./types.js";
-import { getToolIcon, formatParams } from "./formatting.js";
+import {
+  getToolIcon,
+  formatDisplayFields,
+  type DisplayField,
+} from "./formatting.js";
+import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
 import {
   STATUS_MAX_LENGTH,
   STATUS_MAX_ENTRIES,
@@ -23,33 +28,108 @@ function formatDurationMs(durationMs: number): string {
   } else {
     duration = `${(Math.round(durationMs / 100) / 10).toFixed(1)}s`;
   }
-  return ` (${duration})`;
+  return duration;
 }
 
-function formatDuration(entry: ToolEntry): string {
-  return typeof entry.durationMs === "number"
-    ? formatDurationMs(entry.durationMs)
-    : "";
+function formatHeaderDuration(entry: ToolEntry): string {
+  if (typeof entry.durationMs !== "number") return "";
+  return formatDurationBadge(entry.durationMs);
 }
 
-function formatErrorLine(entry: ToolEntry | undefined): string {
-  return entry?.status === "error" && entry.error
-    ? `\n${formatParams({ error: entry.error }, { first: "   - ", rest: "     " })}`
-    : "";
+function formatDurationBadge(durationMs: number): string {
+  return ` ${ansiSpan(ANSI.yellow, `[${formatDurationMs(durationMs)}]`)}`;
 }
 
-function formatNestedErrorLine(entry: ToolEntry): string {
+function getGroupDurationMs(
+  group: readonly ToolEntry[],
+  prefix: string,
+): number | undefined {
+  const parentDuration = group.find(
+    (entry) => entry.toolName === prefix,
+  )?.durationMs;
+  if (typeof parentDuration === "number") return parentDuration;
+
+  const childTools = group.filter(
+    (entry) =>
+      entry.toolName.startsWith(`${prefix}:`) &&
+      !isSubagentResultEntry(entry, prefix),
+  );
   if (
-    entry.status !== "error" ||
-    !entry.error ||
-    entry.params?.error === entry.error
+    childTools.length === 0 ||
+    childTools.some(
+      (entry) =>
+        entry.status === "pending" ||
+        typeof entry.startedAtMs !== "number" ||
+        typeof entry.durationMs !== "number",
+    )
   ) {
-    return "";
+    return;
   }
-  return `\n${formatParams(
-    { error: entry.error },
-    { first: "     - ", rest: "       " },
-  )}`;
+
+  const startedAtMs = Math.min(
+    ...childTools.map((entry) => entry.startedAtMs as number),
+  );
+  const completedAtMs = Math.max(
+    ...childTools.map(
+      (entry) => (entry.startedAtMs as number) + (entry.durationMs as number),
+    ),
+  );
+  return Math.max(0, completedAtMs - startedAtMs);
+}
+
+function getStatusStyle(status: ToolEntry["status"]): string {
+  if (status === "error") return ANSI.red;
+  if (status === "orphan-completed") return ANSI.cyan;
+  if (status === "completed") return ANSI.green;
+  return ANSI.yellow;
+}
+
+function renderMainField(field: DisplayField): string {
+  const keyStyle = field.key === "error" ? ANSI.red : ANSI.magenta;
+  if (field.multilineLines) {
+    return `${ansiSpan(keyStyle, `${field.key}:`)} |`;
+  }
+  const value = field.truncated
+    ? field.value
+    : ansiSpan(ANSI.green, field.value);
+  const hint = field.omittedHint ? ansiSpan(ANSI.gray, field.omittedHint) : "";
+  return `${ansiSpan(keyStyle, `${field.key}:`)} ${value}${hint}`;
+}
+
+function getDisplayFieldWidth(field: DisplayField): number {
+  return [...`${field.key}: ${field.value}${field.omittedHint ?? ""}`].length;
+}
+
+function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
+  const compactFields: DisplayField[] = [];
+  const ordinaryFields: DisplayField[] = [];
+
+  for (const field of fields) {
+    if (field.compactEligible && getDisplayFieldWidth(field) <= 70) {
+      compactFields.push(field);
+    } else {
+      ordinaryFields.push(field);
+    }
+  }
+
+  const rows: DisplayField[][] = [];
+  let currentRow: DisplayField[] = [];
+  let currentWidth = 0;
+  for (const field of compactFields) {
+    const fieldWidth = getDisplayFieldWidth(field);
+    const nextWidth =
+      currentWidth + (currentRow.length > 0 ? 3 : 0) + fieldWidth;
+    if (currentRow.length === 3 || nextWidth > 70) {
+      rows.push(currentRow);
+      currentRow = [];
+      currentWidth = 0;
+    }
+    currentRow.push(field);
+    currentWidth += (currentRow.length > 1 ? 3 : 0) + fieldWidth;
+  }
+  if (currentRow.length > 0) rows.push(currentRow);
+
+  return [...rows, ...ordinaryFields.map((field) => [field])];
 }
 
 function getParentSuffix(group: readonly ToolEntry[]): string {
@@ -70,20 +150,7 @@ function isMainAgentEntry(entry: ToolEntry): boolean {
   return entry.toolCallId === "agent" && entry.toolName === "agent";
 }
 
-function sortSubagentChildEntries(
-  entries: readonly ToolEntry[],
-  prefix: string,
-): ToolEntry[] {
-  const toolEntries = entries.filter(
-    (entry) => !isSubagentResultEntry(entry, prefix),
-  );
-  const resultEntries = entries.filter((entry) =>
-    isSubagentResultEntry(entry, prefix),
-  );
-  return [...toolEntries, ...resultEntries].slice(-STATUS_MAX_SUBAGENT_ENTRIES);
-}
-
-function renderSkillHarnessResult(entry: ToolEntry): string {
+function getSkillHarnessResultFields(entry: ToolEntry): DisplayField[] {
   const resultText = entry.params?.text ?? "";
   let cleanText = resultText;
   const fenceMatch = resultText.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
@@ -94,51 +161,185 @@ function renderSkillHarnessResult(entry: ToolEntry): string {
   try {
     const obj = JSON.parse(cleanText);
     if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-      return formatParams(obj, { first: "   - ", rest: "     " });
+      return formatDisplayFields(obj);
     }
   } catch {}
 
-  return formatParams({ result: cleanText }, { first: "   - ", rest: "     " });
+  return formatDisplayFields({ result: cleanText });
 }
 
-function renderNestedToolEntry(
+function createEntryFieldNodes(
+  entry: ToolEntry,
+  errorPriority: DetailPriority,
+  sourceIndex: number,
+): { nodes: StatusNode[]; errorNode?: StatusNode } {
+  const nodes = packMainFields(formatDisplayFields(entry.params)).map(
+    (row, index) =>
+      createFieldNode(
+        row,
+        entry.status === "error" &&
+          entry.error !== undefined &&
+          entry.params?.error === entry.error &&
+          row.some((field) => field.key === "error")
+          ? errorPriority
+          : 0,
+        sourceIndex,
+        index,
+      ),
+  );
+  let errorNode = nodes.find((node) => node.priority === errorPriority);
+
+  if (
+    entry.status === "error" &&
+    entry.error &&
+    entry.params?.error !== entry.error
+  ) {
+    const errorRows = packMainFields(
+      formatDisplayFields({ error: entry.error }),
+    );
+    const errorNodes = errorRows.map((row, index) =>
+      createFieldNode(row, errorPriority, sourceIndex, nodes.length + index),
+    );
+    nodes.push(...errorNodes);
+    errorNode = errorNodes[0];
+  }
+  return { nodes, errorNode };
+}
+
+function createNestedToolNode(
   entry: ToolEntry,
   prefix: string,
-  renderResult?: (entry: ToolEntry) => string,
-): string {
-  if (entry.toolName === `${prefix}:result`) {
-    if (renderResult) {
-      return renderResult(entry);
-    }
-    return formatParams(
-      { result: entry.params?.text },
-      {
-        first: "   - ",
-        rest: "     ",
-      },
-    );
-  }
-
-  const strippedName = getDisplayToolName(
-    entry.toolName.slice(prefix.length + 1),
+  sourceIndex: number,
+): { node: StatusNode; errorNode?: StatusNode } {
+  const strippedName = sanitizeHeaderToken(
+    getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
   );
-  const pStr = formatParams(entry.params, {
-    first: "     - ",
-    rest: "       ",
+  const { nodes, errorNode } = createEntryFieldNodes(entry, 2, sourceIndex);
+  const node: StatusNode = {
+    text: `${ansiSpan(ANSI.cyan, strippedName)} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${formatHeaderDuration(entry)}`,
+    continuationLines: [],
+    children: nodes,
+    priority: 4,
+    sourceIndex,
+    fieldIndex: -1,
+  };
+  nodes.forEach((child) => {
+    child.parent = node;
   });
-  return `   - ${strippedName}: ${getSubSuffix(entry.status)}${formatDuration(entry)}${pStr ? "\n" + pStr : ""}${formatNestedErrorLine(entry)}`;
+  return { node, errorNode };
+}
+
+type DetailPriority = 0 | 1 | 2 | 3 | 4;
+
+type StatusHeader = {
+  icon: string;
+  name: string;
+  nameStyle: string;
+  status: string;
+  statusStyle: string;
+  durationMs?: number;
+  compressibleName?: boolean;
+};
+
+type StatusNode = {
+  text: string;
+  continuationLines: string[];
+  children: StatusNode[];
+  priority: DetailPriority;
+  sourceIndex: number;
+  fieldIndex: number;
+  parent?: StatusNode;
+  suppressedBy?: StatusNode;
+};
+
+type StatusBlock = {
+  header: StatusHeader;
+  children: StatusNode[];
+  sourceIndex: number;
+};
+
+function sanitizeHeaderToken(value: string): string {
+  return sanitizeVisibleText(value).replaceAll(/[\r\n\t]+/gu, " ");
+}
+
+function renderStatusHeader(
+  header: StatusHeader,
+  options: { includeDuration?: boolean; name?: string } = {},
+): string {
+  const name = options.name ?? header.name;
+  const label = name ? `${header.icon} ${name}` : header.icon;
+  const duration =
+    options.includeDuration !== false && typeof header.durationMs === "number"
+      ? formatDurationBadge(header.durationMs)
+      : "";
+  return `${ansiSpan(header.nameStyle, label)} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
+}
+
+function createFieldNode(
+  fields: DisplayField[],
+  priority: DetailPriority = 0,
+  sourceIndex = 0,
+  fieldIndex = 0,
+): StatusNode {
+  const multilineField =
+    fields.length === 1 && fields[0].multilineLines ? fields[0] : undefined;
+  const multilineLines = multilineField?.multilineLines;
+  const continuationLines = multilineLines
+    ? multilineLines.map((line, index, lines) =>
+        index === lines.length - 1 && multilineField.omittedHint
+          ? `${line}${ansiSpan(ANSI.gray, multilineField.omittedHint)}`
+          : line,
+      )
+    : [];
+  return {
+    text: fields.map(renderMainField).join(" · "),
+    continuationLines,
+    children: [],
+    priority,
+    sourceIndex,
+    fieldIndex,
+  };
+}
+
+function renderStatusNodes(
+  nodes: readonly StatusNode[],
+  removed: ReadonlySet<StatusNode>,
+  prefix = "",
+): string[] {
+  const visible = nodes.filter((node) => isStatusNodeVisible(node, removed));
+  return visible.flatMap((node, index) => {
+    const isLast = index === visible.length - 1;
+    const connector = isLast ? "└─" : "├─";
+    const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
+    return [
+      `${prefix} ${connector} ${node.text}`,
+      ...node.continuationLines.map((line) => `${childPrefix} ${line}`),
+      ...renderStatusNodes(node.children, removed, childPrefix),
+    ];
+  });
+}
+
+function isStatusNodeVisible(
+  node: StatusNode,
+  removed: ReadonlySet<StatusNode>,
+): boolean {
+  if (removed.has(node)) return false;
+  if (node.parent && !isStatusNodeVisible(node.parent, removed)) return false;
+  return !node.suppressedBy || !isStatusNodeVisible(node.suppressedBy, removed);
 }
 
 function renderSubagentGroup(
   icon: string,
   prefix: string,
   group: readonly ToolEntry[],
-  renderResult?: (entry: ToolEntry) => string,
-): string {
+  sourceIndexes: ReadonlyMap<ToolEntry, number>,
+): StatusBlock {
   const realEntries = group.filter((e) => e.toolName.startsWith(`${prefix}:`));
-  const displayedEntries = sortSubagentChildEntries(realEntries, prefix);
-  const subEntryStrs = displayedEntries.map((entry) =>
-    renderNestedToolEntry(entry, prefix, renderResult),
+  const displayedTools = realEntries
+    .filter((entry) => !isSubagentResultEntry(entry, prefix))
+    .slice(-STATUS_MAX_SUBAGENT_ENTRIES);
+  const resultEntries = realEntries.filter((entry) =>
+    isSubagentResultEntry(entry, prefix),
   );
   const parentSuffix = group.some((entry) => entry.status === "error")
     ? "✘"
@@ -149,65 +350,103 @@ function renderSubagentGroup(
     (entry) =>
       entry.toolName === prefix && entry.status === "error" && entry.error,
   );
-  const errorLine = displayedEntries.some(
-    (entry) => entry.error === parentErrorEntry?.error,
-  )
-    ? ""
-    : formatErrorLine(parentErrorEntry);
-
-  const totalDuration = realEntries.reduce(
-    (sum, entry) =>
-      sum + (typeof entry.durationMs === "number" ? entry.durationMs : 0),
-    0,
+  const nestedTools = displayedTools.map((entry) =>
+    createNestedToolNode(entry, prefix, sourceIndexes.get(entry) ?? 0),
   );
-  const durationStr = totalDuration > 0 ? formatDurationMs(totalDuration) : "";
-
-  return `${icon} ${prefix}: ${parentSuffix}${durationStr}${
-    subEntryStrs.length ? "\n" + subEntryStrs.join("\n") : ""
-  }${errorLine}`;
-}
-
-function renderEntry(t: ToolEntry, isLast: boolean, isFinal: boolean): string {
-  const icon = getToolIcon(t.toolName);
-  const toolName = getDisplayToolName(t.toolName);
-  const pStr = formatParams(t.params);
-  const done =
-    t.status === "completed" ||
-    t.status === "error" ||
-    t.status === "orphan-completed";
-  let suffix: string;
-  if (t.status === "error") {
-    suffix = "✘";
-  } else if (t.status === "orphan-completed") {
-    suffix = "♻︎";
-  } else if (done && (!isLast || isFinal)) {
-    suffix = "✔";
-  } else {
-    suffix = "←";
+  const nodes = nestedTools.map(({ node }) => node);
+  for (const resultEntry of resultEntries) {
+    const resultFields =
+      prefix === "skill-harness"
+        ? getSkillHarnessResultFields(resultEntry)
+        : formatDisplayFields({ result: resultEntry.params?.text });
+    for (const [index, row] of packMainFields(resultFields).entries()) {
+      nodes.push(
+        createFieldNode(row, 1, sourceIndexes.get(resultEntry) ?? 0, index),
+      );
+    }
   }
-  const dur = formatDuration(t);
-  const errorLine = formatErrorLine(t);
-  return `${icon} ${toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}${errorLine}`;
+  if (parentErrorEntry?.error) {
+    const matchingChildError = nestedTools.find(
+      ({ errorNode }, index) =>
+        errorNode && displayedTools[index].error === parentErrorEntry.error,
+    )?.errorNode;
+    for (const [index, row] of packMainFields(
+      formatDisplayFields({ error: parentErrorEntry.error }),
+    ).entries()) {
+      const parentErrorNode = createFieldNode(
+        row,
+        3,
+        sourceIndexes.get(parentErrorEntry) ?? 0,
+        index,
+      );
+      parentErrorNode.suppressedBy = matchingChildError;
+      nodes.push(parentErrorNode);
+    }
+  }
+
+  const parentStatus: ToolEntry["status"] =
+    parentSuffix === "✘"
+      ? "error"
+      : parentSuffix === "✔"
+        ? "completed"
+        : "pending";
+  const groupDurationMs = getGroupDurationMs(group, prefix);
+  return {
+    header: {
+      icon,
+      name: sanitizeHeaderToken(prefix),
+      nameStyle: ANSI.boldCyan,
+      status: parentSuffix,
+      statusStyle: getStatusStyle(parentStatus),
+      durationMs: groupDurationMs,
+    },
+    children: nodes,
+    sourceIndex: Math.min(
+      ...group.map((entry) => sourceIndexes.get(entry) ?? 0),
+    ),
+  };
 }
 
-function renderMainAgentFailure(entry: ToolEntry): string {
-  return `🤖 agent: ✘${formatErrorLine(entry)}`;
+function createEntryBlock(t: ToolEntry, sourceIndex: number): StatusBlock {
+  const icon = getToolIcon(t.toolName);
+  const toolName = sanitizeHeaderToken(getDisplayToolName(t.toolName));
+  const suffix = getSubSuffix(t.status);
+  const { nodes } = createEntryFieldNodes(t, 2, sourceIndex);
+  return {
+    header: {
+      icon,
+      name: toolName,
+      nameStyle: ANSI.boldCyan,
+      status: suffix,
+      statusStyle: getStatusStyle(t.status),
+      durationMs: t.durationMs,
+    },
+    children: nodes,
+    sourceIndex,
+  };
 }
 
-function renderActiveMemoryGroup(
-  group: readonly ToolEntry[],
-  _isFinal: boolean,
-): string {
-  return renderSubagentGroup("🧩", "active-memory", group);
-}
-
-function renderSkillHarnessGroup(group: readonly ToolEntry[]): string {
-  return renderSubagentGroup(
-    "💡",
-    "skill-harness",
-    group,
-    renderSkillHarnessResult,
-  );
+function createMainAgentFailureBlock(
+  entry: ToolEntry,
+  sourceIndex: number,
+): StatusBlock {
+  const header: StatusHeader = {
+    icon: "🤖",
+    name: "agent",
+    nameStyle: ANSI.boldBlue,
+    status: "✘",
+    statusStyle: ANSI.red,
+    compressibleName: false,
+  };
+  if (!entry.error) return { header, children: [], sourceIndex };
+  const rows = packMainFields(formatDisplayFields({ error: entry.error }));
+  return {
+    header,
+    children: rows.map((row, index) =>
+      createFieldNode(row, 3, sourceIndex, index),
+    ),
+    sourceIndex,
+  };
 }
 
 function getSubagentGroupEntries(
@@ -232,125 +471,232 @@ function getSubagentGroupEntries(
     groups.push({ name: "skill-harness", entries: skillHarnessEntries });
   }
 
-  return groups.sort((a, b) => a.name.localeCompare(b.name));
+  return groups;
 }
 
-const OPENING_FENCE = "```yaml\n";
+const OPENING_FENCE = "```ansi\n";
 const CLOSING_FENCE = "\n```";
 
-type StatusLine = { text: string; protected: boolean };
-
-function truncateWithEllipsis(text: string, maxLength: number): string {
-  if (maxLength <= 1) return "…";
-  const contentLimit = maxLength - 1;
-  let content = "";
-  for (const character of text) {
-    if (content.length + character.length > contentLimit) break;
-    content += character;
-  }
-  return `${content}…`;
+function getOmissionMarker(omittedLineCount: number): string {
+  if (omittedLineCount <= 0) return "";
+  const unit = omittedLineCount === 1 ? "line" : "lines";
+  return `... ${omittedLineCount} ${unit} more`;
 }
 
-function renderBoundedStatus(
-  contentParts: readonly string[],
-  requestedMaxLength: number,
+function renderBlocks(
+  blocks: readonly StatusBlock[],
+  removed: ReadonlySet<StatusNode>,
+  omittedLineCount: number,
+  headerOverrides?: readonly string[],
 ): string {
-  const maxLength = Math.max(
-    Math.min(requestedMaxLength, STATUS_MAX_LENGTH),
-    OPENING_FENCE.length + CLOSING_FENCE.length,
-  );
-  const lines = contentParts.flatMap((part, partIndex) => [
-    ...(partIndex > 0 ? [{ text: "", protected: false }] : []),
-    ...part.split("\n").map((text, lineIndex) => ({
-      text,
-      protected: lineIndex === 0 || /^\s+- .*: (?:←|✔|✘|♻︎)/u.test(text),
-    })),
-  ]);
-  const retained = lines.map(() => true);
-  let retainedCount = lines.length;
-  let retainedCharacters = lines.reduce(
-    (total, line) => total + line.text.length,
-    0,
-  );
-  let omittedLineCount = 0;
-
-  const getMarker = () => {
-    if (omittedLineCount <= 0) return "";
-    const unit = omittedLineCount === 1 ? "line" : "lines";
-    return `... ${omittedLineCount} ${unit} more`;
-  };
-  const getRenderedLength = () => {
-    const marker = getMarker();
-    return (
-      OPENING_FENCE.length +
-      retainedCharacters +
-      Math.max(0, retainedCount - 1) +
-      (marker ? marker.length + (retainedCount > 0 ? 1 : 0) : 0) +
-      CLOSING_FENCE.length
-    );
-  };
-
-  const omitLine = (index: number) => {
-    if (!retained[index]) return;
-    retained[index] = false;
-    retainedCount -= 1;
-    retainedCharacters -= lines[index].text.length;
-    if (lines[index].text.trim()) {
-      omittedLineCount += 1;
-    }
-  };
-
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (getRenderedLength() <= maxLength) break;
-    const line = lines[index];
-    if (!line.protected && line.text.trim()) omitLine(index);
-  }
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (getRenderedLength() <= maxLength) break;
-    const line = lines[index];
-    if (!line.protected && !line.text.trim()) omitLine(index);
-  }
-
-  while (getRenderedLength() > maxLength && retainedCount > 0) {
-    let longestIndex = -1;
-    for (let index = 0; index < lines.length; index += 1) {
-      if (
-        retained[index] &&
-        (longestIndex < 0 ||
-          lines[index].text.length > lines[longestIndex].text.length)
-      ) {
-        longestIndex = index;
-      }
-    }
-    if (longestIndex < 0) break;
-
-    const line = lines[longestIndex];
-    const maxReduction = line.text.length - 1;
-    if (maxReduction <= 0) {
-      omitLine(longestIndex);
-      continue;
-    }
-    const reduction = Math.min(getRenderedLength() - maxLength, maxReduction);
-    const nextLength = line.text.length - reduction;
-    const nextText = truncateWithEllipsis(line.text, nextLength);
-    retainedCharacters += nextText.length - line.text.length;
-    line.text = nextText;
-  }
-
-  const body = lines
-    .filter((_, index) => retained[index])
-    .map((line) => line.text);
-  const marker = getMarker();
+  const body = getRenderedBodyLines(blocks, removed, headerOverrides);
+  const marker = getOmissionMarker(omittedLineCount);
   if (marker) body.push(marker);
   return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
 }
 
+function getRenderedBodyLines(
+  blocks: readonly StatusBlock[],
+  removed: ReadonlySet<StatusNode>,
+  headerOverrides?: readonly string[],
+): string[] {
+  return blocks.flatMap((block, index) => [
+    ...(index > 0 ? [""] : []),
+    headerOverrides?.[index] ?? renderStatusHeader(block.header),
+    ...renderStatusNodes(block.children, removed),
+  ]);
+}
+
+function countNonblankLines(lines: readonly string[]): number {
+  return lines.filter((line) =>
+    line.replaceAll(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "").trim(),
+  ).length;
+}
+
+function collectRemovalCandidates(
+  blocks: readonly StatusBlock[],
+): StatusNode[] {
+  const candidates: Array<{ node: StatusNode; traversalOrder: number }> = [];
+  let traversalOrder = 0;
+  const visit = (node: StatusNode) => {
+    candidates.push({ node, traversalOrder });
+    traversalOrder += 1;
+    node.children.forEach(visit);
+  };
+  for (const block of blocks) block.children.forEach(visit);
+  return candidates
+    .sort(
+      (a, b) =>
+        a.node.priority - b.node.priority ||
+        a.node.sourceIndex - b.node.sourceIndex ||
+        a.node.fieldIndex - b.node.fieldIndex ||
+        a.traversalOrder - b.traversalOrder,
+    )
+    .map(({ node }) => node);
+}
+
+function truncateHeaderName(name: string, maxLength: number): string {
+  if (name.length <= maxLength) return name;
+  if (maxLength <= 1) return "…";
+  let retained = "";
+  for (const character of name) {
+    if (retained.length + character.length > maxLength - 1) break;
+    retained += character;
+  }
+  return `${retained}…`;
+}
+
+type EmergencyHeader = {
+  block: StatusBlock;
+  includeDuration: boolean;
+  name: string;
+};
+
+function renderHeaderOnly(
+  headers: readonly EmergencyHeader[],
+  baselineLineCount: number,
+): string {
+  const body = headers.flatMap((header, index) => [
+    ...(index > 0 ? [""] : []),
+    renderStatusHeader(header.block.header, {
+      includeDuration: header.includeDuration,
+      name: header.name,
+    }),
+  ]);
+  const marker = getOmissionMarker(baselineLineCount - headers.length);
+  if (marker) body.push(marker);
+  return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
+}
+
+function renderEmergencyHeaders(
+  blocks: readonly StatusBlock[],
+  baselineLineCount: number,
+  maxLength: number,
+): string {
+  const headers: EmergencyHeader[] = blocks.map((block) => ({
+    block,
+    includeDuration: true,
+    name: block.header.name,
+  }));
+  let rendered = renderHeaderOnly(headers, baselineLineCount);
+
+  if (rendered.length > maxLength) {
+    headers.forEach((header) => {
+      header.includeDuration = false;
+    });
+    rendered = renderHeaderOnly(headers, baselineLineCount);
+  }
+
+  while (rendered.length > maxLength) {
+    const oldestCompressible = headers
+      .map((header, index) => ({ header, index }))
+      .filter(({ header }) => header.block.header.compressibleName !== false)
+      .sort(
+        (a, b) =>
+          a.header.block.sourceIndex - b.header.block.sourceIndex ||
+          b.header.name.length - a.header.name.length,
+      )[0];
+    if (
+      !oldestCompressible ||
+      [...oldestCompressible.header.name].length <= 1
+    ) {
+      break;
+    }
+    const overflow = rendered.length - maxLength;
+    const target = Math.max(
+      1,
+      oldestCompressible.header.name.length - overflow,
+    );
+    const truncated = truncateHeaderName(
+      oldestCompressible.header.name,
+      target,
+    );
+    oldestCompressible.header.name =
+      truncated.length < oldestCompressible.header.name.length
+        ? truncated
+        : truncateHeaderName(
+            oldestCompressible.header.name,
+            oldestCompressible.header.name.length - 1,
+          );
+    rendered = renderHeaderOnly(headers, baselineLineCount);
+  }
+
+  while (rendered.length > maxLength && headers.length > 0) {
+    const oldest =
+      headers
+        .map((header, index) => ({ header, index }))
+        .filter(({ header }) => header.block.header.compressibleName !== false)
+        .sort(
+          (a, b) => a.header.block.sourceIndex - b.header.block.sourceIndex,
+        )[0]?.index ?? 0;
+    headers.splice(oldest, 1);
+    rendered = renderHeaderOnly(headers, baselineLineCount);
+  }
+
+  if (rendered.length <= maxLength) return rendered;
+  return `${OPENING_FENCE}${CLOSING_FENCE}`;
+}
+
+const MAX_ITERATIVE_BOUNDING_NODES = 256;
+
+function renderBoundedStatus(
+  blocks: readonly StatusBlock[],
+  requestedMaxLength: number,
+): string {
+  const minimumLength = OPENING_FENCE.length + CLOSING_FENCE.length;
+  if (
+    !Number.isInteger(requestedMaxLength) ||
+    requestedMaxLength < minimumLength
+  ) {
+    throw new RangeError(
+      `Status max length must be an integer of at least ${minimumLength}`,
+    );
+  }
+  const maxLength = Math.min(requestedMaxLength, STATUS_MAX_LENGTH);
+  const removed = new Set<StatusNode>();
+  const baselineLineCount = countNonblankLines(
+    getRenderedBodyLines(blocks, removed),
+  );
+  const candidates = collectRemovalCandidates(blocks);
+  let batchRemovals = Math.max(
+    0,
+    candidates.length - MAX_ITERATIVE_BOUNDING_NODES,
+  );
+  for (const candidate of candidates) {
+    if (batchRemovals === 0) break;
+    if (!isStatusNodeVisible(candidate, removed)) continue;
+    removed.add(candidate);
+    batchRemovals -= 1;
+  }
+
+  const renderCurrent = () => {
+    const currentLineCount = countNonblankLines(
+      getRenderedBodyLines(blocks, removed),
+    );
+    return renderBlocks(blocks, removed, baselineLineCount - currentLineCount);
+  };
+  let rendered = renderCurrent();
+
+  for (const candidate of candidates) {
+    if (rendered.length <= maxLength) return rendered;
+    if (!isStatusNodeVisible(candidate, removed)) continue;
+    removed.add(candidate);
+    rendered = renderCurrent();
+  }
+
+  if (rendered.length <= maxLength) return rendered;
+  return renderEmergencyHeaders(blocks, baselineLineCount, maxLength);
+}
+
 export function renderStatusContent(
   toolHistory: readonly ToolEntry[],
-  isFinal: boolean,
+  _isFinal: boolean,
   maxLength = STATUS_MAX_LENGTH,
 ): string {
-  const contentParts: string[] = [];
+  const contentParts: StatusBlock[] = [];
+  const sourceIndexes = new Map(
+    toolHistory.map((entry, index) => [entry, index] as const),
+  );
   const subagentGroups = getSubagentGroupEntries(toolHistory);
   const normalEntries = toolHistory
     .filter(
@@ -371,21 +717,28 @@ export function renderStatusContent(
         : [];
 
   for (const group of visibleSubagentGroups) {
-    if (group.name === "active-memory") {
-      contentParts.push(renderActiveMemoryGroup(group.entries, isFinal));
-    } else {
-      contentParts.push(renderSkillHarnessGroup(group.entries));
-    }
+    contentParts.push(
+      renderSubagentGroup(
+        group.name === "active-memory" ? "🧩" : "💡",
+        group.name,
+        group.entries,
+        sourceIndexes,
+      ),
+    );
   }
 
   const mainAgentFailure = toolHistory.filter(isMainAgentEntry).at(-1);
   if (mainAgentFailure?.status === "error") {
-    contentParts.push(renderMainAgentFailure(mainAgentFailure));
+    contentParts.push(
+      createMainAgentFailureBlock(
+        mainAgentFailure,
+        sourceIndexes.get(mainAgentFailure) ?? 0,
+      ),
+    );
   }
 
-  for (const [index, entry] of normalEntries.entries()) {
-    const isLast = index === normalEntries.length - 1;
-    contentParts.push(renderEntry(entry, isLast, isFinal));
+  for (const entry of normalEntries) {
+    contentParts.push(createEntryBlock(entry, sourceIndexes.get(entry) ?? 0));
   }
 
   return renderBoundedStatus(contentParts, maxLength);

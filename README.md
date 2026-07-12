@@ -3,11 +3,9 @@
 [![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://github.com/openclaw/openclaw)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Discord Tool Status is an OpenClaw plugin that shows live agent/tool activity in Discord. For each Discord conversation, it creates one YAML-formatted status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
+Discord Tool Status is an OpenClaw plugin that shows live agent/tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
 
-![Discord Tool Status Example](example.png)
-
-## What problem it solves
+## Why this exists
 
 When an OpenClaw agent is working from Discord, long-running tool calls can otherwise look like silence. This plugin gives users and operators a lightweight progress view without changing the final assistant reply.
 
@@ -23,21 +21,21 @@ The plugin is designed to fail open: if Discord credentials are missing or Disco
 
 ## What it shows
 
-Status messages are Discord YAML code blocks. Internal subagent groups appear first, followed by a main-agent failure when present, then normal tools:
+Status messages are Discord ANSI code blocks. Internal subagent groups appear first, followed by a main-agent failure when present, then normal tools:
 
-```yaml
-🧩 active-memory: ✔
-   - memory_search: ✔ (120ms)
-     - query: project notes
-   - result: Relevant memory found
+```ansi
+🧩 active-memory ✔ [120ms]
+ ├─ memory_search ✔ [120ms]
+ │   └─ query: project notes
+ └─ result: Relevant memory found
 
-💡 skill-harness: ✔
-   - intent: code-review
-     reason: User asked for a review
-     confidence: 0.92
+💡 skill-harness ✔
+ └─ intent ✔
+     ├─ reason: User asked for a review
+     └─ confidence: 0.92
 
-🔍 web_search: ✔ (450ms)
-   - query: OpenClaw plugin SDK
+🔎 web_search ✔ [450ms]
+ └─ query: OpenClaw plugin SDK
 ```
 
 Status markers:
@@ -51,7 +49,7 @@ Rendering rules to preserve:
 
 - Normal tools render after `active-memory` and `skill-harness` groups.
 - `active-memory` and `skill-harness` group order is stable.
-- A failed main agent renders as `🤖 agent: ✘` after internal groups and before normal tools. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
+- A failed main agent renders as `🤖 agent ✘` after internal groups and before normal tools. It is an additional protected block outside the shared 6-entry tool/group budget. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
 - Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.
@@ -60,8 +58,9 @@ Rendering rules to preserve:
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds render with two decimal places; durations of 10 seconds or more render with one decimal place.
 - Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. At the outer level, each complete internal group counts as one entry alongside each normal tool in a shared 6-entry budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group; retained `toolHistory` is unchanged.
-- Parameter, result, and error values report exact omitted Unicode-character counts as `... N chars more` (`char` when singular) without splitting surrogate pairs. Single-line values keep up to 150 characters; multiline values keep up to 750.
-- Overlong status messages remain within the configured limit, retain status headers where possible, end with a complete YAML fence, and use `... N lines more` (`line` when singular) for omitted detail lines without deleting retained tool history.
+- Parameter, result, and error values report exact omitted Unicode code-point counts as `(+N chars)` (`char` when singular) without splitting surrogate pairs. Single-line values keep up to 70 code points. Multiline values keep up to five lines and 70 code points per retained line.
+- Overlong status messages remove complete semantic detail nodes instead of slicing rendered lines. Ordinary parameters roll out before results, errors, nested tool headers, and top-level status headers; equal-priority details roll out oldest first. Compact scalar rows and multiline values remain atomic, and tree connectors are recomputed after removal.
+- Bounded output includes ANSI and omission-marker overhead in every length check, ends with a complete ANSI fence, emits the exact number of omitted nonblank rendered lines as `... N lines more` (`line` when singular), sanitizes untrusted visible text, and never mutates retained `toolHistory` merely to fit the display.
 
 ## How it works
 
@@ -96,8 +95,8 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 | `src/store.ts`                      | Active session and Discord context tracking.                                                                                                  |
 | `src/orphans.ts`                    | Temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.                                        |
 | `src/parser.ts`                     | Session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result extraction.                          |
-| `src/render.ts`                     | Pure rendering from tool history to YAML status content.                                                                                      |
-| `src/formatting.ts`                 | Icons and YAML-safe parameter formatting.                                                                                                     |
+| `src/render.ts`                     | Pure rendering from tool history to bounded semantic ANSI status content.                                                                     |
+| `src/formatting.ts`                 | Icons, display-field formatting, and local Unicode-safe value truncation.                                                                     |
 | `src/tool-name.ts`                  | Shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.                                                    |
 | `src/skill-harness-status.ts`       | Skill-harness pipeline parsing, visible-field filtering, child duration calculation, and duplicate phase merging.                             |
 | `src/discord-api.ts`                | Discord REST calls, rate-limit retry, server-error retry, network-error retry, and DM channel resolution.                                     |
@@ -158,7 +157,7 @@ This release targets OpenClaw/plugin SDK `2026.6.11`, declares `2026.6.11` as th
 | `maxDisplayMs`           | `number` | `600000` | Maximum time a status message may remain before force cleanup.     |
 | `orphanTtlMs`            | `number` | `300000` | Time to keep orphaned tool calls while waiting for a session link. |
 
-Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 normal entries, 6 `active-memory` children, and 6 `skill-harness` children in the visible status message.
+Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer tool/group entries, plus a protected main-agent failure when present, and up to 3 children independently inside each `active-memory` and `skill-harness` group.
 
 ## Companion workflows
 

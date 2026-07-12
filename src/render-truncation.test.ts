@@ -21,6 +21,16 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function stripAnsi(content: string): string {
+  return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
+}
+
+function containsOnlyCompleteAnsiSequences(content: string): boolean {
+  return !content
+    .replaceAll(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "")
+    .includes("\u001b");
+}
+
 describe("bounded status rendering", () => {
   afterEach(() => {
     defaultStore.sessions.clear();
@@ -31,7 +41,7 @@ describe("bounded status rendering", () => {
   it("keeps the default hard bound, semantic status headers, marker, and fence", () => {
     const huge = Array.from(
       { length: 80 },
-      (_, index) => `detail ${index}`,
+      (_, index) => `detail ${index} ${"x".repeat(80)}`,
     ).join("\n");
     const result = renderStatusContent(
       [
@@ -58,17 +68,28 @@ describe("bounded status rendering", () => {
           toolName: "terminal",
           params: { command: huge },
         }),
+        entry({
+          toolCallId: "normal-2",
+          toolName: "web_search",
+          params: { result: huge },
+        }),
+        entry({
+          toolCallId: "normal-3",
+          toolName: "bash",
+          params: { command: huge },
+        }),
       ],
       true,
     );
 
     expect(result.length).toBeLessThanOrEqual(1700);
-    expect(result).toContain("🧩 active-memory: ✘");
-    expect(result).toContain("💡 skill-harness: ✔");
-    expect(result).toContain("🤖 agent: ✘");
-    expect(result).toContain("terminal: ✔");
+    const plain = stripAnsi(result);
+    expect(plain).toContain("🧩 active-memory ✘");
+    expect(plain).toContain("💡 skill-harness ✔");
+    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).toContain("terminal ✔");
     expect(result).toMatch(/\.\.\. \d+ lines more/);
-    expect(result.startsWith("```yaml\n")).toBe(true);
+    expect(result.startsWith("```ansi\n")).toBe(true);
     expect(result.endsWith("\n```")).toBe(true);
   });
 
@@ -108,8 +129,9 @@ describe("bounded status rendering", () => {
     );
 
     expect(result.length).toBeLessThanOrEqual(120);
-    expect(result).toContain("🤖 agent: ✘");
-    expect(result).toContain("web_search: ✔");
+    const plain = stripAnsi(result);
+    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).toContain("web_search ✔");
   });
 
   it("does not split surrogate pairs when truncating status headers", () => {
@@ -155,9 +177,229 @@ describe("bounded status rendering", () => {
 
     expect(session.toolHistory).toHaveLength(2);
     expect(session.lastRenderedContent?.length).toBeLessThanOrEqual(120);
-    expect(session.lastRenderedContent).toContain("terminal: ✔");
-    expect(session.lastRenderedContent).toContain("web_search: ✔");
+    const plain = stripAnsi(session.lastRenderedContent ?? "");
+    expect(plain).toContain("terminal ✔");
+    expect(plain).toContain("web_search ✔");
     expect(session.lastRenderedContent).toMatch(/\.\.\. \d+ lines more/);
     expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
+  });
+
+  it("rejects limits too small to contain a complete ANSI fence", () => {
+    expect(() => renderStatusContent([], true, 11)).toThrow(/at least 12/u);
+  });
+
+  it("sanitizes top-level and nested tool names before rendering", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory:evil",
+          toolName: "active-memory:evil\n```\n\u001b[31m",
+        }),
+        entry({
+          toolCallId: "evil",
+          toolName: "evil\n```\n\u001b[31m",
+        }),
+      ],
+      true,
+    );
+
+    expect(result.match(/```/gu)).toHaveLength(2);
+    expect(containsOnlyCompleteAnsiSequences(result)).toBe(true);
+    expect(stripAnsi(result)).not.toContain("\nevil\n");
+    expect(stripAnsi(result)).not.toContain("\n```\n");
+  });
+
+  it("keeps malicious parameter keys on one safe tree line", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolName: "bash",
+          params: {
+            "bad\n```\n\u009b31mkey": "value",
+          },
+        }),
+      ],
+      true,
+    );
+    const plain = stripAnsi(result);
+
+    expect(result.match(/```/gu)).toHaveLength(2);
+    expect(plain).toContain("bad\\nˋˋˋ\\n31mkey: value");
+    expect(plain).not.toContain("\nbad\n");
+  });
+
+  it("removes an ordinary params.error before a real main-agent error", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "ordinary",
+          toolName: "bash",
+          params: { error: `not-a-failure-${"x".repeat(70)}` },
+        }),
+        entry({
+          toolCallId: "agent",
+          toolName: "agent",
+          status: "error",
+          error: "provider timeout",
+        }),
+      ],
+      true,
+      135,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).toContain("provider timeout");
+    expect(plain).not.toContain("not-a-failure");
+  });
+
+  it("restores a deduplicated parent error after removing its child copy", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          status: "error",
+          error: "memory failed",
+        }),
+        entry({
+          toolCallId: "active-memory:child",
+          toolName: "active-memory:memory_search",
+          params: { query: "x".repeat(70) },
+          status: "error",
+          error: "memory failed",
+        }),
+      ],
+      true,
+      147,
+    );
+    const plain = stripAnsi(result);
+
+    expect(result.length).toBeLessThanOrEqual(147);
+    expect(plain).toContain("memory failed");
+    expect(plain.match(/memory failed/gu)).toHaveLength(1);
+  });
+
+  it("removes compact and multiline nodes atomically with exact line counts", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolName: "bash",
+          params: {
+            one: 1,
+            two: 2,
+            three: 3,
+            command: ["line 1", "line 2", "line 3"].join("\n"),
+          },
+          status: "error",
+          error: "important failure",
+        }),
+      ],
+      true,
+      120,
+    );
+    const plain = stripAnsi(result);
+
+    expect(result.length).toBeLessThanOrEqual(120);
+    expect(plain).not.toContain("one:");
+    expect(plain).not.toContain("two:");
+    expect(plain).not.toContain("three:");
+    expect(plain).not.toContain("command:");
+    expect(plain).not.toContain("line 1");
+    expect(plain).toContain(" └─ error: important failure");
+    expect(plain).toContain("... 5 lines more");
+  });
+
+  it("removes older equal-priority details before newer details", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolName: "bash",
+          params: {
+            older: `old-${"o".repeat(60)}`,
+            newer: `new-${"n".repeat(60)}`,
+          },
+        }),
+      ],
+      true,
+      180,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).not.toContain("old-");
+    expect(plain).toContain("new-");
+  });
+
+  it("keeps six outer entries plus the protected main-agent failure", () => {
+    const history = [
+      ...Array.from({ length: 7 }, (_, index) =>
+        entry({
+          toolCallId: `normal-${index}`,
+          toolName: `tool_${index}`,
+        }),
+      ),
+      entry({
+        toolCallId: "agent",
+        toolName: "agent",
+        status: "error",
+        error: "provider timeout",
+      }),
+    ];
+    const plain = stripAnsi(renderStatusContent(history, true));
+
+    expect(plain).toContain("🤖 agent ✘");
+    expect(plain).not.toContain("tool_0");
+    for (let index = 1; index < 7; index += 1) {
+      expect(plain).toContain(`tool_${index}`);
+    }
+  });
+
+  it("keeps fences, ANSI sequences, and surrogate pairs valid at tiny limits", () => {
+    const history = [
+      entry({
+        toolName: `old_${"😀".repeat(50)}`,
+        durationMs: 1234,
+        params: { command: "x".repeat(500) },
+      }),
+    ];
+
+    for (let limit = 12; limit < 100; limit += 1) {
+      const result = renderStatusContent(history, true, limit);
+      expect(result.length).toBeLessThanOrEqual(limit);
+      expect(result.startsWith("```ansi\n")).toBe(true);
+      expect(result.endsWith("\n```")).toBe(true);
+      expect(containsOnlyCompleteAnsiSequences(result)).toBe(true);
+      expect(result).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+      expect(result).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+    }
+  });
+
+  it("bounds large semantic inputs without unbounded iterative rendering", () => {
+    const params = Object.fromEntries(
+      Array.from({ length: 10_000 }, (_, index) => [`field_${index}`, index]),
+    );
+    const result = renderStatusContent(
+      [entry({ toolName: "bulk", params })],
+      true,
+    );
+
+    expect(result.length).toBeLessThanOrEqual(1700);
+    expect(result).toMatch(/\.\.\. \d+ lines more/u);
+  });
+
+  it("renders deep-frozen history deterministically without mutation", () => {
+    const history = Object.freeze([
+      Object.freeze(
+        entry({
+          toolName: "bash",
+          params: Object.freeze({ command: "x".repeat(500) }),
+        }),
+      ),
+    ]);
+
+    const first = renderStatusContent(history, true, 120);
+    const second = renderStatusContent(history, true, 120);
+
+    expect(second).toBe(first);
+    expect(history[0].params).toEqual({ command: "x".repeat(500) });
   });
 });

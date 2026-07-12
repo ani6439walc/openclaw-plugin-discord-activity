@@ -28,6 +28,10 @@ function countOccurrences(value: string, needle: string): number {
   return value.split(needle).length - 1;
 }
 
+function stripAnsi(content: string): string {
+  return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
+}
+
 describe("active-memory failure handling", () => {
   afterEach(() => {
     defaultStore.sessions.clear();
@@ -88,10 +92,11 @@ describe("active-memory failure handling", () => {
       true,
     );
 
-    expect(result).toContain("memory_search: ✘");
-    expect(result).toContain("error: database unavailable");
-    expect(result).toContain("memory_write: ✘");
-    expect(result).toContain("error: permission denied");
+    const plain = stripAnsi(result);
+    expect(plain).toContain("memory_search ✘");
+    expect(plain).toContain("error: database unavailable");
+    expect(plain).toContain("memory_write ✘");
+    expect(plain).toContain("error: permission denied");
   });
 
   it("keeps a distinct parent error but deduplicates an identical one", () => {
@@ -111,8 +116,8 @@ describe("active-memory failure handling", () => {
       ],
       true,
     );
-    expect(distinct).toContain("error: parent timeout");
-    expect(distinct).toContain("error: database unavailable");
+    expect(stripAnsi(distinct)).toContain("error: parent timeout");
+    expect(stripAnsi(distinct)).toContain("error: database unavailable");
 
     const duplicate = renderStatusContent(
       [
@@ -127,7 +132,9 @@ describe("active-memory failure handling", () => {
       ],
       true,
     );
-    expect(countOccurrences(duplicate, "error: same failure")).toBe(1);
+    expect(countOccurrences(stripAnsi(duplicate), "error: same failure")).toBe(
+      1,
+    );
   });
 
   it("keeps a parent error when its duplicate child is outside the display limit", () => {
@@ -158,8 +165,8 @@ describe("active-memory failure handling", () => {
       true,
     );
 
-    expect(result).not.toContain("memory_search: ✘");
-    expect(result).toContain("error: hidden failure");
+    expect(stripAnsi(result)).not.toContain("memory_search ✘");
+    expect(stripAnsi(result)).toContain("error: hidden failure");
   });
 
   it("marks the group failed when children succeed but the parent fails", () => {
@@ -177,9 +184,10 @@ describe("active-memory failure handling", () => {
       true,
     );
 
-    expect(result).toContain("🧩 active-memory: ✘");
-    expect(result).toContain("memory_search: ✔");
-    expect(result).toContain("error: parent timeout");
+    const plain = stripAnsi(result);
+    expect(plain).toContain("🧩 active-memory ✘");
+    expect(plain).toContain("memory_search ✔");
+    expect(plain).toContain("error: parent timeout");
   });
 
   it("shows failure marks without inventing missing details", () => {
@@ -197,9 +205,10 @@ describe("active-memory failure handling", () => {
       true,
     );
 
-    expect(result).toContain("🧩 active-memory: ✘");
-    expect(result).toContain("memory_search: ✘");
-    expect(result).not.toContain("error:");
+    const plain = stripAnsi(result);
+    expect(plain).toContain("🧩 active-memory ✘");
+    expect(plain).toContain("memory_search ✘");
+    expect(plain).not.toContain("error:");
   });
 
   it("preserves live child terminal data while adding a distinct parent failure", async () => {
@@ -275,10 +284,9 @@ describe("active-memory failure handling", () => {
         }),
       ]),
     );
-    expect(session?.lastRenderedContent).toContain("error: parent timeout");
-    expect(session?.lastRenderedContent).toContain(
-      "error: live database failure",
-    );
+    const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
+    expect(plainContent).toContain("error: parent timeout");
+    expect(plainContent).toContain("error: live database failure");
   });
 
   it("removes live child entries split from the placeholder before finalizing", async () => {
@@ -355,12 +363,9 @@ describe("active-memory failure handling", () => {
       { sessionKey: activeMemorySessionKey },
     );
 
-    expect(
-      countOccurrences(session?.lastRenderedContent ?? "", "memory_search: ✔"),
-    ).toBe(1);
-    expect(
-      countOccurrences(session?.lastRenderedContent ?? "", "wiki_search: ✔"),
-    ).toBe(1);
+    const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
+    expect(countOccurrences(plainContent, "memory_search ✔")).toBe(1);
+    expect(countOccurrences(plainContent, "wiki_search ✔")).toBe(1);
     expect(
       session?.toolHistory.filter((entry) =>
         entry.toolName.startsWith("active-memory:"),
@@ -479,13 +484,21 @@ describe("active-memory failure handling", () => {
       { sessionKey: activeMemorySessionKey },
     );
 
+    const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
     expect(
-      countOccurrences(session?.lastRenderedContent ?? "", "memory_search: ✔"),
-    ).toBe(1);
-    expect(
-      countOccurrences(session?.lastRenderedContent ?? "", "wiki_search: ✔"),
-    ).toBe(1);
-    expect(session?.lastRenderedContent).toContain("- result: NONE");
+      session?.toolHistory.find(
+        (entry) => entry.toolCallId === "active-memory",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        durationMs: 9_310,
+      }),
+    );
+    expect(plainContent).toContain("🧩 active-memory ✔ [9.31s]");
+    expect(countOccurrences(plainContent, "memory_search ✔")).toBe(2);
+    expect(countOccurrences(plainContent, "wiki_search ✔")).toBe(1);
+    expect(plainContent).toContain("result: NONE");
     expect(
       session?.toolHistory.filter(
         (entry) => entry.toolName === "active-memory:memory_search",
