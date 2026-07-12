@@ -27,9 +27,12 @@ export function getToolIcon(name: string): string {
   if (n.includes("diff")) return "⚖️";
   if (n.includes("exec")) return "🚀";
   if (n.includes("process")) return "⏳";
+  if (n.includes("image_generate")) return "🧪";
   if (n.includes("image")) return "🖼️";
   if (n.includes("pdf")) return "📜";
   if (n.includes("message")) return "✉️";
+  if (n.includes("sequential")) return "🔗";
+  if (n.includes("sessions_spawn")) return "🐣";
   if (n.includes("session")) {
     if (n.includes("history")) return "🕰️";
     if (n.includes("list")) return "🔖";
