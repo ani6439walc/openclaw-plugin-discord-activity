@@ -58,6 +58,7 @@ const COMPACT_STRING_FIELDS_BY_TOOL: Readonly<
   "skill-harness:topic-triage": ["reason", "domain", "complexity"],
   "skill-harness:intent-classify": ["intent", "complexity"],
   memory_search: ["corpus"],
+  web_fetch: ["extractMode"],
 };
 
 export type DisplayField = {

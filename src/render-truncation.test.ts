@@ -6,6 +6,7 @@ import type { ToolEntry } from "./types.js";
 
 const RESET = "\u001b[0m";
 const GRAY = "\u001b[30m";
+const LIGHT_GRAY = "\u001b[37m";
 
 function entry(overrides: Partial<ToolEntry>): ToolEntry {
   return {
@@ -311,7 +312,7 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("command:");
     expect(plain).not.toContain("line 1");
     expect(plain).toContain("   └─ error: important failure");
-    expect(result).toContain(`${GRAY}(+5 lines)${RESET}`);
+    expect(result).toContain(`${LIGHT_GRAY}(+5 lines)${RESET}`);
   });
 
   it("collapses a subagent group before removing any of its details", () => {
@@ -429,7 +430,7 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("memory_search");
     expect(plain).not.toContain("old-");
     expect(plain).toContain("new-");
-    expect(result).toContain(`${GRAY}(+1 line)${RESET}`);
+    expect(result).toContain(`${LIGHT_GRAY}(+1 line)${RESET}`);
   });
 
   it("removes older equal-priority details before newer details", () => {

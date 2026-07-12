@@ -21,7 +21,7 @@ const GREEN = "\u001b[32m";
 const YELLOW = "\u001b[33m";
 const RED = "\u001b[31m";
 const CYAN = "\u001b[36m";
-const GRAY = "\u001b[30m";
+const LIGHT_GRAY = "\u001b[37m";
 
 function stripAnsi(content: string): string {
   return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
@@ -148,7 +148,7 @@ describe("display-value formatting", () => {
     );
   });
 
-  it("keeps truncated string values green and their omission hint gray", () => {
+  it("keeps truncated string values green and their omission hint light gray", () => {
     const retained = "a".repeat(70);
     const result = renderStatusContent(
       [
@@ -161,7 +161,7 @@ describe("display-value formatting", () => {
     );
 
     expect(result).toContain(
-      `${GREEN}${retained}...${RESET}${GRAY} (+1 char)${RESET}`,
+      `${GREEN}${retained}...${RESET}${LIGHT_GRAY} (+1 char)${RESET}`,
     );
   });
 

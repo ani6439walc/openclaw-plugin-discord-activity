@@ -5,6 +5,7 @@ export const ANSI = {
   cyan: "\u001b[36m",
   green: "\u001b[32m",
   gray: "\u001b[30m",
+  lightGray: "\u001b[37m",
   magenta: "\u001b[35m",
   red: "\u001b[31m",
   yellow: "\u001b[33m",

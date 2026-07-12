@@ -90,7 +90,9 @@ function renderMainField(field: DisplayField): string {
     return `${ansiSpan(keyStyle, `${field.key}:`)} |`;
   }
   const value = ansiSpan(ANSI.green, field.value);
-  const hint = field.omittedHint ? ansiSpan(ANSI.gray, field.omittedHint) : "";
+  const hint = field.omittedHint
+    ? ansiSpan(ANSI.lightGray, field.omittedHint)
+    : "";
   return `${ansiSpan(keyStyle, `${field.key}:`)} ${value}${hint}`;
 }
 
@@ -292,7 +294,7 @@ function createFieldNode(
   const continuationLines = multilineLines
     ? multilineLines.map((line, index, lines) =>
         index === lines.length - 1 && multilineField.omittedHint
-          ? `${line}${ansiSpan(ANSI.gray, multilineField.omittedHint)}`
+          ? `${line}${ansiSpan(ANSI.lightGray, multilineField.omittedHint)}`
           : line,
       )
     : [];
@@ -488,7 +490,7 @@ const CLOSING_FENCE = "\n```";
 function getOmissionMarker(omittedLineCount: number): string {
   if (omittedLineCount <= 0) return "";
   const unit = omittedLineCount === 1 ? "line" : "lines";
-  return ansiSpan(ANSI.gray, `(+${omittedLineCount} ${unit})`);
+  return ansiSpan(ANSI.lightGray, `(+${omittedLineCount} ${unit})`);
 }
 
 function renderBlocks(
