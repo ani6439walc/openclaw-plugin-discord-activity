@@ -26,15 +26,15 @@ function stripAnsi(content: string): string {
   return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
 }
 
-describe("tool icon compatibility", () => {
+describe("tool icon categories", () => {
   it.each([
-    ["context7_resolve_library_id", "🪧"],
-    ["google-developer-search", "🔭"],
-    ["image_generate", "🧪"],
-    ["sequential_thinking", "🔗"],
-    ["sessions_spawn", "🐣"],
+    ["context7_resolve_library_id", "⚙️"],
+    ["google-developer-search", "⚙️"],
+    ["image_generate", "🖼️"],
+    ["sequential_thinking", "⚙️"],
+    ["sessions_spawn", "🎬"],
     ["subagents", "👥"],
-  ])("preserves the %s icon", (toolName, icon) => {
+  ])("maps %s to %s", (toolName, icon) => {
     expect(getToolIcon(toolName)).toBe(icon);
   });
 });
