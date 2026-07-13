@@ -71,12 +71,25 @@ export function parseSkillHarnessPipelineEntry(
     else delete params.error;
   }
 
+  const phase = data.phase.trim();
+  const durationMs =
+    status !== "pending" &&
+    typeof data.durationMs === "number" &&
+    Number.isFinite(data.durationMs) &&
+    data.durationMs >= 0
+      ? data.durationMs
+      : undefined;
+  const isPipelineLifecycle = phase === "pipeline";
+
   return {
-    toolCallId: `skill-harness:${event.runId}:${data.phase}`,
-    toolName: `skill-harness:${data.phase}`,
+    toolCallId: isPipelineLifecycle
+      ? "skill-harness"
+      : `skill-harness:${event.runId}:${phase}`,
+    toolName: isPipelineLifecycle ? "skill-harness" : `skill-harness:${phase}`,
     params,
     status,
     error,
+    durationMs,
   };
 }
 
@@ -85,14 +98,17 @@ function applySkillHarnessTiming(
   existingEntry: ToolEntry | undefined,
   observedAtMs: number,
 ): ToolEntry {
-  const startedAtMs = existingEntry?.startedAtMs ?? observedAtMs;
+  const startedAtMs =
+    existingEntry?.startedAtMs ??
+    (entry.status === "pending" ? observedAtMs : undefined);
   const isFinished = entry.status === "completed" || entry.status === "error";
   const durationMs = isFinished
-    ? (existingEntry?.durationMs ??
+    ? (entry.durationMs ??
+      existingEntry?.durationMs ??
       (existingEntry?.status !== "pending" ||
       existingEntry.startedAtMs === undefined
         ? undefined
-        : Math.max(0, observedAtMs - startedAtMs)))
+        : Math.max(0, observedAtMs - existingEntry.startedAtMs)))
     : existingEntry?.durationMs;
 
   return {
@@ -110,6 +126,7 @@ function isSameSkillHarnessEntry(
     existingEntry &&
     existingEntry.status === nextEntry.status &&
     existingEntry.error === nextEntry.error &&
+    existingEntry.startedAtMs === nextEntry.startedAtMs &&
     existingEntry.durationMs === nextEntry.durationMs &&
     JSON.stringify(existingEntry.params ?? {}) ===
       JSON.stringify(nextEntry.params ?? {}),
@@ -140,11 +157,23 @@ export function mergeSkillHarnessPipelineEntry(
 
   return {
     changed: true,
-    entries: [
+    entries: boundSkillHarnessEntries([
       ...existingChildEntries.filter(
         (tool) => tool.toolCallId !== entry.toolCallId,
       ),
       nextEntry,
-    ].slice(-STATUS_MAX_ENTRIES),
+    ]),
   };
+}
+
+function boundSkillHarnessEntries(entries: ToolEntry[]): ToolEntry[] {
+  const parent = entries.find((entry) => entry.toolName === "skill-harness");
+  if (!parent) return entries.slice(-STATUS_MAX_ENTRIES);
+
+  return [
+    parent,
+    ...entries
+      .filter((entry) => entry !== parent)
+      .slice(-(STATUS_MAX_ENTRIES - 1)),
+  ];
 }

@@ -21,6 +21,7 @@ const GREEN = "\u001b[32m";
 const YELLOW = "\u001b[33m";
 const RED = "\u001b[31m";
 const CYAN = "\u001b[36m";
+const GRAY = "\u001b[30m";
 const LIGHT_GRAY = "\u001b[37m";
 
 function stripAnsi(content: string): string {
@@ -472,7 +473,7 @@ describe("ANSI internal group contract", () => {
 
     expect(stripAnsi(result)).toContain(
       [
-        "🧩 active-memory ✘",
+        "🧩 active-memory ▾ ✘",
         "    ├─ memory_search ✔ [100ms]",
         "    │   ├─ limit: 5",
         "    │   └─ query: hello",
@@ -485,7 +486,7 @@ describe("ANSI internal group contract", () => {
       ].join("\n"),
     );
     expect(result).toContain(
-      `${BOLD_CYAN}🧩 active-memory${RESET} ${RED}✘${RESET}`,
+      `${BOLD_CYAN}🧩 active-memory${RESET} ${GRAY}▾${RESET} ${RED}✘${RESET}`,
     );
     expect(result).toContain(
       `${CYAN}memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,
@@ -542,7 +543,7 @@ describe("group wall-clock duration", () => {
       ),
     );
 
-    expect(result.split("\n")[1]).toBe("🧩 active-memory ✔ [9.31s]");
+    expect(result.split("\n")[1]).toBe("🧩 active-memory ▾ ✔ [9.31s]");
   });
 
   it("uses the child wall-clock envelope instead of summing durations", () => {
@@ -570,7 +571,60 @@ describe("group wall-clock duration", () => {
       ),
     );
 
-    expect(result.split("\n")[1]).toBe("💡 skill-harness ✔ [3s]");
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ✔ [3s]");
+  });
+
+  it("keeps the group pending while only a child phase has completed", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "skill-harness",
+            toolName: "skill-harness",
+            params: {},
+            status: "pending",
+            startedAtMs: 900,
+          }),
+          makeEntry({
+            toolCallId: "phase-1",
+            toolName: "skill-harness:phase-1",
+            params: {},
+            status: "completed",
+            startedAtMs: 1_000,
+            durationMs: 1_500,
+          }),
+        ],
+        false,
+      ),
+    );
+
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ←");
+  });
+
+  it("uses the completed pipeline parent for final status and duration", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "skill-harness",
+            toolName: "skill-harness",
+            params: {},
+            status: "completed",
+            durationMs: 2_000,
+          }),
+          makeEntry({
+            toolCallId: "phase-2",
+            toolName: "skill-harness:phase-2",
+            params: {},
+            status: "pending",
+            startedAtMs: 2_000,
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ✔ [2s]");
   });
 
   it("omits the parent duration when child timing is incomplete", () => {
@@ -589,7 +643,7 @@ describe("group wall-clock duration", () => {
       ),
     );
 
-    expect(result.split("\n")[1]).toBe("💡 skill-harness ✔");
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ✔");
   });
 });
 
@@ -747,7 +801,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ✔");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✔");
     expect(result).toContain("memory_search");
     expect(result).toContain("memory_read");
   });
@@ -873,8 +927,8 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("🧩 active-memory ✔");
-    expect(stripAnsi(result)).toContain("💡 skill-harness ✔");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✔");
+    expect(stripAnsi(result)).toContain("💡 skill-harness ▾ ✔");
     expect(result).not.toContain("memory_search_0");
     expect(result).not.toContain("memory_search_1");
     expect(result).toContain("memory_search_2");
@@ -909,7 +963,7 @@ describe("renderStatusContent", () => {
       true,
     );
     expect(withFiveNormalTools).not.toContain("🧩 active-memory");
-    expect(stripAnsi(withFiveNormalTools)).toContain("💡 skill-harness ✔");
+    expect(stripAnsi(withFiveNormalTools)).toContain("💡 skill-harness ▾ ✔");
     expect(withFiveNormalTools).toContain("topic-triage");
     expect(withFiveNormalTools).toContain("normal_tool_4");
 
@@ -959,7 +1013,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ←");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ←");
   });
 
   it("renders skill-harness group with pending suffix", () => {
@@ -972,7 +1026,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(stripAnsi(result)).toContain("💡 skill-harness ←");
+    expect(stripAnsi(result)).toContain("💡 skill-harness ▾ ←");
   });
 
   it.each([
@@ -992,7 +1046,7 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, true));
 
-    expect(result).toContain("💡 skill-harness ✘");
+    expect(result).toContain("💡 skill-harness ▾ ✘");
     expect(result).toContain(`${phase} ✘`);
     expect(result).toContain(`error: ${error}`);
     expect(result.split(error)).toHaveLength(2);
@@ -1036,7 +1090,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = stripAnsi(renderStatusContent(entries, true));
-    expect(result).toContain("💡 skill-harness ✔");
+    expect(result).toContain("💡 skill-harness ▾ ✔");
     expect(result).toContain("result: INTENT:RESEARCH | GOAL: docs");
   });
 
@@ -1072,7 +1126,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = stripAnsi(renderStatusContent(entries, true));
-    expect(result).toContain("💡 skill-harness ✔");
+    expect(result).toContain("💡 skill-harness ▾ ✔");
     expect(result).toContain("intent: RESEARCH");
     expect(result).toContain("confidence: 0.9");
   });
@@ -1109,7 +1163,7 @@ describe("renderStatusContent", () => {
     ];
 
     const result = stripAnsi(renderStatusContent(entries, true));
-    expect(result).toContain("💡 skill-harness ✔");
+    expect(result).toContain("💡 skill-harness ▾ ✔");
     expect(result).toContain('keywords: ["收巡","codex"]');
     expect(result).toContain("topic: user requesting to check or review codex");
     expect(result).toContain("intent: code-review");
@@ -1169,7 +1223,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ✘");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✘");
   });
 
   it("renders active-memory error with error message detail", () => {
@@ -1183,7 +1237,7 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ✘");
+    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✘");
     expect(stripAnsi(result)).toContain("error: timed out after 15000ms");
   });
 

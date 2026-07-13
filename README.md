@@ -32,12 +32,12 @@ The image below is an example of how a live tool-status message appears in Disco
 This example shows `active-memory` and `skill-harness` groups, nested tool parameters, compact metadata rows, duration badges, and exact character-omission hints in one continuously edited Discord message. The same structure in simplified text form is:
 
 ```ansi
-🧩 active-memory ✔ [120ms]
+🧩 active-memory ▾ ✔ [120ms]
     ├─ memory_search ✔ [120ms]
     │   └─ query: project notes
     └─ result: Relevant memory found
 
-💡 skill-harness ✔
+💡 skill-harness ▾ ✔
     └─ intent ✔
         ├─ reason: User asked for a review
         └─ confidence: 0.92
@@ -62,14 +62,16 @@ Rendering rules to preserve:
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
 - Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.
+- The `skill-harness` group status follows its explicit parent lifecycle: it remains `←` while phases run and changes to `✔` only when the producer declares `pipeline:completed`, after no further phase can run. `pipeline:failed` or any failed child renders `✘`.
 - `active-memory` result text renders as `result: <text>`.
 - Failed `active-memory` child tools keep their own phase-local errors and durations. A distinct parent failure is also shown; identical parent/child error text is rendered once.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
+- The `skill-harness` group duration comes directly from the producer's terminal parent lifecycle event. Individual phase durations still fall back to locally observed start/completion timing when the event does not provide `durationMs`.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds round to at most two decimal places; durations of 10 seconds or more round to at most one decimal place. Trailing fractional zeros and a leftover decimal point are omitted.
 - Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. At the outer level, each complete internal group counts as one entry alongside each normal tool in a shared 6-entry budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group; retained `toolHistory` is unchanged.
 - Parameter, result, and error values report exact omitted Unicode code-point counts as `(+N chars)` (`char` when singular) without splitting surrogate pairs. Single-line values keep up to 70 code points. Multiline values keep up to five lines and 70 code points per retained line.
 - Compact metadata rows pack booleans, finite numbers of up to 12 code points, and explicitly allowlisted short enum strings. String eligibility is scoped by tool or `skill-harness` phase; matching field names from unrelated tools remain on separate rows.
-- Overlong status messages keep internal subagent groups atomic: before global bounding would remove any `active-memory` or `skill-harness` detail, the complete group collapses to its status-and-duration header with a gray `▸` between the group name and status. Collapsed group details do not contribute to the omission marker. Remaining ordinary parameters roll out before results, errors, nested tool headers, and top-level status headers; equal-priority details roll out oldest first. Compact scalar rows and multiline values remain atomic, and tree connectors are recomputed after removal.
+- Internal `active-memory` and `skill-harness` headers show a gray disclosure marker between the group name and status: `▾` while details are expanded and `▸` after global bounding collapses the group. Collapsed group details do not contribute to the omission marker. Remaining ordinary parameters roll out before results, errors, nested tool headers, and top-level status headers; equal-priority details roll out oldest first. Compact scalar rows and multiline values remain atomic, and tree connectors are recomputed after removal.
 - Bounded output includes ANSI and omission-marker overhead in every length check, ends with a complete ANSI fence, emits the exact number of omitted nonblank rendered lines as a gray `(+N lines)` marker (`line` when singular), sanitizes untrusted visible text, and never mutates retained `toolHistory` merely to fit the display.
 
 ## How it works

@@ -44,9 +44,19 @@ function getGroupDurationMs(
   group: readonly ToolEntry[],
   prefix: string,
 ): number | undefined {
-  const parentDuration = group.find(
-    (entry) => entry.toolName === prefix,
-  )?.durationMs;
+  const parentEntry = group.find((entry) => entry.toolName === prefix);
+  const hasSkillHarnessLifecycleParent =
+    prefix === "skill-harness" &&
+    parentEntry !== undefined &&
+    (parentEntry.status !== "pending" ||
+      typeof parentEntry.startedAtMs === "number");
+  if (hasSkillHarnessLifecycleParent) {
+    return parentEntry.status === "pending"
+      ? undefined
+      : parentEntry.durationMs;
+  }
+
+  const parentDuration = parentEntry?.durationMs;
   if (typeof parentDuration === "number") return parentDuration;
 
   const childTools = group.filter(
@@ -54,6 +64,7 @@ function getGroupDurationMs(
       entry.toolName.startsWith(`${prefix}:`) &&
       !isSubagentResultEntry(entry, prefix),
   );
+
   if (
     childTools.length === 0 ||
     childTools.some(
@@ -240,6 +251,7 @@ type StatusHeader = {
   statusStyle: string;
   durationMs?: number;
   compressibleName?: boolean;
+  disclosure?: boolean;
 };
 
 type StatusNode = {
@@ -278,8 +290,10 @@ function renderStatusHeader(
     options.includeDuration !== false && typeof header.durationMs === "number"
       ? formatDurationBadge(header.durationMs)
       : "";
-  const collapsed = options.collapsed ? ` ${ansiSpan(ANSI.gray, "▸")}` : "";
-  return `${ansiSpan(header.nameStyle, label)}${collapsed} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
+  const disclosure = header.disclosure
+    ? ` ${ansiSpan(ANSI.gray, options.collapsed ? "▸" : "▾")}`
+    : "";
+  return `${ansiSpan(header.nameStyle, label)}${disclosure} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
 }
 
 function createFieldNode(
@@ -350,11 +364,19 @@ function renderSubagentGroup(
   const resultEntries = realEntries.filter((entry) =>
     isSubagentResultEntry(entry, prefix),
   );
+  const parentEntry = group.find((entry) => entry.toolName === prefix);
+  const hasSkillHarnessLifecycleParent =
+    prefix === "skill-harness" &&
+    parentEntry !== undefined &&
+    (parentEntry.status !== "pending" ||
+      typeof parentEntry.startedAtMs === "number");
   const parentSuffix = group.some((entry) => entry.status === "error")
     ? "✘"
-    : realEntries.length
-      ? getParentSuffix(realEntries)
-      : getParentSuffix(group);
+    : hasSkillHarnessLifecycleParent
+      ? getSubSuffix(parentEntry.status)
+      : realEntries.length
+        ? getParentSuffix(realEntries)
+        : getParentSuffix(group);
   const parentErrorEntry = group.find(
     (entry) =>
       entry.toolName === prefix && entry.status === "error" && entry.error,
@@ -408,6 +430,7 @@ function renderSubagentGroup(
       status: parentSuffix,
       statusStyle: getStatusStyle(parentStatus),
       durationMs: groupDurationMs,
+      disclosure: true,
     },
     children: nodes,
     sourceIndex: Math.min(

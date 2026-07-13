@@ -800,8 +800,19 @@ export function createHookHandlers(deps: HookDeps) {
       session.toolHistory,
       "skill-harness",
     );
+    const existingParentEntry = session.toolHistory.find(
+      (tool) => tool.toolName === "skill-harness",
+    );
+    const shouldPreserveParent =
+      entry.toolName === "skill-harness" ||
+      existingParentEntry?.status !== "pending" ||
+      typeof existingParentEntry.startedAtMs === "number";
+    const existingEntries =
+      existingParentEntry && shouldPreserveParent
+        ? [existingParentEntry, ...existingChildEntries]
+        : existingChildEntries;
     const merged = mergeSkillHarnessPipelineEntry(
-      existingChildEntries,
+      existingEntries,
       entry,
       observedAtMs,
     );

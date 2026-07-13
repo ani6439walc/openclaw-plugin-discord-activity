@@ -167,7 +167,7 @@ describe("createHookHandlers", () => {
         }),
       ]);
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "💡 skill-harness ←",
+        "💡 skill-harness ▾ ←",
       );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
@@ -192,8 +192,8 @@ describe("createHookHandlers", () => {
         "skill-harness",
       ]);
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ←");
-      expect(plainContent).toContain("💡 skill-harness ←");
+      expect(plainContent).toContain("🧩 active-memory ▾ ←");
+      expect(plainContent).toContain("💡 skill-harness ▾ ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -513,7 +513,7 @@ describe("createHookHandlers", () => {
         }),
       ]);
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ✔ [42ms]");
+      expect(plainContent).toContain("🧩 active-memory ▾ ✔ [42ms]");
       expect(plainContent).toContain("memory_search ✔ [42ms]");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
@@ -561,7 +561,7 @@ describe("createHookHandlers", () => {
 
       const session = store.sessions.get("discord:direct:123");
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ✔ [42ms]");
+      expect(plainContent).toContain("🧩 active-memory ▾ ✔ [42ms]");
       expect(plainContent).toContain("memory_search ✔ [42ms]");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
@@ -841,8 +841,8 @@ describe("createHookHandlers", () => {
       expect(result).toEqual({ handled: false });
       expect(session?.finalized).toBeFalsy();
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ←");
-      expect(plainContent).toContain("💡 skill-harness ←");
+      expect(plainContent).toContain("🧩 active-memory ▾ ←");
+      expect(plainContent).toContain("💡 skill-harness ▾ ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -1022,7 +1022,7 @@ describe("createHookHandlers", () => {
         }),
       ]);
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ✘ [15.2s]");
+      expect(plainContent).toContain("🧩 active-memory ▾ ✘ [15.2s]");
       expect(plainContent).toContain("timed out after 15000ms");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
@@ -1152,7 +1152,7 @@ describe("createHookHandlers", () => {
 
       const session = store.sessions.get("discord:direct:123");
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ✔");
+      expect(plainContent).toContain("🧩 active-memory ▾ ✔");
       expect(plainContent).toContain("memory_search ✔");
       expect(plainContent).toContain("result: NONE");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
@@ -1242,7 +1242,7 @@ describe("createHookHandlers", () => {
         }),
       );
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("💡 skill-harness ✔");
+      expect(plainContent).toContain("💡 skill-harness ▾ ✔");
       expect(plainContent).toContain("exact-keyword-hint ✔");
       expect(plainContent).toContain('keywords: ["hi","hello"]');
       expect(plainContent).toContain("topic: User is greeting.");
@@ -1327,6 +1327,18 @@ describe("createHookHandlers", () => {
         },
       );
 
+      nowSpy.mockReturnValueOnce(900);
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "started",
+        },
+      });
+
       nowSpy.mockReturnValueOnce(1_000);
       await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
@@ -1366,9 +1378,43 @@ describe("createHookHandlers", () => {
         }),
       );
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("💡 skill-harness ✔ [1.1s]");
+      expect(plainContent).toContain("💡 skill-harness ▾ ←");
+      expect(plainContent).not.toContain("💡 skill-harness ▾ ← [");
       expect(plainContent).toContain("topic-triage ✔ [1.1s]");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
+
+      nowSpy.mockReturnValueOnce(2_200);
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "intent-classification",
+          state: "started",
+          intent: "implementation",
+        },
+      });
+
+      const pendingContent = stripAnsi(session?.lastRenderedContent ?? "");
+      expect(pendingContent).toContain("💡 skill-harness ▾ ←");
+      expect(pendingContent).toContain("intent-classification ←");
+
+      nowSpy.mockReturnValueOnce(2_400);
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "completed",
+          durationMs: 1_500,
+        },
+      });
+
+      const completedContent = stripAnsi(session?.lastRenderedContent ?? "");
+      expect(completedContent).toContain("💡 skill-harness ▾ ✔ [1.5s]");
     });
 
     it("does not render duplicate skill-harness pipeline events twice", async () => {
@@ -1529,7 +1575,7 @@ describe("createHookHandlers", () => {
         ),
       ).toBe(false);
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "💡 skill-harness ←",
+        "💡 skill-harness ▾ ←",
       );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
@@ -1766,8 +1812,8 @@ describe("createHookHandlers", () => {
       const activeMemoryContent = stripAnsi(
         afterActiveMemory?.lastRenderedContent ?? "",
       );
-      expect(activeMemoryContent).toContain("🧩 active-memory ✔");
-      expect(activeMemoryContent).toContain("💡 skill-harness ←");
+      expect(activeMemoryContent).toContain("🧩 active-memory ▾ ✔");
+      expect(activeMemoryContent).toContain("💡 skill-harness ▾ ←");
       expect(
         afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
       ).toBeLessThan(
@@ -1791,8 +1837,8 @@ describe("createHookHandlers", () => {
       const skillHarnessContent = stripAnsi(
         afterSkillHarness?.lastRenderedContent ?? "",
       );
-      expect(skillHarnessContent).toContain("🧩 active-memory ✔");
-      expect(skillHarnessContent).toContain("💡 skill-harness ✔");
+      expect(skillHarnessContent).toContain("🧩 active-memory ▾ ✔");
+      expect(skillHarnessContent).toContain("💡 skill-harness ▾ ✔");
       expect(
         afterSkillHarness!.lastRenderedContent!.indexOf("🧩 active-memory"),
       ).toBeLessThan(
@@ -1806,7 +1852,7 @@ describe("createHookHandlers", () => {
 
       const final = store.sessions.get("discord:direct:123");
       expect(stripAnsi(final?.lastRenderedContent ?? "")).toContain(
-        "🧩 active-memory ✔",
+        "🧩 active-memory ▾ ✔",
       );
       expect(final?.lastRenderedContent).toContain("skill-harness");
       expect(

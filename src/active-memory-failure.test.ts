@@ -185,7 +185,7 @@ describe("active-memory failure handling", () => {
     );
 
     const plain = stripAnsi(result);
-    expect(plain).toContain("🧩 active-memory ✘");
+    expect(plain).toContain("🧩 active-memory ▾ ✘");
     expect(plain).toContain("memory_search ✔");
     expect(plain).toContain("error: parent timeout");
   });
@@ -206,7 +206,7 @@ describe("active-memory failure handling", () => {
     );
 
     const plain = stripAnsi(result);
-    expect(plain).toContain("🧩 active-memory ✘");
+    expect(plain).toContain("🧩 active-memory ▾ ✘");
     expect(plain).toContain("memory_search ✘");
     expect(plain).not.toContain("error:");
   });
@@ -495,7 +495,7 @@ describe("active-memory failure handling", () => {
         durationMs: 9_310,
       }),
     );
-    expect(plainContent).toContain("🧩 active-memory ✔ [9.31s]");
+    expect(plainContent).toContain("🧩 active-memory ▾ ✔ [9.31s]");
     expect(countOccurrences(plainContent, "memory_search ✔")).toBe(2);
     expect(countOccurrences(plainContent, "wiki_search ✔")).toBe(1);
     expect(plainContent).toContain("result: NONE");
