@@ -21,7 +21,6 @@ const GREEN = "\u001b[32m";
 const YELLOW = "\u001b[33m";
 const RED = "\u001b[31m";
 const CYAN = "\u001b[36m";
-const GRAY = "\u001b[30m";
 const LIGHT_GRAY = "\u001b[37m";
 
 function stripAnsi(content: string): string {
@@ -486,7 +485,7 @@ describe("ANSI internal group contract", () => {
       ].join("\n"),
     );
     expect(result).toContain(
-      `${BOLD_CYAN}🧩 active-memory${RESET} ${GRAY}▾${RESET} ${RED}✘${RESET}`,
+      `${BOLD_CYAN}🧩 active-memory${RESET} ${CYAN}▾${RESET} ${RED}✘${RESET}`,
     );
     expect(result).toContain(
       `${CYAN}memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,

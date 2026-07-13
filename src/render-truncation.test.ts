@@ -5,7 +5,7 @@ import { createMockSessionEntry, createToolEntry } from "../test-helpers.js";
 import type { ToolEntry } from "./types.js";
 
 const RESET = "\u001b[0m";
-const GRAY = "\u001b[30m";
+const CYAN = "\u001b[36m";
 const LIGHT_GRAY = "\u001b[37m";
 
 function entry(overrides: Partial<ToolEntry>): ToolEntry {
@@ -348,7 +348,7 @@ describe("bounded status rendering", () => {
     const plain = stripAnsi(result);
 
     expect(plain).toContain("🧩 active-memory ▸ ✔ [26.8s]");
-    expect(result).toContain(`${GRAY}▸${RESET}`);
+    expect(result).toContain(`${CYAN}▸${RESET}`);
     expect(plain).not.toContain("memory_search");
     expect(plain).not.toContain("Relevant memory found");
     expect(plain).toContain("⚙️ skill_view ✔");
@@ -390,7 +390,7 @@ describe("bounded status rendering", () => {
 
     expect(plain).toContain("🧩 active-memory ▸ ✔");
     expect(plain).toContain("💡 skill-harness ▸ ✔");
-    expect(result.split(`${GRAY}▸${RESET}`)).toHaveLength(3);
+    expect(result.split(`${CYAN}▸${RESET}`)).toHaveLength(3);
     expect(plain).not.toContain("memory_search");
     expect(plain).not.toContain("topic-triage");
     expect(plain).toContain("name: gcp-cert-exam");
