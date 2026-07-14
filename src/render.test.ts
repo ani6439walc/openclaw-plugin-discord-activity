@@ -29,12 +29,56 @@ function stripAnsi(content: string): string {
 
 describe("tool icon categories", () => {
   it.each([
+    // Web & Communication
+    ["browser", "🌎"],
+    ["web_search", "🔎"],
+    ["web_fetch", "📥"],
+    ["message", "✉️"],
+    // File Operations
+    ["read", "📄"],
+    ["write", "✍️"],
+    ["edit", "✂️"],
+    ["apply_patch", "📝"],
+    ["diff", "🔀"],
+    // Media & Formats
+    ["image", "🖼️"],
+    ["image_generate", "🖼️"],
+    ["pdf", "📜"],
+    ["tts", "🔊"],
+    // Execution & Process
+    ["exec", "🚀"],
+    ["process", "⏳"],
+    // Knowledge, Memory & Wiki
+    ["memory_search", "🧠"],
+    ["wiki_search", "📖"],
+    ["wiki_apply", "📋"],
+    ["wiki_lint", "🧹"],
+    ["wiki_status", "📊"],
+    ["wiki_get", "📚"],
+    // Session & Agent
+    ["sessions_history", "🗿"],
+    ["sessions_list", "🛰️"],
+    ["sessions_send", "🛸"],
+    ["sessions_spawn", "💬"],
+    ["sessions_yield", "🏁"],
+    ["subagents", "👥"],
+    // Skill management
+    ["skill_search", "🪃"],
+    ["skill_view", "🔧"],
+    ["skill_manage", "🛠️"],
+    ["skill_list", "🛒"],
+    // Goal & Plan
+    ["create_goal", "🪧"],
+    ["update_goal", "🪧"],
+    ["update_plan", "🔖"],
+    // Scheduling & Infrastructure
+    ["cron", "⏰"],
+    ["gateway", "🧱"],
+    ["nodes", "🔌"],
+    // MCP tools (default)
     ["context7_resolve_library_id", "⚙️"],
     ["google-developer-search", "⚙️"],
-    ["image_generate", "🖼️"],
     ["sequential_thinking", "⚙️"],
-    ["sessions_spawn", "💬"],
-    ["subagents", "👥"],
   ])("maps %s to %s", (toolName, icon) => {
     expect(getToolIcon(toolName)).toBe(icon);
   });

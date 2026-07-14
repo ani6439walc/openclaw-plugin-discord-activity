@@ -350,7 +350,7 @@ describe("bounded status rendering", () => {
     expect(result).toContain(`${LIGHT_GRAY}▸${RESET}`);
     expect(plain).not.toContain("memory_search");
     expect(plain).not.toContain("Relevant memory found");
-    expect(plain).toContain("⚙️ skill_view ✔");
+    expect(plain).toContain("🔧 skill_view ✔");
     expect(plain).toContain("name: gcp-cert-exam");
     expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
   });
