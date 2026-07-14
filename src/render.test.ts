@@ -485,7 +485,7 @@ describe("ANSI internal group contract", () => {
       ].join("\n"),
     );
     expect(result).toContain(
-      `${BOLD_CYAN}🧩 active-memory${RESET} ${CYAN}▾${RESET} ${RED}✘${RESET}`,
+      `${BOLD_CYAN}🧩 active-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${RED}✘${RESET}`,
     );
     expect(result).toContain(
       `${CYAN}memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,

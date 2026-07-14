@@ -291,7 +291,7 @@ function renderStatusHeader(
       ? formatDurationBadge(header.durationMs)
       : "";
   const disclosure = header.disclosure
-    ? ` ${ansiSpan(ANSI.cyan, options.collapsed ? "▸" : "▾")}`
+    ? ` ${ansiSpan(ANSI.lightGray, options.collapsed ? "▸" : "▾")}`
     : "";
   return `${ansiSpan(header.nameStyle, label)}${disclosure} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
 }
