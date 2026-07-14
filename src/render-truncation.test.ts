@@ -112,6 +112,33 @@ describe("bounded status rendering", () => {
     expect(result.endsWith("\n```")).toBe(true);
   });
 
+  it("truncates a long active-memory result only as needed by the whole-message bound", () => {
+    const text = `start-${"😀".repeat(1_500)}-end`;
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory:result",
+          toolName: "active-memory:result",
+          params: { text },
+        }),
+      ],
+      true,
+    );
+    const plain = stripAnsi(result);
+    const match = plain.match(/result: (.+)\.\.\. \(\+(\d+) chars\)/u);
+
+    expect(result.length).toBeLessThanOrEqual(1_700);
+    expect(plain).toContain("🧩 active-memory ▾ ✔");
+    expect(match).not.toBeNull();
+    const retained = match?.[1] ?? "";
+    const omitted = Number(match?.[2]);
+    expect([...retained].length).toBeGreaterThan(70);
+    expect([...retained].length + omitted).toBe([...text].length);
+    expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
+    expect(result).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(result).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+  });
+
   it("truncates an oversized old header before dropping newer status headers", () => {
     const result = renderStatusContent(
       [
@@ -311,7 +338,7 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("command:");
     expect(plain).not.toContain("line 1");
     expect(plain).toContain("   └─ error: important failure");
-    expect(result).toContain(`${LIGHT_GRAY}(+5 lines)${RESET}`);
+    expect(result).toContain(`${LIGHT_GRAY}(+3 lines)${RESET}`);
   });
 
   it("collapses a subagent group before removing any of its details", () => {

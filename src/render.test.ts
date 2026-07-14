@@ -119,8 +119,8 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${GREEN}✔${RESET} ${YELLOW}[1s]${RESET}`,
-        `    ├─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
-        `    └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
+        `    ├─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
+        `    └─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -308,7 +308,7 @@ describe("compact scalar rows", () => {
     );
   });
 
-  it("packs allowlisted topic-triage enum fields before ordinary fields", () => {
+  it("packs allowlisted topic-triage enums before multiline-capable fields", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -331,10 +331,10 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "changed: false · reason: same-topic · domain: health\n" +
-        "        ├─ complexity: low\n" +
+      "changed: false · domain: health · complexity: low\n" +
         '        ├─ keywords: ["weight","clinic"]\n' +
-        "        └─ topic: Update corrected weight tracking",
+        "        ├─ topic: Update corrected weight tracking\n" +
+        "        └─ reason: same-topic",
     );
   });
 
@@ -413,7 +413,7 @@ describe("compact scalar rows", () => {
 });
 
 describe("multiline values", () => {
-  it("renders command lines with an unbroken connector before a sibling", () => {
+  it("renders command lines at the bottom with an unbroken connector", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -431,15 +431,48 @@ describe("multiline values", () => {
 
     expect(result).toContain(
       [
-        "    ├─ command: |",
-        "    │   pnpm run typecheck",
-        "    │   pnpm run test",
-        "    └─ cwd: /repo",
+        "    ├─ cwd: /repo",
+        "    └─ command: |",
+        "        pnpm run typecheck",
+        "        pnpm run test",
       ].join("\n"),
     );
   });
 
-  it("limits multiline values to five lines and 70 code points per line", () => {
+  it("sorts multiple multiline-capable fields alphabetically after ordinary fields", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            params: {
+              result: "summary",
+              cwd: "/repo",
+              error: "warning",
+              command: "pnpm run test",
+              query: "status renderer",
+            },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+
+    expect(result.indexOf("cwd: /repo")).toBeLessThan(
+      result.indexOf("query: status renderer"),
+    );
+    expect(result.indexOf("query: status renderer")).toBeLessThan(
+      result.indexOf("command: pnpm run test"),
+    );
+    expect(result.indexOf("command: pnpm run test")).toBeLessThan(
+      result.indexOf("error: warning"),
+    );
+    expect(result.indexOf("error: warning")).toBeLessThan(
+      result.indexOf("result: summary"),
+    );
+  });
+
+  it("preserves complete multiline values when the status fits", () => {
     const command = [
       `${"a".repeat(70)}x`,
       "line 2",
@@ -456,12 +489,13 @@ describe("multiline values", () => {
       ),
     );
 
-    expect(result).toContain(`${"a".repeat(70)}...`);
-    expect(result).toContain("line 5 (+8 chars)");
-    expect(result).not.toContain("hidden");
+    expect(result).toContain(`${"a".repeat(70)}x`);
+    expect(result).toContain("line 5");
+    expect(result).toContain("hidden");
+    expect(result).not.toMatch(/\(\+\d+ chars?\)/u);
   });
 
-  it("bounds escaped tabs by display width while counting omitted source code points", () => {
+  it("preserves escaped tabs without applying a local width limit", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -474,8 +508,9 @@ describe("multiline values", () => {
       ),
     );
 
-    expect(result).toContain(`${"\\t".repeat(35)}...`);
-    expect(result).toContain("next (+1 char)");
+    expect(result).toContain(`${"\\t".repeat(35)}x`);
+    expect(result).toContain("next");
+    expect(result).not.toMatch(/\(\+\d+ chars?\)/u);
   });
 });
 
@@ -905,6 +940,22 @@ describe("renderStatusContent", () => {
     );
   });
 
+  it("keeps a long single-line active-memory result complete for Discord to wrap", () => {
+    const text = `result-${"x".repeat(240)}-end`;
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text },
+        status: "completed",
+      },
+    ];
+
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain(`result: ${text}`);
+    expect(result).not.toMatch(/\(\+\d+ chars?\)/u);
+  });
+
   it("renders subagent result entries after other nested tools regardless of history order", () => {
     const entries: ToolEntry[] = [
       {
@@ -1286,6 +1337,62 @@ describe("renderStatusContent", () => {
         "            Suggested workflow",
       ].join("\n"),
     );
+  });
+
+  it("renders skill-harness multiline-capable phase fields in pipeline order", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "skill-harness:phase",
+        toolName: "skill-harness:topic-triage",
+        params: {
+          topic: "topic line 1\ntopic line 2",
+          confidence: 0.9,
+          result: "result line 1\nresult line 2",
+          reason: "reason line 1\nreason line 2",
+          basis: "basis line 1\nbasis line 2",
+        },
+        status: "completed",
+      },
+    ];
+
+    const result = stripAnsi(renderStatusContent(entries, true));
+    const orderedFields = [
+      "confidence: 0.9",
+      "topic: |",
+      "basis: |",
+      "reason: |",
+      "result: |",
+    ];
+
+    for (let index = 1; index < orderedFields.length; index += 1) {
+      expect(result.indexOf(orderedFields[index - 1])).toBeLessThan(
+        result.indexOf(orderedFields[index]),
+      );
+    }
+  });
+
+  it("applies skill-harness multiline fields to flattened JSON results", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: {
+          text: JSON.stringify({
+            topic: "topic line 1\ntopic line 2",
+            basis: "basis line 1\nbasis line 2",
+            reason: "reason line 1\nreason line 2",
+            result: "result line 1\nresult line 2",
+          }),
+        },
+        status: "completed",
+      },
+    ];
+
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain("basis: |");
+    expect(result).toContain("reason: |");
+    expect(result).toContain("result: |");
+    expect(result).toContain("topic: |");
   });
 
   it("renders active-memory group with error suffix", () => {

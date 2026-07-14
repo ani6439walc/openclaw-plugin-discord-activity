@@ -2,6 +2,7 @@ import type { ToolEntry } from "./types.js";
 import {
   getToolIcon,
   formatDisplayFields,
+  limitDisplayField,
   type DisplayField,
 } from "./formatting.js";
 import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
@@ -125,9 +126,12 @@ function getDisplayFieldWidth(field: DisplayField): number {
 function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
   const compactFields: DisplayField[] = [];
   const ordinaryFields: DisplayField[] = [];
+  const multilineFields: DisplayField[] = [];
 
   for (const field of fields) {
-    if (field.compactEligible && getDisplayFieldWidth(field) <= 70) {
+    if (field.multilineCapable) {
+      multilineFields.push(field);
+    } else if (field.compactEligible && getDisplayFieldWidth(field) <= 70) {
       compactFields.push(field);
     } else {
       ordinaryFields.push(field);
@@ -151,7 +155,24 @@ function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
   }
   if (currentRow.length > 0) rows.push(currentRow);
 
-  return [...rows, ...ordinaryFields.map((field) => [field])];
+  multilineFields.sort((a, b) => {
+    if (
+      a.multilineSortOrder !== undefined ||
+      b.multilineSortOrder !== undefined
+    ) {
+      return (
+        (a.multilineSortOrder ?? Number.MAX_SAFE_INTEGER) -
+          (b.multilineSortOrder ?? Number.MAX_SAFE_INTEGER) ||
+        a.key.localeCompare(b.key, "en")
+      );
+    }
+    return a.key.localeCompare(b.key, "en");
+  });
+  return [
+    ...rows,
+    ...ordinaryFields.map((field) => [field]),
+    ...multilineFields.map((field) => [field]),
+  ];
 }
 
 function getParentSuffix(group: readonly ToolEntry[]): string {
@@ -183,11 +204,14 @@ function getSkillHarnessResultFields(entry: ToolEntry): DisplayField[] {
   try {
     const obj = JSON.parse(cleanText);
     if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-      return formatDisplayFields(obj);
+      return formatDisplayFields(obj, { toolName: entry.toolName });
     }
   } catch {}
 
-  return formatDisplayFields({ result: cleanText });
+  return formatDisplayFields(
+    { result: cleanText },
+    { toolName: entry.toolName },
+  );
 }
 
 function createEntryFieldNodes(
@@ -268,6 +292,8 @@ type StatusHeader = {
 type StatusNode = {
   text: string;
   continuationLines: string[];
+  displayField?: DisplayField;
+  retainedCharacters?: number;
   children: StatusNode[];
   priority: DetailPriority;
   sourceIndex: number;
@@ -313,6 +339,25 @@ function createFieldNode(
   sourceIndex = 0,
   fieldIndex = 0,
 ): StatusNode {
+  const content = renderFieldNodeContent(fields);
+  const displayField =
+    fields.length === 1 && fields[0].sourceCharacters !== undefined
+      ? fields[0]
+      : undefined;
+  return {
+    ...content,
+    displayField,
+    children: [],
+    priority,
+    sourceIndex,
+    fieldIndex,
+  };
+}
+
+function renderFieldNodeContent(fields: readonly DisplayField[]): {
+  text: string;
+  continuationLines: string[];
+} {
   const multilineField =
     fields.length === 1 && fields[0].multilineLines ? fields[0] : undefined;
   const multilineLines = multilineField?.multilineLines;
@@ -326,11 +371,19 @@ function createFieldNode(
   return {
     text: fields.map(renderMainField).join(" · "),
     continuationLines,
-    children: [],
-    priority,
-    sourceIndex,
-    fieldIndex,
   };
+}
+
+function getStatusNodeContent(node: StatusNode): {
+  text: string;
+  continuationLines: string[];
+} {
+  if (!node.displayField || node.retainedCharacters === undefined) {
+    return node;
+  }
+  return renderFieldNodeContent([
+    limitDisplayField(node.displayField, node.retainedCharacters),
+  ]);
 }
 
 const ROOT_TREE_PREFIX = "   ";
@@ -345,9 +398,10 @@ function renderStatusNodes(
     const isLast = index === visible.length - 1;
     const connector = isLast ? "└─" : "├─";
     const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
+    const content = getStatusNodeContent(node);
     return [
-      `${prefix} ${connector} ${node.text}`,
-      ...node.continuationLines.map((line) => `${childPrefix} ${line}`),
+      `${prefix} ${connector} ${content.text}`,
+      ...content.continuationLines.map((line) => `${childPrefix} ${line}`),
       ...renderStatusNodes(node.children, removed, childPrefix),
     ];
   });
@@ -701,6 +755,59 @@ function renderEmergencyHeaders(
 
 const MAX_ITERATIVE_BOUNDING_NODES = 256;
 
+function truncateDisplayFieldsToFit(
+  candidates: readonly { block: StatusBlock; node: StatusNode }[],
+  removed: ReadonlySet<StatusNode>,
+  collapsedBlocks: ReadonlySet<StatusBlock>,
+  maxLength: number,
+  renderCurrent: () => string,
+): string | undefined {
+  const allTruncatableNodes = candidates
+    .filter(
+      ({ block, node }) =>
+        !collapsedBlocks.has(block) &&
+        node.displayField?.sourceCharacters !== undefined &&
+        node.displayField.sourceCharacters.length > 0 &&
+        isStatusNodeVisible(node, removed),
+    )
+    .map(({ node }) => node);
+  if (allTruncatableNodes.length === 0) return;
+  const minimumPriority = Math.min(
+    ...allTruncatableNodes.map((node) => node.priority),
+  );
+  const truncatableNodes = allTruncatableNodes.filter(
+    (node) => node.priority === minimumPriority,
+  );
+
+  let rendered = renderCurrent();
+  if (rendered.length <= maxLength) return rendered;
+
+  for (const node of truncatableNodes) {
+    const sourceCharacterCount =
+      node.displayField?.sourceCharacters?.length ?? 0;
+    node.retainedCharacters = 0;
+    rendered = renderCurrent();
+    if (rendered.length > maxLength) continue;
+
+    let lowerBound = 0;
+    let upperBound = sourceCharacterCount;
+    let bestFit = 0;
+    while (lowerBound <= upperBound) {
+      const candidate = Math.floor((lowerBound + upperBound) / 2);
+      node.retainedCharacters = candidate;
+      const candidateRendered = renderCurrent();
+      if (candidateRendered.length <= maxLength) {
+        bestFit = candidate;
+        lowerBound = candidate + 1;
+      } else {
+        upperBound = candidate - 1;
+      }
+    }
+    node.retainedCharacters = bestFit;
+    return renderCurrent();
+  }
+}
+
 function renderBoundedStatus(
   blocks: readonly StatusBlock[],
   requestedMaxLength: number,
@@ -759,7 +866,14 @@ function renderBoundedStatus(
       collapsedBlocks,
     );
   };
-  let rendered = renderCurrent();
+  let rendered =
+    truncateDisplayFieldsToFit(
+      candidates,
+      removed,
+      collapsedBlocks,
+      maxLength,
+      renderCurrent,
+    ) ?? renderCurrent();
 
   for (const candidate of candidates) {
     if (rendered.length <= maxLength) return rendered;
