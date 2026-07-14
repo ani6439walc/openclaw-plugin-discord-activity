@@ -545,6 +545,38 @@ describe("group wall-clock duration", () => {
     expect(result.split("\n")[1]).toBe("🧩 active-memory ▾ ✔ [9.31s]");
   });
 
+  it.each([
+    ["pending", "←"],
+    ["completed", "✔"],
+  ] as const)(
+    "does not derive active-memory group duration from children when its parent is %s without a duration",
+    (status, suffix) => {
+      const result = stripAnsi(
+        renderStatusContent(
+          [
+            makeEntry({
+              toolCallId: "active-memory",
+              toolName: "active-memory",
+              params: {},
+              status,
+            }),
+            makeEntry({
+              toolCallId: "memory-1",
+              toolName: "active-memory:memory_search",
+              params: {},
+              status: "completed",
+              startedAtMs: 1_000,
+              durationMs: 2_000,
+            }),
+          ],
+          status === "completed",
+        ),
+      );
+
+      expect(result.split("\n")[1]).toBe(`🧩 active-memory ▾ ${suffix}`);
+    },
+  );
+
   it("uses the child wall-clock envelope instead of summing durations", () => {
     const result = stripAnsi(
       renderStatusContent(

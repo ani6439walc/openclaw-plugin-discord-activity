@@ -513,7 +513,7 @@ describe("createHookHandlers", () => {
         }),
       ]);
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ✔ [42ms]");
+      expect(plainContent).toContain("🧩 active-memory ▾ ←\n");
       expect(plainContent).toContain("memory_search ✔ [42ms]");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
@@ -561,7 +561,7 @@ describe("createHookHandlers", () => {
 
       const session = store.sessions.get("discord:direct:123");
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ✔ [42ms]");
+      expect(plainContent).toContain("🧩 active-memory ▾ ←\n");
       expect(plainContent).toContain("memory_search ✔ [42ms]");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });

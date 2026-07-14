@@ -40,20 +40,31 @@ function formatDurationBadge(durationMs: number): string {
   return ` ${ansiSpan(ANSI.yellow, `[${formatDurationMs(durationMs)}]`)}`;
 }
 
+function getAuthoritativeGroupParent(
+  prefix: string,
+  parentEntry: ToolEntry | undefined,
+): ToolEntry | undefined {
+  if (!parentEntry) return;
+  if (prefix === "active-memory") return parentEntry;
+  if (
+    prefix === "skill-harness" &&
+    (parentEntry.status !== "pending" ||
+      typeof parentEntry.startedAtMs === "number")
+  ) {
+    return parentEntry;
+  }
+}
+
 function getGroupDurationMs(
   group: readonly ToolEntry[],
   prefix: string,
 ): number | undefined {
   const parentEntry = group.find((entry) => entry.toolName === prefix);
-  const hasSkillHarnessLifecycleParent =
-    prefix === "skill-harness" &&
-    parentEntry !== undefined &&
-    (parentEntry.status !== "pending" ||
-      typeof parentEntry.startedAtMs === "number");
-  if (hasSkillHarnessLifecycleParent) {
-    return parentEntry.status === "pending"
+  const authoritativeParent = getAuthoritativeGroupParent(prefix, parentEntry);
+  if (authoritativeParent) {
+    return authoritativeParent.status === "pending"
       ? undefined
-      : parentEntry.durationMs;
+      : authoritativeParent.durationMs;
   }
 
   const parentDuration = parentEntry?.durationMs;
@@ -365,15 +376,11 @@ function renderSubagentGroup(
     isSubagentResultEntry(entry, prefix),
   );
   const parentEntry = group.find((entry) => entry.toolName === prefix);
-  const hasSkillHarnessLifecycleParent =
-    prefix === "skill-harness" &&
-    parentEntry !== undefined &&
-    (parentEntry.status !== "pending" ||
-      typeof parentEntry.startedAtMs === "number");
+  const authoritativeParent = getAuthoritativeGroupParent(prefix, parentEntry);
   const parentSuffix = group.some((entry) => entry.status === "error")
     ? "✘"
-    : hasSkillHarnessLifecycleParent
-      ? getSubSuffix(parentEntry.status)
+    : authoritativeParent
+      ? getSubSuffix(authoritativeParent.status)
       : realEntries.length
         ? getParentSuffix(realEntries)
         : getParentSuffix(group);
