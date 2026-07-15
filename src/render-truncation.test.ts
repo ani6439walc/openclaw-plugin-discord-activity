@@ -549,7 +549,9 @@ describe("bounded status rendering", () => {
           keywords: ["昨天", "做了甚麼", "review", "activity", "check"],
           basis: `Prior context: ${"health-tracking workflow ".repeat(24)}`,
           reason: "shift",
-          topic: "User requesting to review yesterday's activities or records.",
+          topic:
+            "User requesting to review yesterday's activities or records. " +
+            "long topic ".repeat(150),
         },
       }),
       entry({
@@ -570,7 +572,8 @@ describe("bounded status rendering", () => {
         durationMs: 12_000,
         params: {
           result:
-            "Check memory/2026-07-15.md for yesterday's diary entry and summarize it.",
+            "Check memory/2026-07-15.md for yesterday's diary entry and summarize it. " +
+            "long result ".repeat(150),
         },
       }),
       entry({

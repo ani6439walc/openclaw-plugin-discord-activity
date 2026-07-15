@@ -391,8 +391,8 @@ describe("compact scalar rows", () => {
 
     expect(result).toContain(
       "changed: false · domain: health · complexity: low\n" +
-        '        ├─ keywords: ["weight","clinic"]\n' +
         "        ├─ reason: same-topic\n" +
+        '        ├─ keywords: ["weight","clinic"]\n' +
         "        └─ topic: Update corrected weight tracking",
     );
   });
@@ -1417,8 +1417,8 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     const orderedFields = [
       "confidence: 0.9",
-      "basis: |",
-      "reason: |",
+      "reason: reason line 1",
+      "basis: basis line 1",
       "result: |",
       "topic: |",
     ];
@@ -1448,8 +1448,10 @@ describe("renderStatusContent", () => {
     ];
 
     const result = stripAnsi(renderStatusContent(entries, true));
-    expect(result).toContain("basis: |");
-    expect(result).toContain("reason: |");
+    expect(result).not.toContain("basis: |");
+    expect(result).not.toContain("reason: |");
+    expect(result).toContain("basis: basis line 1\\nbasis line 2");
+    expect(result).toContain("reason: reason line 1\\nreason line 2");
     expect(result).toContain("result: |");
     expect(result).toContain("topic: |");
   });

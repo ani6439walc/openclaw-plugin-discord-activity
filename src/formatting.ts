@@ -73,12 +73,7 @@ const SINGLE_LINE_DISPLAY_LIMIT = 70;
 const PATH_HEAD_LIMIT = 20;
 const PATH_TAIL_LIMIT = 50;
 const MULTILINE_DISPLAY_FIELDS = new Set(["command", "error", "result"]);
-const SKILL_HARNESS_MULTILINE_DISPLAY_FIELDS = new Set([
-  "basis",
-  "reason",
-  "result",
-  "topic",
-]);
+const SKILL_HARNESS_MULTILINE_DISPLAY_FIELDS = new Set(["result", "topic"]);
 
 const COMPACT_STRING_FIELDS_BY_TOOL: Readonly<
   Record<string, readonly string[]>
