@@ -486,6 +486,127 @@ describe("bounded status rendering", () => {
     expect(plain).toContain(latestCommand);
   });
 
+  it("keeps the latest skill-harness expanded until a normal tool appears", () => {
+    const result = renderStatusContentWithState(
+      [
+        entry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          durationMs: 11_500,
+        }),
+        entry({
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
+          durationMs: 24_200,
+        }),
+        entry({
+          toolCallId: "skill-harness:run:topic-triage",
+          toolName: "skill-harness:topic-triage",
+          params: {
+            basis: `Prior context: ${"health-tracking workflow ".repeat(100)}`,
+            topic: "Review yesterday's activities.",
+          },
+        }),
+      ],
+      true,
+      1_700,
+      { activeMemory: "collapsed", skillHarness: "expanded" },
+    );
+    const plain = stripAnsi(result.content);
+
+    expect(result.content.length).toBeLessThanOrEqual(1_700);
+    expect(result.displayState).toEqual({
+      activeMemory: "collapsed",
+      skillHarness: "expanded",
+    });
+    expect(plain).toContain("🧩 active-memory ▸ ✔ [11.5s]");
+    expect(plain).toContain("💡 skill-harness ▾ ✔ [24.2s]");
+    expect(plain).toContain("topic-triage ✔");
+    expect(plain).toMatch(/basis: .+\(\+\d+ chars?\)/u);
+  });
+
+  it("collapses skill-harness before omitting newer normal tool fields", () => {
+    const history = [
+      entry({
+        toolCallId: "active-memory",
+        toolName: "active-memory",
+        durationMs: 9_680,
+      }),
+      entry({
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        durationMs: 21_700,
+      }),
+      entry({
+        toolCallId: "skill-harness:run:topic-triage",
+        toolName: "skill-harness:topic-triage",
+        durationMs: 5_090,
+        params: {
+          domain: "memory",
+          changed: true,
+          confidence: 0.72,
+          complexity: "low",
+          keywords: ["昨天", "做了甚麼", "review", "activity", "check"],
+          basis: `Prior context: ${"health-tracking workflow ".repeat(24)}`,
+          reason: "shift",
+          topic: "User requesting to review yesterday's activities or records.",
+        },
+      }),
+      entry({
+        toolCallId: "skill-harness:run:intent-classify",
+        toolName: "skill-harness:intent-classify",
+        durationMs: 4_340,
+        params: {
+          intent: "memory-recent",
+          complexity: "low",
+          confidence: 0.85,
+          reason:
+            "User requested recent records using yesterday as the temporal marker.",
+        },
+      }),
+      entry({
+        toolCallId: "skill-harness:run:hint-generate",
+        toolName: "skill-harness:hint-generate",
+        durationMs: 12_000,
+        params: {
+          result:
+            "Check memory/2026-07-15.md for yesterday's diary entry and summarize it.",
+        },
+      }),
+      entry({
+        toolCallId: "read",
+        toolName: "read",
+        params: { path: "memory/2026-07-15.md" },
+      }),
+      entry({
+        toolCallId: "memory-search",
+        toolName: "memory_search",
+        params: {
+          corpus: "memory",
+          maxResults: 5,
+          query: "2026-07-15 PMLE Bifrost heartbeat",
+        },
+      }),
+    ];
+
+    const result = renderStatusContentWithState(history, true, 1_700, {
+      activeMemory: "collapsed",
+      skillHarness: "expanded",
+    });
+    const plain = stripAnsi(result.content);
+
+    expect(result.content.length).toBeLessThanOrEqual(1_700);
+    expect(result.displayState).toEqual({
+      activeMemory: "collapsed",
+      skillHarness: "collapsed",
+    });
+    expect(plain).toContain("💡 skill-harness ▸ ✔ [21.7s]");
+    expect(plain).toContain("📄 read ✔");
+    expect(plain).toContain("path: memory/2026-07-15.md");
+    expect(plain).toContain("query: 2026-07-15 PMLE Bifrost heartbeat");
+    expect(plain).not.toContain("(+1 line)");
+  });
+
   it("removes collapsed internal groups before truncating normal multiline fields", () => {
     const olderCommand = `older-${"o".repeat(500)}`;
     const latestResult = `latest-${"n".repeat(500)}`;
@@ -524,7 +645,7 @@ describe("bounded status rendering", () => {
     expect(plain).toContain("web_search ✔");
     expect(plain).toContain(latestResult);
     expect(plain).toMatch(/older-.+\(\+\d+ chars?\)/u);
-    expect(plain).toContain("(+2 lines)");
+    expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
   });
 
   it("removes active-memory before skill-harness after both groups collapse", () => {
@@ -559,7 +680,7 @@ describe("bounded status rendering", () => {
     expect(result.length).toBeLessThanOrEqual(100);
     expect(plain).not.toContain("active-memory");
     expect(plain).toContain("💡 skill-harness ▸ ✔ [100s]");
-    expect(plain).toContain("(+1 line)");
+    expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
   });
 
   it("truncates an oversized old header before dropping newer status headers", () => {
@@ -846,7 +967,7 @@ describe("bounded status rendering", () => {
     expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
   });
 
-  it("counts a removed internal header and an ordinary omitted detail", () => {
+  it("counts an omitted detail but not a removed complete block", () => {
     const result = renderStatusContent(
       [
         entry({
@@ -879,7 +1000,43 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("memory_search");
     expect(plain).not.toContain("old-");
     expect(plain).toContain("new-");
-    expect(result).toContain(`${LIGHT_GRAY}(+2 lines)${RESET}`);
+    expect(result).toContain(`${LIGHT_GRAY}(+1 line)${RESET}`);
+  });
+
+  it("does not report an outer-budget internal group as an omitted line", () => {
+    const result = renderStatusContentWithState(
+      [
+        entry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+        }),
+        entry({
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
+          status: "error",
+        }),
+        ...Array.from({ length: 5 }, (_, index) =>
+          entry({
+            toolCallId: `normal-${index}`,
+            toolName: `normal_${index}`,
+          }),
+        ),
+      ],
+      true,
+      1_700,
+      { activeMemory: "expanded", skillHarness: "collapsed" },
+    );
+    const plain = stripAnsi(result.content);
+
+    expect(result.displayState).toEqual({
+      activeMemory: "removed",
+      skillHarness: "collapsed",
+    });
+    expect(plain).not.toContain("active-memory");
+    expect(plain).toContain("skill-harness");
+    expect(plain).toContain("normal_0");
+    expect(plain).toContain("normal_4");
+    expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
   });
 
   it("removes older equal-priority details before newer details", () => {

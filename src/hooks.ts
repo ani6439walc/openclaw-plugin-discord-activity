@@ -311,7 +311,10 @@ export function createHookHandlers(deps: HookDeps) {
     return false;
   }
 
-  function bindSessionRun(session: SessionEntry, runId: string | undefined) {
+  function isSessionRunCurrent(
+    session: SessionEntry,
+    runId: string | undefined,
+  ) {
     if (!runId) return true;
     if (session.supersededRunIds?.has(runId)) {
       logger.debug("skip hook for superseded run.", {
@@ -328,7 +331,12 @@ export function createHookHandlers(deps: HookDeps) {
       });
       return false;
     }
-    session.runId = runId;
+    return true;
+  }
+
+  function bindSessionRun(session: SessionEntry, runId: string | undefined) {
+    if (!isSessionRunCurrent(session, runId)) return false;
+    if (runId) session.runId = runId;
     return true;
   }
 
@@ -336,6 +344,7 @@ export function createHookHandlers(deps: HookDeps) {
     session: SessionEntry,
     eventRunId: string | undefined,
     contextRunId: string | undefined,
+    bindRun = true,
   ) {
     if (eventRunId && contextRunId && eventRunId !== contextRunId) {
       logger.warn("skip tool hook with inconsistent run ids.", {
@@ -345,7 +354,10 @@ export function createHookHandlers(deps: HookDeps) {
       });
       return false;
     }
-    return bindSessionRun(session, eventRunId ?? contextRunId);
+    const runId = eventRunId ?? contextRunId;
+    return bindRun
+      ? bindSessionRun(session, runId)
+      : isSessionRunCurrent(session, runId);
   }
 
   async function resolveAndFinalize(
@@ -505,7 +517,8 @@ export function createHookHandlers(deps: HookDeps) {
       return;
     }
 
-    if (!bindToolEventRun(session, event.runId, ctx.runId)) return;
+    if (!bindToolEventRun(session, event.runId, ctx.runId, !isActiveMemoryTool))
+      return;
 
     if (session.finalized) {
       logger.debug("before_tool_call: skip finalized session.", {
@@ -539,10 +552,12 @@ export function createHookHandlers(deps: HookDeps) {
     const session = contextKey
       ? await store.resolveSession(contextKey, sourceSessionKey)
       : undefined;
+    const isActiveMemoryTool = isActiveMemorySessionKey(ctx.sessionKey);
 
     if (!session) return;
 
-    if (!bindToolEventRun(session, event.runId, ctx.runId)) return;
+    if (!bindToolEventRun(session, event.runId, ctx.runId, !isActiveMemoryTool))
+      return;
 
     if (session.finalized) {
       logger.debug("after_tool_call: skip finalized session.", {
@@ -553,7 +568,7 @@ export function createHookHandlers(deps: HookDeps) {
     }
 
     if (!event.toolCallId) return;
-    const toolCallId = isActiveMemorySessionKey(ctx.sessionKey)
+    const toolCallId = isActiveMemoryTool
       ? `active-memory:${event.toolCallId}`
       : event.toolCallId;
 
@@ -711,7 +726,7 @@ export function createHookHandlers(deps: HookDeps) {
           ? store.getOrCreateSession(contextKey, sourceSessionKey)
           : undefined;
         if (session) {
-          if (!bindSessionRun(session, ctx.runId)) return;
+          if (!isSessionRunCurrent(session, ctx.runId)) return;
           clearSessionTimer(session);
           const entries = reconcileActiveMemoryTranscriptEntries(
             session.toolHistory,
@@ -817,7 +832,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return;
     const provenanceRunId =
       event.runId === sessionKey ? undefined : event.runId;
-    if (!bindSessionRun(session, provenanceRunId)) return;
+    if (!isSessionRunCurrent(session, provenanceRunId)) return;
 
     clearSessionTimer(session);
     const existingChildEntries = toolHistoryManager.findSubagentChildEntries(

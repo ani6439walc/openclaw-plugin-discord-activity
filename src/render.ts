@@ -958,7 +958,13 @@ function renderBoundedStatus(
   };
   const renderCurrent = () => {
     const baselineLineCount = countNonblankLines(
-      getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
+      getRenderedBodyLines(
+        blocks,
+        new Set(),
+        undefined,
+        collapsedBlocks,
+        removedBlocks,
+      ),
     );
     const currentLineCount = countNonblankLines(
       getRenderedBodyLines(
@@ -991,7 +997,18 @@ function renderBoundedStatus(
     newestMultilineOwner?.block.internalGroupName === "active-memory"
       ? ["skill-harness", "active-memory"]
       : ["active-memory", "skill-harness"];
-  const protectedGroupName = newestMultilineOwner?.block.internalGroupName;
+  const hasNewerNormalBlock = Boolean(
+    newestMultilineOwner?.block.internalGroupName &&
+    blocks.some(
+      (block) =>
+        block.internalGroupName === undefined &&
+        !removedBlocks.has(block) &&
+        block.sourceIndex > newestMultilineOwner.node.sourceIndex,
+    ),
+  );
+  const protectedGroupName = hasNewerNormalBlock
+    ? undefined
+    : newestMultilineOwner?.block.internalGroupName;
   const unprotectedGroupOrder = protectedGroupName
     ? internalGroupOrder.filter((groupName) => groupName !== protectedGroupName)
     : internalGroupOrder;
@@ -1089,6 +1106,14 @@ function renderBoundedStatus(
       }
     }
 
+    if (protectedGroupName === "skill-harness" && !hasNewerNormalBlock) {
+      const protectedDetails = candidates.filter(
+        ({ block }) => block === newestMultilineOwner.block,
+      );
+      const reducedProtectedGroup = fitByReducingDetails(protectedDetails);
+      if (reducedProtectedGroup) return complete(reducedProtectedGroup);
+    }
+
     if (collapseGroup(protectedGroupName)) {
       rendered = renderCurrent();
       if (rendered.length <= maxLength) return complete(rendered);
@@ -1104,7 +1129,13 @@ function renderBoundedStatus(
   const detailReduced = fitByReducingDetails(candidates);
   if (detailReduced) return complete(detailReduced);
   const baselineLineCount = countNonblankLines(
-    getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
+    getRenderedBodyLines(
+      blocks,
+      new Set(),
+      undefined,
+      collapsedBlocks,
+      removedBlocks,
+    ),
   );
   const emergency = renderEmergencyHeaders(
     blocks.filter((block) => !removedBlocks.has(block)),

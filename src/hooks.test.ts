@@ -1721,6 +1721,99 @@ describe("createHookHandlers", () => {
       );
     });
 
+    it("does not let an active-memory run id block main or skill-harness events", async () => {
+      createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, accountId: "default" },
+      );
+      const activeMemorySessionKey = `${sessionKey}:active-memory:child`;
+      const activeMemoryContext = {
+        sessionKey: activeMemorySessionKey,
+        toolName: "memory_search",
+        toolCallId: "memory-call-1",
+        runId: "active-memory-run-1",
+      };
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "memory-call-1",
+          toolName: "memory_search",
+          params: { query: "weight history" },
+          runId: "active-memory-run-1",
+        },
+        activeMemoryContext,
+      );
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "memory-call-1",
+          toolName: "memory_search",
+          params: { query: "weight history" },
+          durationMs: 100,
+          runId: "active-memory-run-1",
+        },
+        activeMemoryContext,
+      );
+      await handlers.onAgentEnd(
+        { messages: [], success: true, durationMs: 500 },
+        {
+          sessionKey: activeMemorySessionKey,
+          runId: "active-memory-run-1",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.runId).toBeUndefined();
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "main-call-1",
+          toolName: "bash",
+          params: { command: "pwd" },
+          runId: "main-run-1",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "main-call-1",
+          runId: "main-run-1",
+        },
+      );
+
+      expect(session?.runId).toBe("main-run-1");
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "main-call-1",
+          toolName: "bash",
+          status: "pending",
+        }),
+      );
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "main-run-1",
+        stream: "plugin:skill-harness",
+        sessionKey,
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "intent-classify",
+          state: "completed",
+          intent: "implementation",
+        },
+      });
+
+      expect(session?.runId).toBe("main-run-1");
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "skill-harness:main-run-1:intent-classify",
+          status: "completed",
+          params: { intent: "implementation" },
+        }),
+      );
+    });
+
     it("does not downgrade completed skill-harness phases to pending", async () => {
       createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
