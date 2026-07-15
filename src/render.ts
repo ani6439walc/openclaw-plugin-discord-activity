@@ -155,19 +155,7 @@ function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
   }
   if (currentRow.length > 0) rows.push(currentRow);
 
-  multilineFields.sort((a, b) => {
-    if (
-      a.multilineSortOrder !== undefined ||
-      b.multilineSortOrder !== undefined
-    ) {
-      return (
-        (a.multilineSortOrder ?? Number.MAX_SAFE_INTEGER) -
-          (b.multilineSortOrder ?? Number.MAX_SAFE_INTEGER) ||
-        a.key.localeCompare(b.key, "en")
-      );
-    }
-    return a.key.localeCompare(b.key, "en");
-  });
+  multilineFields.sort((a, b) => a.key.localeCompare(b.key, "en"));
   return [
     ...rows,
     ...ordinaryFields.map((field) => [field]),
@@ -277,6 +265,7 @@ function createNestedToolNode(
 }
 
 type DetailPriority = 0 | 1 | 2 | 3 | 4;
+type InternalGroupName = "active-memory" | "skill-harness";
 
 type StatusHeader = {
   icon: string;
@@ -306,7 +295,7 @@ type StatusBlock = {
   header: StatusHeader;
   children: StatusNode[];
   sourceIndex: number;
-  collapseChildrenAtomically?: boolean;
+  internalGroupName?: InternalGroupName;
 };
 
 function sanitizeHeaderToken(value: string): string {
@@ -418,7 +407,7 @@ function isStatusNodeVisible(
 
 function renderSubagentGroup(
   icon: string,
-  prefix: string,
+  prefix: InternalGroupName,
   group: readonly ToolEntry[],
   sourceIndexes: ReadonlyMap<ToolEntry, number>,
 ): StatusBlock {
@@ -497,7 +486,7 @@ function renderSubagentGroup(
     sourceIndex: Math.min(
       ...group.map((entry) => sourceIndexes.get(entry) ?? 0),
     ),
-    collapseChildrenAtomically: true,
+    internalGroupName: prefix,
   };
 }
 
@@ -583,12 +572,14 @@ function renderBlocks(
   omittedLineCount: number,
   headerOverrides?: readonly string[],
   collapsedBlocks: ReadonlySet<StatusBlock> = new Set(),
+  removedBlocks: ReadonlySet<StatusBlock> = new Set(),
 ): string {
   const body = getRenderedBodyLines(
     blocks,
     removed,
     headerOverrides,
     collapsedBlocks,
+    removedBlocks,
   );
   const marker = getOmissionMarker(omittedLineCount);
   if (marker) body.push(marker);
@@ -600,17 +591,21 @@ function getRenderedBodyLines(
   removed: ReadonlySet<StatusNode>,
   headerOverrides?: readonly string[],
   collapsedBlocks: ReadonlySet<StatusBlock> = new Set(),
+  removedBlocks: ReadonlySet<StatusBlock> = new Set(),
 ): string[] {
-  return blocks.flatMap((block, index) => [
-    ...(index > 0 ? [""] : []),
-    headerOverrides?.[index] ??
-      renderStatusHeader(block.header, {
-        collapsed: collapsedBlocks.has(block),
-      }),
-    ...(collapsedBlocks.has(block)
-      ? []
-      : renderStatusNodes(block.children, removed)),
-  ]);
+  return blocks
+    .map((block, originalIndex) => ({ block, originalIndex }))
+    .filter(({ block }) => !removedBlocks.has(block))
+    .flatMap(({ block, originalIndex }, visibleIndex) => [
+      ...(visibleIndex > 0 ? [""] : []),
+      headerOverrides?.[originalIndex] ??
+        renderStatusHeader(block.header, {
+          collapsed: collapsedBlocks.has(block),
+        }),
+      ...(collapsedBlocks.has(block)
+        ? []
+        : renderStatusNodes(block.children, removed)),
+    ]);
 }
 
 function countNonblankLines(lines: readonly string[]): number {
@@ -759,6 +754,7 @@ function truncateDisplayFieldsToFit(
   candidates: readonly { block: StatusBlock; node: StatusNode }[],
   removed: ReadonlySet<StatusNode>,
   collapsedBlocks: ReadonlySet<StatusBlock>,
+  removedBlocks: ReadonlySet<StatusBlock>,
   maxLength: number,
   renderCurrent: () => string,
 ): string | undefined {
@@ -766,6 +762,7 @@ function truncateDisplayFieldsToFit(
     .filter(
       ({ block, node }) =>
         !collapsedBlocks.has(block) &&
+        !removedBlocks.has(block) &&
         node.displayField?.sourceCharacters !== undefined &&
         node.displayField.sourceCharacters.length > 0 &&
         isStatusNodeVisible(node, removed),
@@ -824,24 +821,72 @@ function renderBoundedStatus(
   const maxLength = Math.min(requestedMaxLength, STATUS_MAX_LENGTH);
   const removed = new Set<StatusNode>();
   const collapsedBlocks = new Set<StatusBlock>();
+  const removedBlocks = new Set<StatusBlock>();
   const candidates = collectRemovalCandidates(blocks);
   const applyRemovalCandidate = (candidate: (typeof candidates)[number]) => {
+    if (removedBlocks.has(candidate.block)) return 0;
     if (collapsedBlocks.has(candidate.block)) return 0;
     if (!isStatusNodeVisible(candidate.node, removed)) return 0;
-    if (candidate.block.collapseChildrenAtomically) {
-      const removedNodeCount = candidates.filter(
-        ({ block, node }) =>
-          block === candidate.block && isStatusNodeVisible(node, removed),
-      ).length;
-      collapsedBlocks.add(candidate.block);
-      return removedNodeCount;
-    }
     removed.add(candidate.node);
     return 1;
   };
+  const renderCurrent = () => {
+    const baselineLineCount = countNonblankLines(
+      getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
+    );
+    const currentLineCount = countNonblankLines(
+      getRenderedBodyLines(
+        blocks,
+        removed,
+        undefined,
+        collapsedBlocks,
+        removedBlocks,
+      ),
+    );
+    return renderBlocks(
+      blocks,
+      removed,
+      baselineLineCount - currentLineCount,
+      undefined,
+      collapsedBlocks,
+      removedBlocks,
+    );
+  };
+  let rendered = renderCurrent();
+  if (rendered.length <= maxLength) return rendered;
+
+  const internalGroupOrder: readonly InternalGroupName[] = [
+    "active-memory",
+    "skill-harness",
+  ];
+  for (const groupName of internalGroupOrder) {
+    const block = blocks.find(
+      (candidate) => candidate.internalGroupName === groupName,
+    );
+    if (!block || removedBlocks.has(block)) continue;
+    collapsedBlocks.add(block);
+    rendered = renderCurrent();
+    if (rendered.length <= maxLength) return rendered;
+  }
+
+  for (const groupName of internalGroupOrder) {
+    const block = blocks.find(
+      (candidate) => candidate.internalGroupName === groupName,
+    );
+    if (!block || removedBlocks.has(block)) continue;
+    removedBlocks.add(block);
+    rendered = renderCurrent();
+    if (rendered.length <= maxLength) return rendered;
+  }
+
   let batchRemovals = Math.max(
     0,
-    candidates.length - MAX_ITERATIVE_BOUNDING_NODES,
+    candidates.filter(
+      ({ block, node }) =>
+        !removedBlocks.has(block) &&
+        !collapsedBlocks.has(block) &&
+        isStatusNodeVisible(node, removed),
+    ).length - MAX_ITERATIVE_BOUNDING_NODES,
   );
   for (const candidate of candidates) {
     if (batchRemovals === 0) break;
@@ -851,26 +896,12 @@ function renderBoundedStatus(
     );
   }
 
-  const renderCurrent = () => {
-    const baselineLineCount = countNonblankLines(
-      getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
-    );
-    const currentLineCount = countNonblankLines(
-      getRenderedBodyLines(blocks, removed, undefined, collapsedBlocks),
-    );
-    return renderBlocks(
-      blocks,
-      removed,
-      baselineLineCount - currentLineCount,
-      undefined,
-      collapsedBlocks,
-    );
-  };
-  let rendered =
+  rendered =
     truncateDisplayFieldsToFit(
       candidates,
       removed,
       collapsedBlocks,
+      removedBlocks,
       maxLength,
       renderCurrent,
     ) ?? renderCurrent();
@@ -886,7 +917,7 @@ function renderBoundedStatus(
     getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
   );
   return renderEmergencyHeaders(
-    blocks,
+    blocks.filter((block) => !removedBlocks.has(block)),
     baselineLineCount,
     maxLength,
     collapsedBlocks,

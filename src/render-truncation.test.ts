@@ -87,8 +87,8 @@ describe("bounded status rendering", () => {
 
     expect(result.length).toBeLessThanOrEqual(1700);
     const plain = stripAnsi(result);
-    expect(plain).toContain("🧩 active-memory ▸ ✘");
-    expect(plain).toContain("💡 skill-harness ▸ ✔");
+    expect(plain).not.toContain("active-memory");
+    expect(plain).not.toContain("skill-harness");
     expect(plain).toContain("💥 agent ✘");
     expect(plain).toContain("terminal ✔");
     expect(result).toMatch(/\(\+\d+ lines?\)/u);
@@ -112,7 +112,7 @@ describe("bounded status rendering", () => {
     expect(result.endsWith("\n```")).toBe(true);
   });
 
-  it("truncates a long active-memory result only as needed by the whole-message bound", () => {
+  it("collapses active-memory before truncating its long result", () => {
     const text = `start-${"😀".repeat(1_500)}-end`;
     const result = renderStatusContent(
       [
@@ -125,18 +125,151 @@ describe("bounded status rendering", () => {
       true,
     );
     const plain = stripAnsi(result);
-    const match = plain.match(/result: (.+)\.\.\. \(\+(\d+) chars\)/u);
 
     expect(result.length).toBeLessThanOrEqual(1_700);
-    expect(plain).toContain("🧩 active-memory ▾ ✔");
-    expect(match).not.toBeNull();
-    const retained = match?.[1] ?? "";
-    const omitted = Number(match?.[2]);
-    expect([...retained].length).toBeGreaterThan(70);
-    expect([...retained].length + omitted).toBe([...text].length);
+    expect(plain).toContain("🧩 active-memory ▸ ✔");
+    expect(plain).not.toContain("result:");
+    expect(plain).not.toMatch(/\(\+\d+ chars?\)/u);
     expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
-    expect(result).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
-    expect(result).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+  });
+
+  it("collapses active-memory before skill-harness to preserve a newer multiline field", () => {
+    const latestCommand = `latest-${"n".repeat(240)}`;
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory:result",
+          toolName: "active-memory:result",
+          params: { text: `memory-${"m".repeat(800)}` },
+        }),
+        entry({
+          toolCallId: "skill-harness:result",
+          toolName: "skill-harness:result",
+          params: { text: `hint-${"h".repeat(160)}` },
+        }),
+        entry({
+          toolCallId: "latest",
+          toolName: "terminal",
+          params: { command: latestCommand },
+        }),
+      ],
+      true,
+      800,
+    );
+    const plain = stripAnsi(result);
+
+    expect(result.length).toBeLessThanOrEqual(800);
+    expect(plain).toContain("🧩 active-memory ▸ ✔");
+    expect(plain).toContain("💡 skill-harness ▾ ✔");
+    expect(plain).toContain(latestCommand);
+    expect(plain).not.toMatch(/latest-.+\(\+\d+ chars?\)/u);
+  });
+
+  it("collapses skill-harness after active-memory before truncating a newer multiline field", () => {
+    const latestCommand = `latest-${"n".repeat(240)}`;
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory:result",
+          toolName: "active-memory:result",
+          params: { text: `memory-${"m".repeat(800)}` },
+        }),
+        entry({
+          toolCallId: "skill-harness:result",
+          toolName: "skill-harness:result",
+          params: { text: `hint-${"h".repeat(800)}` },
+        }),
+        entry({
+          toolCallId: "latest",
+          toolName: "terminal",
+          params: { command: latestCommand },
+        }),
+      ],
+      true,
+      500,
+    );
+    const plain = stripAnsi(result);
+
+    expect(result.length).toBeLessThanOrEqual(500);
+    expect(plain).toContain("🧩 active-memory ▸ ✔");
+    expect(plain).toContain("💡 skill-harness ▸ ✔");
+    expect(plain).toContain(latestCommand);
+  });
+
+  it("removes collapsed internal groups before truncating normal multiline fields", () => {
+    const olderCommand = `older-${"o".repeat(500)}`;
+    const latestResult = `latest-${"n".repeat(500)}`;
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory:result",
+          toolName: "active-memory:result",
+          params: { text: `memory-${"m".repeat(800)}` },
+        }),
+        entry({
+          toolCallId: "skill-harness:result",
+          toolName: "skill-harness:result",
+          params: { text: `hint-${"h".repeat(800)}` },
+        }),
+        entry({
+          toolCallId: "older",
+          toolName: "terminal",
+          params: { command: olderCommand },
+        }),
+        entry({
+          toolCallId: "latest",
+          toolName: "web_search",
+          params: { result: latestResult },
+        }),
+      ],
+      true,
+      750,
+    );
+    const plain = stripAnsi(result);
+
+    expect(result.length).toBeLessThanOrEqual(750);
+    expect(plain).not.toContain("active-memory");
+    expect(plain).not.toContain("skill-harness");
+    expect(plain).toContain("terminal ✔");
+    expect(plain).toContain("web_search ✔");
+    expect(plain).toContain(latestResult);
+    expect(plain).toMatch(/older-.+\(\+\d+ chars?\)/u);
+    expect(plain).toContain("(+2 lines)");
+  });
+
+  it("removes active-memory before skill-harness after both groups collapse", () => {
+    const result = renderStatusContent(
+      [
+        entry({
+          toolCallId: "active-memory",
+          toolName: "active-memory",
+          durationMs: 100_000,
+        }),
+        entry({
+          toolCallId: "active-memory:result",
+          toolName: "active-memory:result",
+          params: { text: `memory-${"m".repeat(800)}` },
+        }),
+        entry({
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
+          durationMs: 100_000,
+        }),
+        entry({
+          toolCallId: "skill-harness:result",
+          toolName: "skill-harness:result",
+          params: { text: `hint-${"h".repeat(800)}` },
+        }),
+      ],
+      true,
+      100,
+    );
+    const plain = stripAnsi(result);
+
+    expect(result.length).toBeLessThanOrEqual(100);
+    expect(plain).not.toContain("active-memory");
+    expect(plain).toContain("💡 skill-harness ▸ ✔ [100s]");
+    expect(plain).toContain("(+1 line)");
   });
 
   it("truncates an oversized old header before dropping newer status headers", () => {
@@ -423,7 +556,7 @@ describe("bounded status rendering", () => {
     expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
   });
 
-  it("counts only ordinary details omitted after a subagent collapses", () => {
+  it("counts a removed internal header and an ordinary omitted detail", () => {
     const result = renderStatusContent(
       [
         entry({
@@ -452,11 +585,11 @@ describe("bounded status rendering", () => {
     );
     const plain = stripAnsi(result);
 
-    expect(plain).toContain("🧩 active-memory ▸ ✔");
+    expect(plain).not.toContain("active-memory");
     expect(plain).not.toContain("memory_search");
     expect(plain).not.toContain("old-");
     expect(plain).toContain("new-");
-    expect(result).toContain(`${LIGHT_GRAY}(+1 line)${RESET}`);
+    expect(result).toContain(`${LIGHT_GRAY}(+2 lines)${RESET}`);
   });
 
   it("removes older equal-priority details before newer details", () => {

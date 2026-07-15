@@ -79,12 +79,6 @@ const SKILL_HARNESS_MULTILINE_DISPLAY_FIELDS = new Set([
   "result",
   "topic",
 ]);
-const SKILL_HARNESS_MULTILINE_DISPLAY_ORDER = [
-  "topic",
-  "basis",
-  "reason",
-  "result",
-] as const;
 
 const COMPACT_STRING_FIELDS_BY_TOOL: Readonly<
   Record<string, readonly string[]>
@@ -100,7 +94,6 @@ export type DisplayField = {
   value: string;
   multilineLines?: string[];
   multilineCapable: boolean;
-  multilineSortOrder?: number;
   sourceCharacters?: readonly string[];
   sourceIsMultiline?: boolean;
   omittedHint?: string;
@@ -270,17 +263,6 @@ function isMultilineDisplayField(
   );
 }
 
-function getMultilineSortOrder(
-  key: string,
-  toolName: string | undefined,
-): number | undefined {
-  if (toolName?.startsWith("skill-harness") !== true) return;
-  const index = SKILL_HARNESS_MULTILINE_DISPLAY_ORDER.indexOf(
-    key as (typeof SKILL_HARNESS_MULTILINE_DISPLAY_ORDER)[number],
-  );
-  return index >= 0 ? index : undefined;
-}
-
 export function formatDisplayFields(
   params: unknown,
   options: { toolName?: string } = {},
@@ -306,7 +288,6 @@ export function formatDisplayFields(
         key: sanitizeInlineText(rawKey),
         ...formatted,
         multilineCapable,
-        multilineSortOrder: getMultilineSortOrder(rawKey, options.toolName),
         compactEligible:
           !multilineCapable &&
           (typeof value === "boolean" ||

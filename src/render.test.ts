@@ -333,8 +333,8 @@ describe("compact scalar rows", () => {
     expect(result).toContain(
       "changed: false · domain: health · complexity: low\n" +
         '        ├─ keywords: ["weight","clinic"]\n' +
-        "        ├─ topic: Update corrected weight tracking\n" +
-        "        └─ reason: same-topic",
+        "        ├─ reason: same-topic\n" +
+        "        └─ topic: Update corrected weight tracking",
     );
   });
 
@@ -1339,7 +1339,7 @@ describe("renderStatusContent", () => {
     );
   });
 
-  it("renders skill-harness multiline-capable phase fields in pipeline order", () => {
+  it("renders skill-harness multiline-capable phase fields alphabetically", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "skill-harness:phase",
@@ -1358,10 +1358,10 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     const orderedFields = [
       "confidence: 0.9",
-      "topic: |",
       "basis: |",
       "reason: |",
       "result: |",
+      "topic: |",
     ];
 
     for (let index = 1; index < orderedFields.length; index += 1) {
