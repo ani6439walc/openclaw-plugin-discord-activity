@@ -1649,6 +1649,7 @@ describe("createHookHandlers", () => {
     });
 
     it("uses skill-harness data sessionKey when the event wrapper omits it", async () => {
+      createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
@@ -1681,7 +1682,47 @@ describe("createHookHandlers", () => {
       expect(entry).toEqual(expect.objectContaining({ status: "completed" }));
     });
 
+    it("accepts the skill-harness sessionKey fallback run id", async () => {
+      createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isSkillHarnessEnabled.mockReturnValue(true);
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "main-run-1",
+        },
+      );
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: sessionKey,
+        stream: "plugin:skill-harness",
+        sessionKey,
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "topic-triage",
+          state: "completed",
+          topic: "health tracking",
+        },
+      });
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.runId).toBe("main-run-1");
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: `skill-harness:${sessionKey}:topic-triage`,
+          status: "completed",
+          params: { topic: "health tracking" },
+        }),
+      );
+    });
+
     it("does not downgrade completed skill-harness phases to pending", async () => {
+      createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 

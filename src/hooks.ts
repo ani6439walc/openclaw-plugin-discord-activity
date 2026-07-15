@@ -815,7 +815,9 @@ export function createHookHandlers(deps: HookDeps) {
       ? await store.resolveSession(contextKey, sessionKey)
       : undefined;
     if (!session) return;
-    if (!bindSessionRun(session, event.runId)) return;
+    const provenanceRunId =
+      event.runId === sessionKey ? undefined : event.runId;
+    if (!bindSessionRun(session, provenanceRunId)) return;
 
     clearSessionTimer(session);
     const existingChildEntries = toolHistoryManager.findSubagentChildEntries(
