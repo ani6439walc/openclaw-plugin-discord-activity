@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deleteDiscordStatusMessageWithResult,
   editDiscordStatusMessage,
+  editDiscordStatusMessageWithResult,
+  sendDiscordStatusWithDmFallbackWithResult,
 } from "./discord-message-operations.js";
+import { createMockSessionEntry } from "../test-helpers.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -41,6 +44,63 @@ describe("editDiscordStatusMessage", () => {
       ),
     ).resolves.toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies a missing token as rejected in the detailed API", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      editDiscordStatusMessageWithResult(
+        () => "",
+        "channel_1",
+        "status_1",
+        "content",
+      ),
+    ).resolves.toEqual({
+      outcome: "rejected",
+      reason: "missing-token",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("classifies token resolution errors as rejected", async () => {
+    await expect(
+      editDiscordStatusMessageWithResult(
+        () => {
+          throw new Error("secret provider unavailable");
+        },
+        "channel_1",
+        "status_1",
+        "content",
+      ),
+    ).resolves.toEqual({
+      outcome: "rejected",
+      reason: "token-resolution-error",
+    });
+  });
+});
+
+describe("sendDiscordStatusWithDmFallbackWithResult", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("classifies a missing token as rejected", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendDiscordStatusWithDmFallbackWithResult(
+        () => "",
+        createMockSessionEntry(),
+        "content",
+      ),
+    ).resolves.toEqual({
+      outcome: "rejected",
+      reason: "missing-token",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

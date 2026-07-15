@@ -1,4 +1,9 @@
-import type { ToolEntry } from "./types.js";
+import type {
+  InternalGroupDisplayLevel,
+  InternalGroupDisplayState,
+  StatefulStatusRenderResult,
+  ToolEntry,
+} from "./types.js";
 import {
   getToolIcon,
   formatDisplayFields,
@@ -266,6 +271,58 @@ function createNestedToolNode(
 
 type DetailPriority = 0 | 1 | 2 | 3 | 4;
 type InternalGroupName = "active-memory" | "skill-harness";
+
+const DISPLAY_LEVEL_RANK: Record<InternalGroupDisplayLevel, number> = {
+  expanded: 0,
+  collapsed: 1,
+  removed: 2,
+};
+
+export function createDefaultInternalGroupDisplayState(): InternalGroupDisplayState {
+  return {
+    activeMemory: "expanded",
+    skillHarness: "expanded",
+  };
+}
+
+export function mergeInternalGroupDisplayStates(
+  ...states: readonly (InternalGroupDisplayState | undefined)[]
+): InternalGroupDisplayState {
+  const merged = createDefaultInternalGroupDisplayState();
+  for (const state of states) {
+    if (!state) continue;
+    if (
+      DISPLAY_LEVEL_RANK[state.activeMemory] >
+      DISPLAY_LEVEL_RANK[merged.activeMemory]
+    ) {
+      merged.activeMemory = state.activeMemory;
+    }
+    if (
+      DISPLAY_LEVEL_RANK[state.skillHarness] >
+      DISPLAY_LEVEL_RANK[merged.skillHarness]
+    ) {
+      merged.skillHarness = state.skillHarness;
+    }
+  }
+  return merged;
+}
+
+function getGroupStateKey(
+  groupName: InternalGroupName,
+): keyof InternalGroupDisplayState {
+  return groupName === "active-memory" ? "activeMemory" : "skillHarness";
+}
+
+function advanceGroupDisplayState(
+  state: InternalGroupDisplayState,
+  groupName: InternalGroupName,
+  level: InternalGroupDisplayLevel,
+): void {
+  const key = getGroupStateKey(groupName);
+  if (DISPLAY_LEVEL_RANK[level] > DISPLAY_LEVEL_RANK[state[key]]) {
+    state[key] = level;
+  }
+}
 
 type StatusHeader = {
   icon: string;
@@ -677,12 +734,17 @@ function renderHeaderOnly(
   return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
 }
 
+type EmergencyRenderResult = {
+  content: string;
+  retainedBlocks: ReadonlySet<StatusBlock>;
+};
+
 function renderEmergencyHeaders(
   blocks: readonly StatusBlock[],
   baselineLineCount: number,
   maxLength: number,
   collapsedBlocks: ReadonlySet<StatusBlock>,
-): string {
+): EmergencyRenderResult {
   const headers: EmergencyHeader[] = blocks.map((block) => ({
     block,
     collapsed: collapsedBlocks.has(block),
@@ -744,8 +806,16 @@ function renderEmergencyHeaders(
     rendered = renderHeaderOnly(headers, baselineLineCount);
   }
 
-  if (rendered.length <= maxLength) return rendered;
-  return `${OPENING_FENCE}${CLOSING_FENCE}`;
+  if (rendered.length <= maxLength) {
+    return {
+      content: rendered,
+      retainedBlocks: new Set(headers.map((header) => header.block)),
+    };
+  }
+  return {
+    content: `${OPENING_FENCE}${CLOSING_FENCE}`,
+    retainedBlocks: new Set(),
+  };
 }
 
 const MAX_ITERATIVE_BOUNDING_NODES = 256;
@@ -805,10 +875,53 @@ function truncateDisplayFieldsToFit(
   }
 }
 
+function getNewestVisibleMultilineOwner(
+  blocks: readonly StatusBlock[],
+  removed: ReadonlySet<StatusNode>,
+  collapsedBlocks: ReadonlySet<StatusBlock>,
+  removedBlocks: ReadonlySet<StatusBlock>,
+): { block: StatusBlock; node: StatusNode } | undefined {
+  let newest:
+    | {
+        block: StatusBlock;
+        node: StatusNode;
+        sourceIndex: number;
+        fieldIndex: number;
+      }
+    | undefined;
+
+  const visit = (block: StatusBlock, node: StatusNode): void => {
+    if (!isStatusNodeVisible(node, removed)) return;
+    if (node.displayField?.multilineCapable) {
+      if (
+        !newest ||
+        node.sourceIndex > newest.sourceIndex ||
+        (node.sourceIndex === newest.sourceIndex &&
+          node.fieldIndex > newest.fieldIndex)
+      ) {
+        newest = {
+          block,
+          node,
+          sourceIndex: node.sourceIndex,
+          fieldIndex: node.fieldIndex,
+        };
+      }
+    }
+    node.children.forEach((child) => visit(block, child));
+  };
+
+  for (const block of blocks) {
+    if (collapsedBlocks.has(block) || removedBlocks.has(block)) continue;
+    block.children.forEach((node) => visit(block, node));
+  }
+  return newest;
+}
+
 function renderBoundedStatus(
   blocks: readonly StatusBlock[],
   requestedMaxLength: number,
-): string {
+  priorState: InternalGroupDisplayState,
+): StatefulStatusRenderResult {
   const minimumLength = OPENING_FENCE.length + CLOSING_FENCE.length;
   if (
     !Number.isInteger(requestedMaxLength) ||
@@ -822,6 +935,19 @@ function renderBoundedStatus(
   const removed = new Set<StatusNode>();
   const collapsedBlocks = new Set<StatusBlock>();
   const removedBlocks = new Set<StatusBlock>();
+  const displayState = mergeInternalGroupDisplayStates(priorState);
+  for (const block of blocks) {
+    if (!block.internalGroupName) continue;
+    const level = displayState[getGroupStateKey(block.internalGroupName)];
+    if (level === "collapsed" || level === "removed") {
+      collapsedBlocks.add(block);
+    }
+    if (level === "removed") removedBlocks.add(block);
+  }
+  const complete = (content: string): StatefulStatusRenderResult => ({
+    content,
+    displayState: mergeInternalGroupDisplayStates(displayState),
+  });
   const candidates = collectRemovalCandidates(blocks);
   const applyRemovalCandidate = (candidate: (typeof candidates)[number]) => {
     if (removedBlocks.has(candidate.block)) return 0;
@@ -853,87 +979,166 @@ function renderBoundedStatus(
     );
   };
   let rendered = renderCurrent();
-  if (rendered.length <= maxLength) return rendered;
+  if (rendered.length <= maxLength) return complete(rendered);
 
-  const internalGroupOrder: readonly InternalGroupName[] = [
-    "active-memory",
-    "skill-harness",
-  ];
-  for (const groupName of internalGroupOrder) {
-    const block = blocks.find(
-      (candidate) => candidate.internalGroupName === groupName,
-    );
-    if (!block || removedBlocks.has(block)) continue;
-    collapsedBlocks.add(block);
-    rendered = renderCurrent();
-    if (rendered.length <= maxLength) return rendered;
-  }
-
-  for (const groupName of internalGroupOrder) {
-    const block = blocks.find(
-      (candidate) => candidate.internalGroupName === groupName,
-    );
-    if (!block || removedBlocks.has(block)) continue;
-    removedBlocks.add(block);
-    rendered = renderCurrent();
-    if (rendered.length <= maxLength) return rendered;
-  }
-
-  let batchRemovals = Math.max(
-    0,
-    candidates.filter(
-      ({ block, node }) =>
-        !removedBlocks.has(block) &&
-        !collapsedBlocks.has(block) &&
-        isStatusNodeVisible(node, removed),
-    ).length - MAX_ITERATIVE_BOUNDING_NODES,
+  const newestMultilineOwner = getNewestVisibleMultilineOwner(
+    blocks,
+    removed,
+    collapsedBlocks,
+    removedBlocks,
   );
-  for (const candidate of candidates) {
-    if (batchRemovals === 0) break;
-    batchRemovals = Math.max(
-      0,
-      batchRemovals - applyRemovalCandidate(candidate),
+  const internalGroupOrder: readonly InternalGroupName[] =
+    newestMultilineOwner?.block.internalGroupName === "active-memory"
+      ? ["skill-harness", "active-memory"]
+      : ["active-memory", "skill-harness"];
+  const protectedGroupName = newestMultilineOwner?.block.internalGroupName;
+  const unprotectedGroupOrder = protectedGroupName
+    ? internalGroupOrder.filter((groupName) => groupName !== protectedGroupName)
+    : internalGroupOrder;
+  const collapseGroup = (groupName: InternalGroupName): boolean => {
+    const block = blocks.find(
+      (candidate) => candidate.internalGroupName === groupName,
     );
-  }
+    if (!block || removedBlocks.has(block) || collapsedBlocks.has(block)) {
+      return false;
+    }
+    collapsedBlocks.add(block);
+    advanceGroupDisplayState(displayState, groupName, "collapsed");
+    return true;
+  };
+  const removeGroup = (groupName: InternalGroupName): boolean => {
+    const block = blocks.find(
+      (candidate) => candidate.internalGroupName === groupName,
+    );
+    if (!block || removedBlocks.has(block)) return false;
+    removedBlocks.add(block);
+    advanceGroupDisplayState(displayState, groupName, "removed");
+    return true;
+  };
+  const fitByReducingDetails = (
+    eligibleCandidates: readonly (typeof candidates)[number][],
+  ): string | undefined => {
+    let candidateRendered = renderCurrent();
+    if (candidateRendered.length <= maxLength) return candidateRendered;
+    let batchRemovals = Math.max(
+      0,
+      eligibleCandidates.filter(
+        ({ block, node }) =>
+          !removedBlocks.has(block) &&
+          !collapsedBlocks.has(block) &&
+          isStatusNodeVisible(node, removed),
+      ).length - MAX_ITERATIVE_BOUNDING_NODES,
+    );
+    for (const candidate of eligibleCandidates) {
+      if (batchRemovals === 0) break;
+      batchRemovals = Math.max(
+        0,
+        batchRemovals - applyRemovalCandidate(candidate),
+      );
+    }
 
-  rendered =
-    truncateDisplayFieldsToFit(
-      candidates,
-      removed,
-      collapsedBlocks,
-      removedBlocks,
-      maxLength,
-      renderCurrent,
-    ) ?? renderCurrent();
+    candidateRendered =
+      truncateDisplayFieldsToFit(
+        eligibleCandidates,
+        removed,
+        collapsedBlocks,
+        removedBlocks,
+        maxLength,
+        renderCurrent,
+      ) ?? renderCurrent();
 
-  for (const candidate of candidates) {
-    if (rendered.length <= maxLength) return rendered;
-    if (applyRemovalCandidate(candidate) === 0) continue;
+    for (const candidate of eligibleCandidates) {
+      if (candidateRendered.length <= maxLength) return candidateRendered;
+      if (applyRemovalCandidate(candidate) === 0) continue;
+      candidateRendered = renderCurrent();
+    }
+    return candidateRendered.length <= maxLength
+      ? candidateRendered
+      : undefined;
+  };
+
+  for (const groupName of unprotectedGroupOrder) {
+    if (!collapseGroup(groupName)) continue;
     rendered = renderCurrent();
+    if (rendered.length <= maxLength) return complete(rendered);
   }
 
-  if (rendered.length <= maxLength) return rendered;
+  if (protectedGroupName && newestMultilineOwner) {
+    const removedBeforePreservation = new Set(removed);
+    const retainedCharactersBeforePreservation = new Map(
+      candidates.map(({ node }) => [node, node.retainedCharacters] as const),
+    );
+    const preservationCandidates = candidates.filter(
+      ({ block, node }) =>
+        block !== newestMultilineOwner.block &&
+        node.priority <= newestMultilineOwner.node.priority,
+    );
+    const preserved = fitByReducingDetails(preservationCandidates);
+    if (preserved) return complete(preserved);
+
+    removed.clear();
+    removedBeforePreservation.forEach((node) => removed.add(node));
+    for (const [
+      node,
+      retainedCharacters,
+    ] of retainedCharactersBeforePreservation) {
+      if (retainedCharacters === undefined) {
+        delete node.retainedCharacters;
+      } else {
+        node.retainedCharacters = retainedCharacters;
+      }
+    }
+
+    if (collapseGroup(protectedGroupName)) {
+      rendered = renderCurrent();
+      if (rendered.length <= maxLength) return complete(rendered);
+    }
+  }
+
+  for (const groupName of internalGroupOrder) {
+    if (!removeGroup(groupName)) continue;
+    rendered = renderCurrent();
+    if (rendered.length <= maxLength) return complete(rendered);
+  }
+
+  const detailReduced = fitByReducingDetails(candidates);
+  if (detailReduced) return complete(detailReduced);
   const baselineLineCount = countNonblankLines(
     getRenderedBodyLines(blocks, new Set(), undefined, collapsedBlocks),
   );
-  return renderEmergencyHeaders(
+  const emergency = renderEmergencyHeaders(
     blocks.filter((block) => !removedBlocks.has(block)),
     baselineLineCount,
     maxLength,
     collapsedBlocks,
   );
+  for (const block of blocks) {
+    if (block.internalGroupName && !emergency.retainedBlocks.has(block)) {
+      advanceGroupDisplayState(
+        displayState,
+        block.internalGroupName,
+        "removed",
+      );
+    }
+  }
+  return complete(emergency.content);
 }
 
-export function renderStatusContent(
+export function renderStatusContentWithState(
   toolHistory: readonly ToolEntry[],
   _isFinal: boolean,
   maxLength = STATUS_MAX_LENGTH,
-): string {
+  priorState = createDefaultInternalGroupDisplayState(),
+): StatefulStatusRenderResult {
   const contentParts: StatusBlock[] = [];
+  const initialState = mergeInternalGroupDisplayStates(priorState);
   const sourceIndexes = new Map(
     toolHistory.map((entry, index) => [entry, index] as const),
   );
   const subagentGroups = getSubagentGroupEntries(toolHistory);
+  const eligibleSubagentGroups = subagentGroups.filter(
+    (group) => initialState[getGroupStateKey(group.name)] !== "removed",
+  );
   const normalEntries = toolHistory
     .filter(
       (t) =>
@@ -946,13 +1151,21 @@ export function renderStatusContent(
     .slice(-STATUS_MAX_ENTRIES);
   const subagentGroupBudget = STATUS_MAX_ENTRIES - normalEntries.length;
   const visibleSubagentGroups =
-    subagentGroupBudget >= subagentGroups.length
-      ? subagentGroups
+    subagentGroupBudget >= eligibleSubagentGroups.length
+      ? eligibleSubagentGroups
       : subagentGroupBudget > 0
-        ? subagentGroups.slice(-subagentGroupBudget)
+        ? eligibleSubagentGroups.slice(-subagentGroupBudget)
         : [];
+  const visibleSubagentGroupNames = new Set(
+    visibleSubagentGroups.map((group) => group.name),
+  );
+  for (const group of subagentGroups) {
+    if (!visibleSubagentGroupNames.has(group.name)) {
+      advanceGroupDisplayState(initialState, group.name, "removed");
+    }
+  }
 
-  for (const group of visibleSubagentGroups) {
+  for (const group of subagentGroups) {
     contentParts.push(
       renderSubagentGroup(
         group.name === "active-memory" ? "🧩" : "💡",
@@ -977,7 +1190,15 @@ export function renderStatusContent(
     contentParts.push(createEntryBlock(entry, sourceIndexes.get(entry) ?? 0));
   }
 
-  return renderBoundedStatus(contentParts, maxLength);
+  return renderBoundedStatus(contentParts, maxLength, initialState);
+}
+
+export function renderStatusContent(
+  toolHistory: readonly ToolEntry[],
+  isFinal: boolean,
+  maxLength = STATUS_MAX_LENGTH,
+): string {
+  return renderStatusContentWithState(toolHistory, isFinal, maxLength).content;
 }
 
 export function isContentTooLong(

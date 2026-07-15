@@ -19,6 +19,13 @@ export type ToolEntry = {
 
 export type SubagentToolName = "active-memory" | "skill-harness";
 
+export type InternalGroupDisplayLevel = "expanded" | "collapsed" | "removed";
+
+export type InternalGroupDisplayState = {
+  activeMemory: InternalGroupDisplayLevel;
+  skillHarness: InternalGroupDisplayLevel;
+};
+
 export type AgentMessageContentItem = {
   type?: string;
   id?: string;
@@ -56,7 +63,11 @@ export type SessionEntry = {
   runId?: string;
   supersededRunIds?: Set<string>;
   statusMessageId?: string;
+  statusCreateNonce?: string;
   lastRenderedContent?: string;
+  contentDeliveryUncertain?: boolean;
+  confirmedDisplayState?: InternalGroupDisplayState;
+  monotonicSafetyFloor?: InternalGroupDisplayState;
   finalized?: boolean;
   toolHistory: ToolEntry[];
   pendingOp?: Promise<void>;
@@ -111,6 +122,11 @@ export type StatusRenderResult = {
   trimmed: boolean;
 };
 
+export type StatefulStatusRenderResult = {
+  content: string;
+  displayState: InternalGroupDisplayState;
+};
+
 export type MessageReceivedEvent = {
   metadata?: Record<string, unknown>;
   messageId?: string;
@@ -131,11 +147,13 @@ export type MessageContext = {
 export type BeforeToolCallEvent = {
   toolName: string;
   params: Record<string, unknown>;
+  runId?: string;
   toolCallId?: string;
 };
 
 export type ToolContext = {
   sessionKey?: string;
+  runId?: string;
   toolName: string;
   toolCallId?: string;
 };
@@ -143,6 +161,7 @@ export type ToolContext = {
 export type AfterToolCallEvent = {
   toolName: string;
   params: Record<string, unknown>;
+  runId?: string;
   toolCallId?: string;
   error?: string;
   durationMs?: number;

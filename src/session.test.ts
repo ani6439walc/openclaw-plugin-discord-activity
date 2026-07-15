@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { defaultStore, updateStatusMessage } from "./session.js";
-import { createMockSessionEntry, createToolEntry } from "../test-helpers.js";
+import {
+  createMockSessionEntry,
+  createToolEntry,
+  deferred,
+  flushPromises,
+} from "../test-helpers.js";
 import { renderStatusContent } from "./render.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -10,10 +15,31 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function createBoundedHistory() {
+  return [
+    createToolEntry({
+      toolCallId: "active-memory:result",
+      toolName: "active-memory:result",
+      params: { text: `memory-${"m".repeat(800)}` },
+    }),
+    createToolEntry({
+      toolCallId: "skill-harness:result",
+      toolName: "skill-harness:result",
+      params: { text: `hint-${"h".repeat(800)}` },
+    }),
+    createToolEntry({
+      toolCallId: "normal",
+      toolName: "terminal",
+      params: { command: `command-${"c".repeat(500)}` },
+    }),
+  ];
+}
+
 describe("updateStatusMessage", () => {
   afterEach(() => {
     defaultStore.sessions.clear();
     defaultStore.contexts.clear();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -221,5 +247,233 @@ describe("updateStatusMessage", () => {
     expect(session.lastRenderedContent).not.toContain("🧩 active-memory");
     expect(session.lastRenderedContent).not.toContain("normal_tool_0");
     expect(session.lastRenderedContent).toContain("normal_tool_1");
+  });
+
+  it("commits candidate display state only after an applied edit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ ok: true })),
+    );
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: createBoundedHistory(),
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", true, undefined, 400);
+
+    expect(session.confirmedDisplayState?.activeMemory).toBe("removed");
+    expect(session.monotonicSafetyFloor).toBeUndefined();
+  });
+
+  it("does not advance display state after a rejected edit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ message: "Forbidden" }, 403)),
+    );
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: createBoundedHistory(),
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", true, undefined, 400);
+
+    expect(session.confirmedDisplayState).toBeUndefined();
+    expect(session.monotonicSafetyFloor).toBeUndefined();
+    expect(session.lastRenderedContent).toBe("old-content");
+  });
+
+  it("raises only the safety floor after an uncertain edit and retries from that floor", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: createBoundedHistory(),
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    const uncertainUpdate = updateStatusMessage(
+      session,
+      () => "token",
+      true,
+      undefined,
+      400,
+    );
+    await vi.runAllTimersAsync();
+    await uncertainUpdate;
+
+    expect(session.confirmedDisplayState).toBeUndefined();
+    expect(session.monotonicSafetyFloor?.activeMemory).toBe("removed");
+    expect(session.lastRenderedContent).toBe("old-content");
+
+    session.toolHistory = createBoundedHistory().slice(0, 2);
+    await updateStatusMessage(session, () => "token", true);
+
+    const retryBody = JSON.parse(
+      String((fetchMock.mock.calls[3]?.[1] as RequestInit).body),
+    ) as { content: string };
+    expect(retryBody.content).not.toContain("active-memory");
+    expect(session.confirmedDisplayState?.activeMemory).toBe("removed");
+  });
+
+  it("does not use the unchanged-content shortcut after an uncertain edit", async () => {
+    vi.useFakeTimers();
+    const historyA = [createToolEntry({ toolCallId: "frame_a" })];
+    const historyB = [
+      createToolEntry({
+        toolCallId: "frame_b",
+        params: { command: "different frame" },
+      }),
+    ];
+    const contentA = renderStatusContent(historyA, true);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: historyB,
+      lastRenderedContent: contentA,
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    const uncertainUpdate = updateStatusMessage(session, () => "token", true);
+    await vi.runAllTimersAsync();
+    await uncertainUpdate;
+    expect(session.contentDeliveryUncertain).toBe(true);
+
+    session.toolHistory = historyA;
+    await updateStatusMessage(session, () => "token", true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(session.contentDeliveryUncertain).toBe(false);
+    expect(session.lastRenderedContent).toBe(contentA);
+  });
+
+  it("reuses one create nonce after an uncertain POST", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ id: "status_1" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const session = createMockSessionEntry({
+      toolHistory: createBoundedHistory(),
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    const uncertainUpdate = updateStatusMessage(
+      session,
+      () => "token",
+      true,
+      undefined,
+      400,
+    );
+    await vi.runAllTimersAsync();
+    await uncertainUpdate;
+    const uncertainNonce = session.statusCreateNonce;
+
+    expect(uncertainNonce).toEqual(expect.any(String));
+    expect(session.monotonicSafetyFloor?.activeMemory).toBe("removed");
+
+    await updateStatusMessage(session, () => "", true, undefined, 400);
+    expect(session.statusCreateNonce).toBe(uncertainNonce);
+
+    session.toolHistory = createBoundedHistory().slice(0, 2);
+    await updateStatusMessage(session, () => "token", true, undefined, 400);
+
+    const postCalls = fetchMock.mock.calls.filter(
+      ([_, init]) => (init as RequestInit).method === "POST",
+    );
+    const nonces = postCalls.map(
+      ([_, init]) => JSON.parse(String((init as RequestInit).body)).nonce,
+    );
+    expect(nonces).toEqual(Array(4).fill(uncertainNonce));
+    expect((fetchMock.mock.calls[4]?.[1] as RequestInit).method).toBe("PATCH");
+    expect(session.statusMessageId).toBe("status_1");
+    expect(session.statusCreateNonce).toBeUndefined();
+    expect(session.confirmedDisplayState?.activeMemory).toBe("removed");
+  });
+
+  it("does not commit a deferred PATCH outcome into a replacement session", async () => {
+    const response = deferred<Response>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => response.promise),
+    );
+    const stale = createMockSessionEntry({
+      generation: 1,
+      statusMessageId: "status_1",
+      toolHistory: createBoundedHistory(),
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(stale.contextKey, stale);
+
+    const update = updateStatusMessage(
+      stale,
+      () => "token",
+      true,
+      undefined,
+      400,
+    );
+    await flushPromises();
+    const replacement = createMockSessionEntry({ generation: 2 });
+    defaultStore.sessions.set(stale.contextKey, replacement);
+    response.resolve(jsonResponse({ ok: true }));
+    await update;
+
+    expect(stale.lastRenderedContent).toBe("old-content");
+    expect(stale.confirmedDisplayState).toBeUndefined();
+    expect(stale.monotonicSafetyFloor).toBeUndefined();
+    expect(replacement.confirmedDisplayState).toBeUndefined();
+  });
+
+  it("does not commit a deferred POST outcome into a replacement session", async () => {
+    const response = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => response.promise)
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const stale = createMockSessionEntry({
+      generation: 1,
+      toolHistory: createBoundedHistory(),
+    });
+    defaultStore.sessions.set(stale.contextKey, stale);
+
+    const update = updateStatusMessage(
+      stale,
+      () => "token",
+      true,
+      undefined,
+      400,
+    );
+    await flushPromises();
+    const replacement = createMockSessionEntry({ generation: 2 });
+    defaultStore.sessions.set(stale.contextKey, replacement);
+    response.resolve(jsonResponse({ id: "status_stale" }));
+    await update;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(stale.statusMessageId).toBeUndefined();
+    expect(stale.confirmedDisplayState).toBeUndefined();
+    expect(stale.monotonicSafetyFloor).toBeUndefined();
+    expect(replacement.statusMessageId).toBeUndefined();
   });
 });

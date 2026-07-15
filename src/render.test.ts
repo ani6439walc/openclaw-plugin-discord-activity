@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { renderStatusContent, isContentTooLong } from "./render.js";
+import {
+  createDefaultInternalGroupDisplayState,
+  isContentTooLong,
+  mergeInternalGroupDisplayStates,
+  renderStatusContent,
+  renderStatusContentWithState,
+} from "./render.js";
 import { formatParams, getToolIcon } from "./formatting.js";
 import type { ToolEntry } from "./types.js";
 
@@ -26,6 +32,59 @@ const LIGHT_GRAY = "\u001b[37m";
 function stripAnsi(content: string): string {
   return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
 }
+
+describe("internal-group display state", () => {
+  it("creates fresh expanded defaults and merges each group monotonically", () => {
+    const first = createDefaultInternalGroupDisplayState();
+    const second = createDefaultInternalGroupDisplayState();
+
+    expect(first).toEqual({
+      activeMemory: "expanded",
+      skillHarness: "expanded",
+    });
+    expect(second).not.toBe(first);
+    expect(
+      mergeInternalGroupDisplayStates(
+        { activeMemory: "collapsed", skillHarness: "expanded" },
+        { activeMemory: "expanded", skillHarness: "removed" },
+      ),
+    ).toEqual({
+      activeMemory: "collapsed",
+      skillHarness: "removed",
+    });
+  });
+
+  it("accepts a deep-frozen prior state without mutation", () => {
+    const prior = Object.freeze({
+      activeMemory: "collapsed" as const,
+      skillHarness: "removed" as const,
+    });
+    const history = [
+      makeEntry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: "memory" },
+        status: "completed",
+      }),
+      makeEntry({
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: { text: "hint" },
+        status: "completed",
+      }),
+    ];
+
+    const result = renderStatusContentWithState(history, true, 1_700, prior);
+
+    expect(stripAnsi(result.content)).toContain("active-memory ▸ ✔");
+    expect(stripAnsi(result.content)).not.toContain("skill-harness");
+    expect(result.displayState).toEqual(prior);
+    expect(prior).toEqual({
+      activeMemory: "collapsed",
+      skillHarness: "removed",
+    });
+  });
+});
 
 describe("tool icon categories", () => {
   it.each([

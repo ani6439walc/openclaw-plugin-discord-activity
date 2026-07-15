@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderStatusContent } from "./render.js";
+import { renderStatusContent, renderStatusContentWithState } from "./render.js";
 import { defaultStore, updateStatusMessage } from "./session.js";
 import { createMockSessionEntry, createToolEntry } from "../test-helpers.js";
 import type { ToolEntry } from "./types.js";
@@ -131,6 +131,296 @@ describe("bounded status rendering", () => {
     expect(plain).not.toContain("result:");
     expect(plain).not.toMatch(/\(\+\d+ chars?\)/u);
     expect(plain).not.toMatch(/\(\+\d+ lines?\)/u);
+  });
+
+  it("preserves the newest internal multiline owner before an older group", () => {
+    const history = [
+      entry({
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: { text: `hint-${"h".repeat(1_000)}` },
+      }),
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: `memory-${"m".repeat(800)}` },
+      }),
+    ];
+
+    const result = renderStatusContentWithState(history, true);
+    const plain = stripAnsi(result.content);
+
+    expect(result.content.length).toBeLessThanOrEqual(1_700);
+    expect(plain).toContain("💡 skill-harness ▸ ✔");
+    expect(plain).toContain("🧩 active-memory ▾ ✔");
+    expect(plain).toContain("memory-");
+    expect(result.displayState).toEqual({
+      activeMemory: "expanded",
+      skillHarness: "collapsed",
+    });
+  });
+
+  it("truncates an older normal multiline field before the newest internal owner", () => {
+    const olderCommand = `older-${"o".repeat(900)}`;
+    const history = [
+      entry({
+        toolCallId: "older",
+        toolName: "terminal",
+        params: { command: olderCommand },
+      }),
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: `memory-${"m".repeat(700)}` },
+      }),
+    ];
+
+    const result = renderStatusContentWithState(history, true, 1_200);
+    const plain = stripAnsi(result.content);
+
+    expect(plain).toContain("🧩 active-memory ▾ ✔");
+    expect(plain).toContain("memory-");
+    expect(plain).toMatch(/older-.+\(\+\d+ chars?\)/u);
+    expect(result.displayState.activeMemory).toBe("expanded");
+  });
+
+  it("keeps an older main-agent error before a newer internal result", () => {
+    const error = `provider-${"e".repeat(600)}`;
+    const history = [
+      entry({
+        toolCallId: "agent",
+        toolName: "agent",
+        status: "error",
+        error,
+      }),
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: `memory-${"m".repeat(800)}` },
+      }),
+    ];
+
+    const result = renderStatusContentWithState(history, true, 1_000);
+    const plain = stripAnsi(result.content);
+
+    expect(plain).toContain(error);
+    expect(plain).toContain("🧩 active-memory ▸ ✔");
+    expect(result.displayState.activeMemory).toBe("collapsed");
+  });
+
+  it("ignores an outer-budget-hidden internal multiline owner", () => {
+    const history = [
+      entry({
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: { text: `hint-${"h".repeat(500)}` },
+      }),
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: `hidden-newer-${"m".repeat(1_000)}` },
+      }),
+      ...Array.from({ length: 5 }, (_, index) =>
+        entry({
+          toolCallId: `normal-${index}`,
+          toolName: `normal_${index}`,
+        }),
+      ),
+    ];
+
+    const result = renderStatusContentWithState(history, true);
+    const plain = stripAnsi(result.content);
+
+    expect(plain).not.toContain("active-memory");
+    expect(plain).toContain("💡 skill-harness ▾ ✔");
+    expect(result.displayState).toEqual({
+      activeMemory: "removed",
+      skillHarness: "expanded",
+    });
+  });
+
+  it("treats a newer main-agent failure as the multiline owner", () => {
+    const history = [
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: `memory-${"m".repeat(900)}` },
+      }),
+      entry({
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: { text: `hint-${"h".repeat(600)}` },
+      }),
+      entry({
+        toolCallId: "agent",
+        toolName: "agent",
+        status: "error",
+        error: `provider-${"e".repeat(300)}`,
+      }),
+    ];
+
+    const result = renderStatusContentWithState(history, true, 1_300);
+    const plain = stripAnsi(result.content);
+
+    expect(plain).toContain("💥 agent ✘");
+    expect(plain).toContain("provider-");
+    expect(result.displayState.activeMemory).not.toBe("expanded");
+    expect(result.displayState.skillHarness).toBe("expanded");
+  });
+
+  it("never resurrects a removed group in a later frame", () => {
+    const firstHistory = [
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: `memory-${"m".repeat(800)}` },
+      }),
+      entry({
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: { text: `hint-${"h".repeat(800)}` },
+      }),
+      entry({
+        toolCallId: "normal",
+        toolName: "terminal",
+        params: { command: `command-${"c".repeat(500)}` },
+      }),
+    ];
+    const first = renderStatusContentWithState(firstHistory, true, 400);
+    expect(first.displayState.activeMemory).toBe("removed");
+
+    const second = renderStatusContentWithState(
+      firstHistory.slice(0, 2),
+      true,
+      1_700,
+      first.displayState,
+    );
+
+    expect(stripAnsi(second.content)).not.toContain("active-memory");
+    expect(second.displayState.activeMemory).toBe("removed");
+  });
+
+  it("reports outer-budget and emergency group removals", () => {
+    const history = [
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: "memory" },
+      }),
+      entry({
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: { text: "hint" },
+      }),
+      ...Array.from({ length: 6 }, (_, index) =>
+        entry({
+          toolCallId: `normal-${index}`,
+          toolName: `normal_${index}`,
+        }),
+      ),
+    ];
+
+    const outerBounded = renderStatusContentWithState(history, true);
+    expect(outerBounded.displayState).toEqual({
+      activeMemory: "removed",
+      skillHarness: "removed",
+    });
+
+    const emergency = renderStatusContentWithState(
+      history.slice(0, 1),
+      true,
+      12,
+    );
+    expect(emergency.content).toBe("```ansi\n\n```");
+    expect(emergency.displayState.activeMemory).toBe("removed");
+  });
+
+  it("reaches a fixed point for content and state", () => {
+    const history = [
+      entry({
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: `memory-${"m".repeat(800)}` },
+      }),
+      entry({
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
+        params: { text: `hint-${"h".repeat(800)}` },
+      }),
+      entry({
+        toolCallId: "normal",
+        toolName: "terminal",
+        params: { command: `latest-${"n".repeat(300)}` },
+      }),
+    ];
+    const first = renderStatusContentWithState(history, true, 500);
+    const second = renderStatusContentWithState(
+      history,
+      true,
+      500,
+      first.displayState,
+    );
+
+    expect(second).toEqual(first);
+  });
+
+  it("stays monotonic and fixed across deterministic state and length combinations", () => {
+    const levels = ["expanded", "collapsed", "removed"] as const;
+    const rank = { expanded: 0, collapsed: 1, removed: 2 } as const;
+
+    for (let index = 0; index < 24; index += 1) {
+      const priorState = {
+        activeMemory: levels[index % levels.length],
+        skillHarness: levels[Math.floor(index / levels.length) % levels.length],
+      };
+      const history = [
+        ...(index % 2 === 0
+          ? [
+              createToolEntry({
+                toolCallId: `active-memory:result:${index}`,
+                toolName: "active-memory:result",
+                params: { text: `memory-${"m".repeat(80 + index * 11)}` },
+              }),
+            ]
+          : []),
+        createToolEntry({
+          toolCallId: `skill-harness:result:${index}`,
+          toolName: "skill-harness:result",
+          params: { text: `hint-${"h".repeat(60 + index * 13)}` },
+        }),
+        ...Array.from({ length: index % 7 }, (_, normalIndex) =>
+          createToolEntry({
+            toolCallId: `normal:${index}:${normalIndex}`,
+            toolName: `normal_${normalIndex}`,
+            params: {
+              command: `command-${"c".repeat(40 + normalIndex * 29)}`,
+            },
+          }),
+        ),
+      ];
+      const maxLength = 100 + ((index * 67) % 1_601);
+
+      const first = renderStatusContentWithState(
+        history,
+        false,
+        maxLength,
+        priorState,
+      );
+      const second = renderStatusContentWithState(
+        history,
+        false,
+        maxLength,
+        first.displayState,
+      );
+
+      expect(second, `fixed point case ${index}`).toEqual(first);
+      expect(rank[first.displayState.activeMemory]).toBeGreaterThanOrEqual(
+        rank[priorState.activeMemory],
+      );
+      expect(rank[first.displayState.skillHarness]).toBeGreaterThanOrEqual(
+        rank[priorState.skillHarness],
+      );
+    }
   });
 
   it("collapses active-memory before skill-harness to preserve a newer multiline field", () => {

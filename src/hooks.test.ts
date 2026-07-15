@@ -144,6 +144,40 @@ describe("createHookHandlers", () => {
       expect(store.contexts.size).toBe(1);
     });
 
+    it("starts replacement generations with fresh display state", async () => {
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "msg_old", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+      const oldSession = store.sessions.get("discord:direct:123");
+      if (!oldSession) throw new Error("expected initial session");
+      oldSession.statusCreateNonce = "stale_nonce";
+      oldSession.confirmedDisplayState = {
+        activeMemory: "removed",
+        skillHarness: "collapsed",
+      };
+      oldSession.monotonicSafetyFloor = {
+        activeMemory: "removed",
+        skillHarness: "removed",
+      };
+
+      await handlers.onMessageReceived(
+        { messageId: "msg_new", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId: "run_new" },
+      );
+
+      const replacement = store.sessions.get("discord:direct:123");
+      expect(replacement).not.toBe(oldSession);
+      expect(replacement?.generation).toBe(2);
+      expect(replacement?.statusCreateNonce).toBeUndefined();
+      expect(replacement?.confirmedDisplayState).toBeUndefined();
+      expect(replacement?.monotonicSafetyFloor).toBeUndefined();
+    });
+
     it("shows pending skill-harness status when enabled", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
@@ -206,6 +240,159 @@ describe("createHookHandlers", () => {
         },
       );
       expect(store.contexts.size).toBe(0);
+    });
+  });
+
+  describe("stale-run isolation", () => {
+    async function createReplacementForNewRun() {
+      createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_old", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_old",
+        },
+      );
+      await handlers.onMessageReceived(
+        { messageId: "user_new", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_new",
+        },
+      );
+
+      const replacement = store.sessions.get("discord:direct:123");
+      expect(replacement?.runId).toBe("run_new");
+      expect(replacement?.supersededRunIds).toContain("run_old");
+      return { replacement, sessionKey };
+    }
+
+    it("rejects a late before_tool_call from a superseded run", async () => {
+      const { replacement, sessionKey } = await createReplacementForNewRun();
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "late_call",
+          toolName: "bash",
+          params: { command: "old" },
+          runId: "run_old",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "late_call",
+          runId: "run_old",
+        },
+      );
+
+      expect(replacement?.toolHistory).toEqual([]);
+    });
+
+    it("rejects inconsistent event and context run ids", async () => {
+      const { replacement, sessionKey } = await createReplacementForNewRun();
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "inconsistent_call",
+          toolName: "bash",
+          params: { command: "old context" },
+          runId: "run_new",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "inconsistent_call",
+          runId: "run_old",
+        },
+      );
+
+      expect(replacement?.toolHistory).toEqual([]);
+    });
+
+    it("rejects a late after_tool_call from a superseded run", async () => {
+      const { replacement, sessionKey } = await createReplacementForNewRun();
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "shared_call",
+          toolName: "bash",
+          params: { command: "new" },
+          runId: "run_new",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "shared_call",
+          runId: "run_new",
+        },
+      );
+
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "shared_call",
+          toolName: "bash",
+          params: { command: "old" },
+          durationMs: 99,
+          runId: "run_old",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "shared_call",
+          runId: "run_old",
+        },
+      );
+
+      expect(replacement?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "shared_call",
+          status: "pending",
+          params: { command: "new" },
+        }),
+      ]);
+    });
+
+    it("rejects a late active-memory agent_end from a superseded run", async () => {
+      const { replacement, sessionKey } = await createReplacementForNewRun();
+
+      await handlers.onAgentEnd(
+        {
+          messages: [],
+          success: false,
+          error: "old active-memory failure",
+        },
+        {
+          sessionKey: `${sessionKey}:active-memory:old`,
+          runId: "run_old",
+        },
+      );
+
+      expect(replacement?.toolHistory).toEqual([]);
+    });
+
+    it("rejects a late skill-harness pipeline event from a superseded run", async () => {
+      const { replacement, sessionKey } = await createReplacementForNewRun();
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run_old",
+        stream: "plugin:skill-harness",
+        sessionKey,
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "intent-classification",
+          state: "completed",
+          intent: "old-intent",
+        },
+      });
+
+      expect(replacement?.toolHistory).toEqual([]);
     });
   });
 

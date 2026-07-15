@@ -34,11 +34,25 @@ describe("Discord status deletion recovery", () => {
       "fetch",
       vi.fn(async () => jsonResponse({ message: "Unknown Message" }, 404)),
     );
-    const session = createMockSessionEntry({ statusMessageId: "status_old" });
+    const session = createMockSessionEntry({
+      statusMessageId: "status_old",
+      statusCreateNonce: "stale_nonce",
+      confirmedDisplayState: {
+        activeMemory: "removed",
+        skillHarness: "collapsed",
+      },
+      monotonicSafetyFloor: {
+        activeMemory: "removed",
+        skillHarness: "removed",
+      },
+    });
 
     await clearStatusMessage(session, "test_cleanup", () => "token");
 
     expect(session.statusMessageId).toBeUndefined();
+    expect(session.statusCreateNonce).toBeUndefined();
+    expect(session.confirmedDisplayState).toBeUndefined();
+    expect(session.monotonicSafetyFloor).toBeUndefined();
   });
 
   it.each([401, 403])(

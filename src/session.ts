@@ -2,12 +2,16 @@ import { logger } from "../api.js";
 import type { SessionEntry } from "./types.js";
 import {
   deleteDiscordStatusMessageWithResult,
-  editDiscordStatusMessage,
-  sendDiscordStatusWithDmFallback,
+  editDiscordStatusMessageWithResult,
+  sendDiscordStatusWithDmFallbackWithResult,
 } from "./discord-message-operations.js";
+import { createMessageNonce } from "./discord-api.js";
 import { createSessionStore } from "./store.js";
 import { createOrphanManager } from "./orphans.js";
-import { renderStatusContent } from "./render.js";
+import {
+  mergeInternalGroupDisplayStates,
+  renderStatusContentWithState,
+} from "./render.js";
 import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
@@ -23,8 +27,38 @@ function clearTimers(session: SessionEntry) {
 
 function resetSessionState(session: SessionEntry) {
   session.toolHistory = [];
+  session.statusCreateNonce = undefined;
   session.lastRenderedContent = undefined;
+  session.contentDeliveryUncertain = undefined;
+  session.confirmedDisplayState = undefined;
+  session.monotonicSafetyFloor = undefined;
   session.finalized = false;
+}
+
+function getSessionDisplayFloor(session: SessionEntry) {
+  return mergeInternalGroupDisplayStates(
+    session.confirmedDisplayState,
+    session.monotonicSafetyFloor,
+  );
+}
+
+function commitDisplayState(
+  session: SessionEntry,
+  displayState: ReturnType<typeof getSessionDisplayFloor>,
+  outcome: "applied" | "uncertain",
+) {
+  if (outcome === "applied") {
+    session.confirmedDisplayState = mergeInternalGroupDisplayStates(
+      session.confirmedDisplayState,
+      displayState,
+    );
+    return;
+  }
+
+  session.monotonicSafetyFloor = mergeInternalGroupDisplayStates(
+    session.monotonicSafetyFloor,
+    displayState,
+  );
 }
 
 async function runSerializedSessionOperation(
@@ -280,6 +314,12 @@ export async function updateStatusMessage(
   maxStatusMessageLength = DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
 ) {
   const priorOp = session.pendingOp;
+  const expectedGeneration = session.generation;
+  const expectedOwner = session.ownerSessionKey;
+  const isExpectedCurrentSession = () =>
+    defaultStore.isCurrentSession(session) &&
+    session.generation === expectedGeneration &&
+    session.ownerSessionKey === expectedOwner;
   const op = (async () => {
     if (priorOp) {
       logger.debug("[update_status_message] waiting for pending op...");
@@ -292,10 +332,13 @@ export async function updateStatusMessage(
       }
     }
 
-    const content = renderStatusContent(
+    if (!isExpectedCurrentSession()) return;
+
+    const { content, displayState } = renderStatusContentWithState(
       session.toolHistory,
       isFinal,
       maxStatusMessageLength,
+      getSessionDisplayFloor(session),
     );
 
     if (!content) return;
@@ -314,32 +357,42 @@ export async function updateStatusMessage(
     }
 
     if (isNewMessage) {
-      if (!defaultStore.isCurrentSession(session)) {
-        return;
-      }
-
-      const createdId = await sendDiscordStatusWithDmFallback(
+      const isRetryingUncertainCreate = session.statusCreateNonce !== undefined;
+      const createNonce = session.statusCreateNonce ?? createMessageNonce();
+      const result = await sendDiscordStatusWithDmFallbackWithResult(
         getToken,
         session,
         content,
         session.userMessageId,
+        createNonce,
       );
 
-      if (!createdId) {
+      if (!isExpectedCurrentSession()) {
+        if (result.outcome === "applied" && result.messageId) {
+          await deleteStatusMessageWithRecovery(
+            session,
+            result.messageId,
+            "late_status_create",
+            getToken,
+          );
+        }
         return;
       }
 
-      if (!defaultStore.isCurrentSession(session)) {
-        await deleteStatusMessageWithRecovery(
-          session,
-          createdId,
-          "late_status_create",
-          getToken,
-        );
+      if (result.outcome === "uncertain") {
+        session.statusCreateNonce = createNonce;
+        session.contentDeliveryUncertain = true;
+        commitDisplayState(session, displayState, "uncertain");
         return;
       }
 
-      session.statusMessageId = createdId;
+      if (result.outcome !== "applied" || !result.messageId) {
+        return;
+      }
+
+      session.statusCreateNonce = undefined;
+      session.statusMessageId = result.messageId;
+      session.contentDeliveryUncertain = isRetryingUncertainCreate;
       logger.debug(`created status message ${session.statusMessageId}.`);
 
       if (maxDisplayMs && maxDisplayMs > 0) {
@@ -350,11 +403,36 @@ export async function updateStatusMessage(
           getToken,
         );
       }
-      session.lastRenderedContent = content;
-      return;
-    }
 
-    if (!defaultStore.isCurrentSession(session)) {
+      if (isRetryingUncertainCreate) {
+        const reconcileResult = await editDiscordStatusMessageWithResult(
+          getToken,
+          session.channelId,
+          session.statusMessageId,
+          content,
+          session.accountId,
+        );
+        if (
+          !isExpectedCurrentSession() ||
+          session.statusMessageId !== result.messageId
+        ) {
+          return;
+        }
+        if (reconcileResult.outcome === "applied") {
+          session.lastRenderedContent = content;
+          session.contentDeliveryUncertain = false;
+          commitDisplayState(session, displayState, "applied");
+          logger.debug("reconciled status message after uncertain create.");
+        } else if (reconcileResult.outcome === "uncertain") {
+          session.contentDeliveryUncertain = true;
+          commitDisplayState(session, displayState, "uncertain");
+        }
+        return;
+      }
+
+      session.lastRenderedContent = content;
+      session.contentDeliveryUncertain = false;
+      commitDisplayState(session, displayState, "applied");
       return;
     }
 
@@ -362,21 +440,36 @@ export async function updateStatusMessage(
       return;
     }
 
-    if (session.lastRenderedContent === content) {
+    if (
+      session.lastRenderedContent === content &&
+      !session.contentDeliveryUncertain
+    ) {
+      commitDisplayState(session, displayState, "applied");
       logger.debug("skipped status message edit because content is unchanged.");
       return;
     }
 
-    const edited = await editDiscordStatusMessage(
+    const messageId = session.statusMessageId;
+    const result = await editDiscordStatusMessageWithResult(
       getToken,
       session.channelId,
-      session.statusMessageId,
+      messageId,
       content,
       session.accountId,
     );
-    if (edited) {
+
+    if (!isExpectedCurrentSession() || session.statusMessageId !== messageId) {
+      return;
+    }
+
+    if (result.outcome === "applied") {
       session.lastRenderedContent = content;
+      session.contentDeliveryUncertain = false;
+      commitDisplayState(session, displayState, "applied");
       logger.debug("updated status message.");
+    } else if (result.outcome === "uncertain") {
+      session.contentDeliveryUncertain = true;
+      commitDisplayState(session, displayState, "uncertain");
     }
   })();
 

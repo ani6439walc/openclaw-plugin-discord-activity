@@ -113,14 +113,33 @@ export async function discordApiRequest(
   throw new Error("unexpected retry loop exit");
 }
 
-export async function sendMessage(
+export type DiscordMutationResult = {
+  outcome: "applied" | "rejected" | "uncertain";
+  reason: string;
+  status?: number;
+};
+
+export type SendMessageResult = DiscordMutationResult & {
+  messageId?: string;
+};
+
+export function createMessageNonce(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 25);
+}
+
+export async function sendMessageWithResult(
   channelId: string,
   content: string,
   token: string,
   replyToId?: string,
-) {
+  nonce = createMessageNonce(),
+): Promise<SendMessageResult> {
   try {
-    const body: any = { content };
+    const body: Record<string, unknown> = {
+      content,
+      nonce,
+      enforce_nonce: true,
+    };
     if (replyToId) body.message_reference = { message_id: replyToId };
     const res = await discordApiRequest(
       `https://discord.com/api/v10/channels/${channelId}/messages`,
@@ -134,29 +153,61 @@ export async function sendMessage(
       },
       "sendMessage",
     );
-    const data = (await res.json().catch(() => ({}))) as any;
+    const data = (await res.json().catch(() => ({}))) as { id?: unknown };
     if (!res.ok) {
       logger.warn("sendMessage failed.", {
         status: res.status,
         error: data,
       });
-      return undefined;
+      return {
+        outcome: res.status >= 500 ? "uncertain" : "rejected",
+        status: res.status,
+        reason: `http-${res.status}`,
+      };
     }
-    return data.id as string;
+    if (typeof data.id !== "string" || !data.id.trim()) {
+      logger.warn("sendMessage succeeded without a usable message id.", {
+        status: res.status,
+      });
+      return {
+        outcome: "uncertain",
+        status: res.status,
+        reason: "missing-message-id",
+      };
+    }
+    return {
+      outcome: "applied",
+      messageId: data.id,
+      status: res.status,
+      reason: "created",
+    };
   } catch (err) {
     logger.warn("sendMessage error.", {
       error: String(err),
     });
-    return undefined;
+    return {
+      outcome: "uncertain",
+      reason: "network-error",
+    };
   }
 }
 
-export async function editMessage(
+export async function sendMessage(
+  channelId: string,
+  content: string,
+  token: string,
+  replyToId?: string,
+): Promise<string | undefined> {
+  return (await sendMessageWithResult(channelId, content, token, replyToId))
+    .messageId;
+}
+
+export async function editMessageWithResult(
   channelId: string,
   messageId: string,
   content: string,
   token: string,
-): Promise<boolean> {
+): Promise<DiscordMutationResult> {
   try {
     const res = await discordApiRequest(
       `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
@@ -176,15 +227,38 @@ export async function editMessage(
         status: res.status,
         error: data,
       });
-      return false;
+      return {
+        outcome: res.status >= 500 ? "uncertain" : "rejected",
+        status: res.status,
+        reason: `http-${res.status}`,
+      };
     }
-    return true;
+    return {
+      outcome: "applied",
+      status: res.status,
+      reason: "edited",
+    };
   } catch (err) {
     logger.warn("editMessage error.", {
       error: String(err),
     });
-    return false;
+    return {
+      outcome: "uncertain",
+      reason: "network-error",
+    };
   }
+}
+
+export async function editMessage(
+  channelId: string,
+  messageId: string,
+  content: string,
+  token: string,
+): Promise<boolean> {
+  return (
+    (await editMessageWithResult(channelId, messageId, content, token))
+      .outcome === "applied"
+  );
 }
 
 export type DeleteMessageResult = {
