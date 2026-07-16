@@ -320,11 +320,12 @@ function renderFieldNodeContent(fields: readonly DisplayField[]): {
     fields.length === 1 && fields[0].multilineLines ? fields[0] : undefined;
   const multilineLines = multilineField?.multilineLines;
   const continuationLines = multilineLines
-    ? multilineLines.map((line, index, lines) =>
-        index === lines.length - 1 && multilineField.omittedHint
-          ? `${line}${ansiSpan(ANSI.lightGray, multilineField.omittedHint)}`
-          : line,
-      )
+    ? multilineLines.map((line, index, lines) => {
+        const coloredLine = ansiSpan(ANSI.green, line);
+        return index === lines.length - 1 && multilineField.omittedHint
+          ? `${coloredLine}${ansiSpan(ANSI.lightGray, multilineField.omittedHint)}`
+          : coloredLine;
+      })
     : [];
   return {
     text: fields.map(renderMainField).join(" · "),

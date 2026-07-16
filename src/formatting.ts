@@ -107,11 +107,15 @@ function formatDisplayValue(
   DisplayField,
   "value" | "multilineLines" | "omittedHint" | "truncated"
 > & { isMultiline: boolean } {
-  const sourceValue = sanitizeVisibleText(serializeDisplayValue(value))
+  let serialized = serializeDisplayValue(value);
+  if (typeof value === "string") {
+    serialized = serialized.trimEnd();
+  }
+  const sourceValue = sanitizeVisibleText(serialized)
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n");
   const sourceIsMultiline =
-    typeof value === "string" && sourceValue.includes("\n");
+    typeof value === "string" && sourceValue.trim().includes("\n");
   const sourceCharacters = [
     ...(sourceIsMultiline
       ? sourceValue.replaceAll("\t", "\\t")
