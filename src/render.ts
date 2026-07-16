@@ -1,13 +1,12 @@
 import type {
-  InternalGroupDisplayLevel,
-  InternalGroupDisplayState,
   StatefulStatusRenderResult,
+  StatusBlockDisplayLevel,
+  StatusDisplayState,
   ToolEntry,
 } from "./types.js";
 import {
   getToolIcon,
   formatDisplayFields,
-  limitDisplayField,
   type DisplayField,
 } from "./formatting.js";
 import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
@@ -131,12 +130,9 @@ function getDisplayFieldWidth(field: DisplayField): number {
 function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
   const compactFields: DisplayField[] = [];
   const ordinaryFields: DisplayField[] = [];
-  const multilineFields: DisplayField[] = [];
 
   for (const field of fields) {
-    if (field.multilineCapable) {
-      multilineFields.push(field);
-    } else if (field.compactEligible && getDisplayFieldWidth(field) <= 70) {
+    if (field.compactEligible && getDisplayFieldWidth(field) <= 70) {
       compactFields.push(field);
     } else {
       ordinaryFields.push(field);
@@ -160,12 +156,7 @@ function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
   }
   if (currentRow.length > 0) rows.push(currentRow);
 
-  multilineFields.sort((a, b) => a.key.localeCompare(b.key, "en"));
-  return [
-    ...rows,
-    ...ordinaryFields.map((field) => [field]),
-    ...multilineFields.map((field) => [field]),
-  ];
+  return [...rows, ...ordinaryFields.map((field) => [field])];
 }
 
 function getParentSuffix(group: readonly ToolEntry[]): string {
@@ -207,27 +198,10 @@ function getSkillHarnessResultFields(entry: ToolEntry): DisplayField[] {
   );
 }
 
-function createEntryFieldNodes(
-  entry: ToolEntry,
-  errorPriority: DetailPriority,
-  sourceIndex: number,
-): { nodes: StatusNode[]; errorNode?: StatusNode } {
+function createEntryFieldNodes(entry: ToolEntry): StatusNode[] {
   const nodes = packMainFields(
     formatDisplayFields(entry.params, { toolName: entry.toolName }),
-  ).map((row, index) =>
-    createFieldNode(
-      row,
-      entry.status === "error" &&
-        entry.error !== undefined &&
-        entry.params?.error === entry.error &&
-        row.some((field) => field.key === "error")
-        ? errorPriority
-        : 0,
-      sourceIndex,
-      index,
-    ),
-  );
-  let errorNode = nodes.find((node) => node.priority === errorPriority);
+  ).map(createFieldNode);
 
   if (
     entry.status === "error" &&
@@ -237,89 +211,57 @@ function createEntryFieldNodes(
     const errorRows = packMainFields(
       formatDisplayFields({ error: entry.error }),
     );
-    const errorNodes = errorRows.map((row, index) =>
-      createFieldNode(row, errorPriority, sourceIndex, nodes.length + index),
-    );
-    nodes.push(...errorNodes);
-    errorNode = errorNodes[0];
+    nodes.push(...errorRows.map(createFieldNode));
   }
-  return { nodes, errorNode };
+  return nodes;
 }
 
-function createNestedToolNode(
-  entry: ToolEntry,
-  prefix: string,
-  sourceIndex: number,
-): { node: StatusNode; errorNode?: StatusNode } {
+function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
   const strippedName = sanitizeHeaderToken(
     getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
   );
-  const { nodes, errorNode } = createEntryFieldNodes(entry, 2, sourceIndex);
-  const node: StatusNode = {
+  return {
     text: `${ansiSpan(ANSI.cyan, strippedName)} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${formatHeaderDuration(entry)}`,
     continuationLines: [],
-    children: nodes,
-    priority: 4,
-    sourceIndex,
-    fieldIndex: -1,
+    children: createEntryFieldNodes(entry),
   };
-  nodes.forEach((child) => {
-    child.parent = node;
-  });
-  return { node, errorNode };
 }
 
-type DetailPriority = 0 | 1 | 2 | 3 | 4;
 type InternalGroupName = "active-memory" | "skill-harness";
 
-const DISPLAY_LEVEL_RANK: Record<InternalGroupDisplayLevel, number> = {
+const DISPLAY_LEVEL_RANK: Record<StatusBlockDisplayLevel, number> = {
   expanded: 0,
   collapsed: 1,
   removed: 2,
 };
 
-export function createDefaultInternalGroupDisplayState(): InternalGroupDisplayState {
-  return {
-    activeMemory: "expanded",
-    skillHarness: "expanded",
-  };
+export function createDefaultStatusDisplayState(): StatusDisplayState {
+  return {};
 }
 
-export function mergeInternalGroupDisplayStates(
-  ...states: readonly (InternalGroupDisplayState | undefined)[]
-): InternalGroupDisplayState {
-  const merged = createDefaultInternalGroupDisplayState();
+export function mergeStatusDisplayStates(
+  ...states: readonly (StatusDisplayState | undefined)[]
+): StatusDisplayState {
+  const merged = createDefaultStatusDisplayState();
   for (const state of states) {
     if (!state) continue;
-    if (
-      DISPLAY_LEVEL_RANK[state.activeMemory] >
-      DISPLAY_LEVEL_RANK[merged.activeMemory]
-    ) {
-      merged.activeMemory = state.activeMemory;
-    }
-    if (
-      DISPLAY_LEVEL_RANK[state.skillHarness] >
-      DISPLAY_LEVEL_RANK[merged.skillHarness]
-    ) {
-      merged.skillHarness = state.skillHarness;
+    for (const [key, level] of Object.entries(state)) {
+      const current = merged[key] ?? "expanded";
+      if (DISPLAY_LEVEL_RANK[level] > DISPLAY_LEVEL_RANK[current]) {
+        merged[key] = level;
+      }
     }
   }
   return merged;
 }
 
-function getGroupStateKey(
-  groupName: InternalGroupName,
-): keyof InternalGroupDisplayState {
-  return groupName === "active-memory" ? "activeMemory" : "skillHarness";
-}
-
-function advanceGroupDisplayState(
-  state: InternalGroupDisplayState,
-  groupName: InternalGroupName,
-  level: InternalGroupDisplayLevel,
+function advanceDisplayState(
+  state: StatusDisplayState,
+  key: string,
+  level: StatusBlockDisplayLevel,
 ): void {
-  const key = getGroupStateKey(groupName);
-  if (DISPLAY_LEVEL_RANK[level] > DISPLAY_LEVEL_RANK[state[key]]) {
+  const current = state[key] ?? "expanded";
+  if (DISPLAY_LEVEL_RANK[level] > DISPLAY_LEVEL_RANK[current]) {
     state[key] = level;
   }
 }
@@ -331,72 +273,42 @@ type StatusHeader = {
   status: string;
   statusStyle: string;
   durationMs?: number;
-  compressibleName?: boolean;
   disclosure?: boolean;
 };
 
 type StatusNode = {
   text: string;
   continuationLines: string[];
-  displayField?: DisplayField;
-  retainedCharacters?: number;
   children: StatusNode[];
-  priority: DetailPriority;
-  sourceIndex: number;
-  fieldIndex: number;
-  parent?: StatusNode;
-  suppressedBy?: StatusNode;
 };
 
 type StatusBlock = {
+  key: string;
   header: StatusHeader;
   children: StatusNode[];
-  sourceIndex: number;
-  internalGroupName?: InternalGroupName;
+  protected?: boolean;
 };
 
 function sanitizeHeaderToken(value: string): string {
   return sanitizeVisibleText(value).replaceAll(/[\r\n\t]+/gu, " ");
 }
 
-function renderStatusHeader(
-  header: StatusHeader,
-  options: {
-    collapsed?: boolean;
-    includeDuration?: boolean;
-    name?: string;
-  } = {},
-): string {
-  const name = options.name ?? header.name;
-  const label = name ? `${header.icon} ${name}` : header.icon;
+function renderStatusHeader(header: StatusHeader, collapsed = false): string {
+  const label = header.name ? `${header.icon} ${header.name}` : header.icon;
   const duration =
-    options.includeDuration !== false && typeof header.durationMs === "number"
+    typeof header.durationMs === "number"
       ? formatDurationBadge(header.durationMs)
       : "";
   const disclosure = header.disclosure
-    ? ` ${ansiSpan(ANSI.lightGray, options.collapsed ? "▸" : "▾")}`
+    ? ` ${ansiSpan(ANSI.lightGray, collapsed ? "▸" : "▾")}`
     : "";
   return `${ansiSpan(header.nameStyle, label)}${disclosure} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
 }
 
-function createFieldNode(
-  fields: DisplayField[],
-  priority: DetailPriority = 0,
-  sourceIndex = 0,
-  fieldIndex = 0,
-): StatusNode {
-  const content = renderFieldNodeContent(fields);
-  const displayField =
-    fields.length === 1 && fields[0].sourceCharacters !== undefined
-      ? fields[0]
-      : undefined;
+function createFieldNode(fields: DisplayField[]): StatusNode {
   return {
-    ...content,
-    displayField,
+    ...renderFieldNodeContent(fields),
     children: [],
-    priority,
-    sourceIndex,
-    fieldIndex,
   };
 }
 
@@ -420,53 +332,28 @@ function renderFieldNodeContent(fields: readonly DisplayField[]): {
   };
 }
 
-function getStatusNodeContent(node: StatusNode): {
-  text: string;
-  continuationLines: string[];
-} {
-  if (!node.displayField || node.retainedCharacters === undefined) {
-    return node;
-  }
-  return renderFieldNodeContent([
-    limitDisplayField(node.displayField, node.retainedCharacters),
-  ]);
-}
-
 const ROOT_TREE_PREFIX = "   ";
 
 function renderStatusNodes(
   nodes: readonly StatusNode[],
-  removed: ReadonlySet<StatusNode>,
   prefix = ROOT_TREE_PREFIX,
 ): string[] {
-  const visible = nodes.filter((node) => isStatusNodeVisible(node, removed));
-  return visible.flatMap((node, index) => {
-    const isLast = index === visible.length - 1;
+  return nodes.flatMap((node, index) => {
+    const isLast = index === nodes.length - 1;
     const connector = isLast ? "└─" : "├─";
     const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
-    const content = getStatusNodeContent(node);
     return [
-      `${prefix} ${connector} ${content.text}`,
-      ...content.continuationLines.map((line) => `${childPrefix} ${line}`),
-      ...renderStatusNodes(node.children, removed, childPrefix),
+      `${prefix} ${connector} ${node.text}`,
+      ...node.continuationLines.map((line) => `${childPrefix} ${line}`),
+      ...renderStatusNodes(node.children, childPrefix),
     ];
   });
-}
-
-function isStatusNodeVisible(
-  node: StatusNode,
-  removed: ReadonlySet<StatusNode>,
-): boolean {
-  if (removed.has(node)) return false;
-  if (node.parent && !isStatusNodeVisible(node.parent, removed)) return false;
-  return !node.suppressedBy || !isStatusNodeVisible(node.suppressedBy, removed);
 }
 
 function renderSubagentGroup(
   icon: string,
   prefix: InternalGroupName,
   group: readonly ToolEntry[],
-  sourceIndexes: ReadonlyMap<ToolEntry, number>,
 ): StatusBlock {
   const realEntries = group.filter((e) => e.toolName.startsWith(`${prefix}:`));
   const displayedTools = realEntries
@@ -488,37 +375,26 @@ function renderSubagentGroup(
     (entry) =>
       entry.toolName === prefix && entry.status === "error" && entry.error,
   );
-  const nestedTools = displayedTools.map((entry) =>
-    createNestedToolNode(entry, prefix, sourceIndexes.get(entry) ?? 0),
+  const nodes = displayedTools.map((entry) =>
+    createNestedToolNode(entry, prefix),
   );
-  const nodes = nestedTools.map(({ node }) => node);
   for (const resultEntry of resultEntries) {
     const resultFields =
       prefix === "skill-harness"
         ? getSkillHarnessResultFields(resultEntry)
         : formatDisplayFields({ result: resultEntry.params?.text });
-    for (const [index, row] of packMainFields(resultFields).entries()) {
-      nodes.push(
-        createFieldNode(row, 1, sourceIndexes.get(resultEntry) ?? 0, index),
-      );
+    for (const row of packMainFields(resultFields)) {
+      nodes.push(createFieldNode(row));
     }
   }
-  if (parentErrorEntry?.error) {
-    const matchingChildError = nestedTools.find(
-      ({ errorNode }, index) =>
-        errorNode && displayedTools[index].error === parentErrorEntry.error,
-    )?.errorNode;
-    for (const [index, row] of packMainFields(
+  if (
+    parentErrorEntry?.error &&
+    !displayedTools.some((entry) => entry.error === parentErrorEntry.error)
+  ) {
+    for (const row of packMainFields(
       formatDisplayFields({ error: parentErrorEntry.error }),
-    ).entries()) {
-      const parentErrorNode = createFieldNode(
-        row,
-        3,
-        sourceIndexes.get(parentErrorEntry) ?? 0,
-        index,
-      );
-      parentErrorNode.suppressedBy = matchingChildError;
-      nodes.push(parentErrorNode);
+    )) {
+      nodes.push(createFieldNode(row));
     }
   }
 
@@ -530,6 +406,7 @@ function renderSubagentGroup(
         : "pending";
   const groupDurationMs = getGroupDurationMs(group, prefix);
   return {
+    key: `group:${prefix}`,
     header: {
       icon,
       name: sanitizeHeaderToken(prefix),
@@ -540,19 +417,15 @@ function renderSubagentGroup(
       disclosure: true,
     },
     children: nodes,
-    sourceIndex: Math.min(
-      ...group.map((entry) => sourceIndexes.get(entry) ?? 0),
-    ),
-    internalGroupName: prefix,
   };
 }
 
-function createEntryBlock(t: ToolEntry, sourceIndex: number): StatusBlock {
+function createEntryBlock(t: ToolEntry): StatusBlock {
   const icon = getToolIcon(t.toolName);
   const toolName = sanitizeHeaderToken(getDisplayToolName(t.toolName));
   const suffix = getSubSuffix(t.status);
-  const { nodes } = createEntryFieldNodes(t, 2, sourceIndex);
   return {
+    key: `tool:${t.displayId ?? t.toolCallId}`,
     header: {
       icon,
       name: toolName,
@@ -560,32 +433,25 @@ function createEntryBlock(t: ToolEntry, sourceIndex: number): StatusBlock {
       status: suffix,
       statusStyle: getStatusStyle(t.status),
       durationMs: t.durationMs,
+      disclosure: true,
     },
-    children: nodes,
-    sourceIndex,
+    children: createEntryFieldNodes(t),
   };
 }
 
-function createMainAgentFailureBlock(
-  entry: ToolEntry,
-  sourceIndex: number,
-): StatusBlock {
+function createMainAgentFailureBlock(): StatusBlock {
   const header: StatusHeader = {
     icon: "💥",
     name: "agent",
     nameStyle: ANSI.boldBlue,
     status: "✘",
     statusStyle: ANSI.red,
-    compressibleName: false,
   };
-  if (!entry.error) return { header, children: [], sourceIndex };
-  const rows = packMainFields(formatDisplayFields({ error: entry.error }));
   return {
+    key: "agent",
     header,
-    children: rows.map((row, index) =>
-      createFieldNode(row, 3, sourceIndex, index),
-    ),
-    sourceIndex,
+    children: [],
+    protected: true,
   };
 }
 
@@ -616,311 +482,27 @@ function getSubagentGroupEntries(
 
 const OPENING_FENCE = "```ansi\n";
 const CLOSING_FENCE = "\n```";
-
-function getOmissionMarker(omittedLineCount: number): string {
-  if (omittedLineCount <= 0) return "";
-  const unit = omittedLineCount === 1 ? "line" : "lines";
-  return ansiSpan(ANSI.lightGray, `(+${omittedLineCount} ${unit})`);
-}
-
 function renderBlocks(
   blocks: readonly StatusBlock[],
-  removed: ReadonlySet<StatusNode>,
-  omittedLineCount: number,
-  headerOverrides?: readonly string[],
-  collapsedBlocks: ReadonlySet<StatusBlock> = new Set(),
-  removedBlocks: ReadonlySet<StatusBlock> = new Set(),
+  displayState: StatusDisplayState,
 ): string {
-  const body = getRenderedBodyLines(
-    blocks,
-    removed,
-    headerOverrides,
-    collapsedBlocks,
-    removedBlocks,
-  );
-  const marker = getOmissionMarker(omittedLineCount);
-  if (marker) body.push(marker);
-  return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
-}
-
-function getRenderedBodyLines(
-  blocks: readonly StatusBlock[],
-  removed: ReadonlySet<StatusNode>,
-  headerOverrides?: readonly string[],
-  collapsedBlocks: ReadonlySet<StatusBlock> = new Set(),
-  removedBlocks: ReadonlySet<StatusBlock> = new Set(),
-): string[] {
-  return blocks
-    .map((block, originalIndex) => ({ block, originalIndex }))
-    .filter(({ block }) => !removedBlocks.has(block))
-    .flatMap(({ block, originalIndex }, visibleIndex) => [
-      ...(visibleIndex > 0 ? [""] : []),
-      headerOverrides?.[originalIndex] ??
-        renderStatusHeader(block.header, {
-          collapsed: collapsedBlocks.has(block),
-        }),
-      ...(collapsedBlocks.has(block)
-        ? []
-        : renderStatusNodes(block.children, removed)),
-    ]);
-}
-
-function countNonblankLines(lines: readonly string[]): number {
-  return lines.filter((line) =>
-    line.replaceAll(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "").trim(),
-  ).length;
-}
-
-function collectRemovalCandidates(
-  blocks: readonly StatusBlock[],
-): Array<{ block: StatusBlock; node: StatusNode }> {
-  const candidates: Array<{
-    block: StatusBlock;
-    node: StatusNode;
-    traversalOrder: number;
-  }> = [];
-  let traversalOrder = 0;
-  const visit = (block: StatusBlock, node: StatusNode) => {
-    candidates.push({ block, node, traversalOrder });
-    traversalOrder += 1;
-    node.children.forEach((child) => visit(block, child));
-  };
-  for (const block of blocks) {
-    block.children.forEach((node) => visit(block, node));
-  }
-  return candidates
-    .sort(
-      (a, b) =>
-        a.node.priority - b.node.priority ||
-        a.node.sourceIndex - b.node.sourceIndex ||
-        a.node.fieldIndex - b.node.fieldIndex ||
-        a.traversalOrder - b.traversalOrder,
-    )
-    .map(({ block, node }) => ({ block, node }));
-}
-
-function truncateHeaderName(name: string, maxLength: number): string {
-  if (name.length <= maxLength) return name;
-  if (maxLength <= 1) return "…";
-  let retained = "";
-  for (const character of name) {
-    if (retained.length + character.length > maxLength - 1) break;
-    retained += character;
-  }
-  return `${retained}…`;
-}
-
-type EmergencyHeader = {
-  block: StatusBlock;
-  collapsed: boolean;
-  includeDuration: boolean;
-  name: string;
-};
-
-function renderHeaderOnly(
-  headers: readonly EmergencyHeader[],
-  baselineLineCount: number,
-): string {
-  const body = headers.flatMap((header, index) => [
-    ...(index > 0 ? [""] : []),
-    renderStatusHeader(header.block.header, {
-      collapsed: header.collapsed,
-      includeDuration: header.includeDuration,
-      name: header.name,
-    }),
-  ]);
-  const marker = getOmissionMarker(baselineLineCount - headers.length);
-  if (marker) body.push(marker);
-  return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
-}
-
-type EmergencyRenderResult = {
-  content: string;
-  retainedBlocks: ReadonlySet<StatusBlock>;
-};
-
-function renderEmergencyHeaders(
-  blocks: readonly StatusBlock[],
-  baselineLineCount: number,
-  maxLength: number,
-  collapsedBlocks: ReadonlySet<StatusBlock>,
-): EmergencyRenderResult {
-  const headers: EmergencyHeader[] = blocks.map((block) => ({
-    block,
-    collapsed: collapsedBlocks.has(block),
-    includeDuration: true,
-    name: block.header.name,
-  }));
-  let rendered = renderHeaderOnly(headers, baselineLineCount);
-
-  if (rendered.length > maxLength) {
-    headers.forEach((header) => {
-      header.includeDuration = false;
+  const body = blocks
+    .filter((block) => (displayState[block.key] ?? "expanded") !== "removed")
+    .flatMap((block, index) => {
+      const collapsed = (displayState[block.key] ?? "expanded") === "collapsed";
+      return [
+        ...(index > 0 ? [""] : []),
+        renderStatusHeader(block.header, collapsed),
+        ...(collapsed ? [] : renderStatusNodes(block.children)),
+      ];
     });
-    rendered = renderHeaderOnly(headers, baselineLineCount);
-  }
-
-  while (rendered.length > maxLength) {
-    const oldestCompressible = headers
-      .map((header, index) => ({ header, index }))
-      .filter(({ header }) => header.block.header.compressibleName !== false)
-      .sort(
-        (a, b) =>
-          a.header.block.sourceIndex - b.header.block.sourceIndex ||
-          b.header.name.length - a.header.name.length,
-      )[0];
-    if (
-      !oldestCompressible ||
-      [...oldestCompressible.header.name].length <= 1
-    ) {
-      break;
-    }
-    const overflow = rendered.length - maxLength;
-    const target = Math.max(
-      1,
-      oldestCompressible.header.name.length - overflow,
-    );
-    const truncated = truncateHeaderName(
-      oldestCompressible.header.name,
-      target,
-    );
-    oldestCompressible.header.name =
-      truncated.length < oldestCompressible.header.name.length
-        ? truncated
-        : truncateHeaderName(
-            oldestCompressible.header.name,
-            oldestCompressible.header.name.length - 1,
-          );
-    rendered = renderHeaderOnly(headers, baselineLineCount);
-  }
-
-  while (rendered.length > maxLength && headers.length > 0) {
-    const oldest =
-      headers
-        .map((header, index) => ({ header, index }))
-        .filter(({ header }) => header.block.header.compressibleName !== false)
-        .sort(
-          (a, b) => a.header.block.sourceIndex - b.header.block.sourceIndex,
-        )[0]?.index ?? 0;
-    headers.splice(oldest, 1);
-    rendered = renderHeaderOnly(headers, baselineLineCount);
-  }
-
-  if (rendered.length <= maxLength) {
-    return {
-      content: rendered,
-      retainedBlocks: new Set(headers.map((header) => header.block)),
-    };
-  }
-  return {
-    content: `${OPENING_FENCE}${CLOSING_FENCE}`,
-    retainedBlocks: new Set(),
-  };
-}
-
-const MAX_ITERATIVE_BOUNDING_NODES = 256;
-
-function truncateDisplayFieldsToFit(
-  candidates: readonly { block: StatusBlock; node: StatusNode }[],
-  removed: ReadonlySet<StatusNode>,
-  collapsedBlocks: ReadonlySet<StatusBlock>,
-  removedBlocks: ReadonlySet<StatusBlock>,
-  maxLength: number,
-  renderCurrent: () => string,
-): string | undefined {
-  const allTruncatableNodes = candidates
-    .filter(
-      ({ block, node }) =>
-        !collapsedBlocks.has(block) &&
-        !removedBlocks.has(block) &&
-        node.displayField?.sourceCharacters !== undefined &&
-        node.displayField.sourceCharacters.length > 0 &&
-        isStatusNodeVisible(node, removed),
-    )
-    .map(({ node }) => node);
-  if (allTruncatableNodes.length === 0) return;
-  const minimumPriority = Math.min(
-    ...allTruncatableNodes.map((node) => node.priority),
-  );
-  const truncatableNodes = allTruncatableNodes.filter(
-    (node) => node.priority === minimumPriority,
-  );
-
-  let rendered = renderCurrent();
-  if (rendered.length <= maxLength) return rendered;
-
-  for (const node of truncatableNodes) {
-    const sourceCharacterCount =
-      node.displayField?.sourceCharacters?.length ?? 0;
-    node.retainedCharacters = 0;
-    rendered = renderCurrent();
-    if (rendered.length > maxLength) continue;
-
-    let lowerBound = 0;
-    let upperBound = sourceCharacterCount;
-    let bestFit = 0;
-    while (lowerBound <= upperBound) {
-      const candidate = Math.floor((lowerBound + upperBound) / 2);
-      node.retainedCharacters = candidate;
-      const candidateRendered = renderCurrent();
-      if (candidateRendered.length <= maxLength) {
-        bestFit = candidate;
-        lowerBound = candidate + 1;
-      } else {
-        upperBound = candidate - 1;
-      }
-    }
-    node.retainedCharacters = bestFit;
-    return renderCurrent();
-  }
-}
-
-function getNewestVisibleMultilineOwner(
-  blocks: readonly StatusBlock[],
-  removed: ReadonlySet<StatusNode>,
-  collapsedBlocks: ReadonlySet<StatusBlock>,
-  removedBlocks: ReadonlySet<StatusBlock>,
-): { block: StatusBlock; node: StatusNode } | undefined {
-  let newest:
-    | {
-        block: StatusBlock;
-        node: StatusNode;
-        sourceIndex: number;
-        fieldIndex: number;
-      }
-    | undefined;
-
-  const visit = (block: StatusBlock, node: StatusNode): void => {
-    if (!isStatusNodeVisible(node, removed)) return;
-    if (node.displayField?.multilineCapable) {
-      if (
-        !newest ||
-        node.sourceIndex > newest.sourceIndex ||
-        (node.sourceIndex === newest.sourceIndex &&
-          node.fieldIndex > newest.fieldIndex)
-      ) {
-        newest = {
-          block,
-          node,
-          sourceIndex: node.sourceIndex,
-          fieldIndex: node.fieldIndex,
-        };
-      }
-    }
-    node.children.forEach((child) => visit(block, child));
-  };
-
-  for (const block of blocks) {
-    if (collapsedBlocks.has(block) || removedBlocks.has(block)) continue;
-    block.children.forEach((node) => visit(block, node));
-  }
-  return newest;
+  return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
 }
 
 function renderBoundedStatus(
   blocks: readonly StatusBlock[],
   requestedMaxLength: number,
-  priorState: InternalGroupDisplayState,
+  priorState: StatusDisplayState,
 ): StatefulStatusRenderResult {
   const minimumLength = OPENING_FENCE.length + CLOSING_FENCE.length;
   if (
@@ -931,297 +513,83 @@ function renderBoundedStatus(
       `Status max length must be an integer of at least ${minimumLength}`,
     );
   }
+
   const maxLength = Math.min(requestedMaxLength, STATUS_MAX_LENGTH);
-  const removed = new Set<StatusNode>();
-  const collapsedBlocks = new Set<StatusBlock>();
-  const removedBlocks = new Set<StatusBlock>();
-  const displayState = mergeInternalGroupDisplayStates(priorState);
-  for (const block of blocks) {
-    if (!block.internalGroupName) continue;
-    const level = displayState[getGroupStateKey(block.internalGroupName)];
-    if (level === "collapsed" || level === "removed") {
-      collapsedBlocks.add(block);
-    }
-    if (level === "removed") removedBlocks.add(block);
-  }
+  const displayState = mergeStatusDisplayStates(priorState);
   const complete = (content: string): StatefulStatusRenderResult => ({
     content,
-    displayState: mergeInternalGroupDisplayStates(displayState),
+    displayState: mergeStatusDisplayStates(displayState),
   });
-  const candidates = collectRemovalCandidates(blocks);
-  const applyRemovalCandidate = (candidate: (typeof candidates)[number]) => {
-    if (removedBlocks.has(candidate.block)) return 0;
-    if (collapsedBlocks.has(candidate.block)) return 0;
-    if (!isStatusNodeVisible(candidate.node, removed)) return 0;
-    removed.add(candidate.node);
-    return 1;
-  };
-  const renderCurrent = () => {
-    const baselineLineCount = countNonblankLines(
-      getRenderedBodyLines(
-        blocks,
-        new Set(),
-        undefined,
-        collapsedBlocks,
-        removedBlocks,
-      ),
-    );
-    const currentLineCount = countNonblankLines(
-      getRenderedBodyLines(
-        blocks,
-        removed,
-        undefined,
-        collapsedBlocks,
-        removedBlocks,
-      ),
-    );
-    return renderBlocks(
-      blocks,
-      removed,
-      baselineLineCount - currentLineCount,
-      undefined,
-      collapsedBlocks,
-      removedBlocks,
-    );
-  };
-  let rendered = renderCurrent();
-  if (rendered.length <= maxLength) return complete(rendered);
+  const renderCurrent = () => renderBlocks(blocks, displayState);
 
-  const newestMultilineOwner = getNewestVisibleMultilineOwner(
-    blocks,
-    removed,
-    collapsedBlocks,
-    removedBlocks,
-  );
-  const internalGroupOrder: readonly InternalGroupName[] =
-    newestMultilineOwner?.block.internalGroupName === "active-memory"
-      ? ["skill-harness", "active-memory"]
-      : ["active-memory", "skill-harness"];
-  const hasNewerNormalBlock = Boolean(
-    newestMultilineOwner?.block.internalGroupName &&
-    blocks.some(
-      (block) =>
-        block.internalGroupName === undefined &&
-        !removedBlocks.has(block) &&
-        block.sourceIndex > newestMultilineOwner.node.sourceIndex,
-    ),
-  );
-  const protectedGroupName = hasNewerNormalBlock
-    ? undefined
-    : newestMultilineOwner?.block.internalGroupName;
-  const unprotectedGroupOrder = protectedGroupName
-    ? internalGroupOrder.filter((groupName) => groupName !== protectedGroupName)
-    : internalGroupOrder;
-  const collapseGroup = (groupName: InternalGroupName): boolean => {
-    const block = blocks.find(
-      (candidate) => candidate.internalGroupName === groupName,
-    );
-    if (!block || removedBlocks.has(block) || collapsedBlocks.has(block)) {
-      return false;
-    }
-    collapsedBlocks.add(block);
-    advanceGroupDisplayState(displayState, groupName, "collapsed");
-    return true;
-  };
-  const removeGroup = (groupName: InternalGroupName): boolean => {
-    const block = blocks.find(
-      (candidate) => candidate.internalGroupName === groupName,
-    );
-    if (!block || removedBlocks.has(block)) return false;
-    removedBlocks.add(block);
-    advanceGroupDisplayState(displayState, groupName, "removed");
-    return true;
-  };
-  const fitByReducingDetails = (
-    eligibleCandidates: readonly (typeof candidates)[number][],
-  ): string | undefined => {
-    let candidateRendered = renderCurrent();
-    if (candidateRendered.length <= maxLength) return candidateRendered;
-    let batchRemovals = Math.max(
-      0,
-      eligibleCandidates.filter(
-        ({ block, node }) =>
-          !removedBlocks.has(block) &&
-          !collapsedBlocks.has(block) &&
-          isStatusNodeVisible(node, removed),
-      ).length - MAX_ITERATIVE_BOUNDING_NODES,
-    );
-    for (const candidate of eligibleCandidates) {
-      if (batchRemovals === 0) break;
-      batchRemovals = Math.max(
-        0,
-        batchRemovals - applyRemovalCandidate(candidate),
-      );
-    }
+  let content = renderCurrent();
+  if (content.length <= maxLength) return complete(content);
 
-    candidateRendered =
-      truncateDisplayFieldsToFit(
-        eligibleCandidates,
-        removed,
-        collapsedBlocks,
-        removedBlocks,
-        maxLength,
-        renderCurrent,
-      ) ?? renderCurrent();
-
-    for (const candidate of eligibleCandidates) {
-      if (candidateRendered.length <= maxLength) return candidateRendered;
-      if (applyRemovalCandidate(candidate) === 0) continue;
-      candidateRendered = renderCurrent();
-    }
-    return candidateRendered.length <= maxLength
-      ? candidateRendered
-      : undefined;
-  };
-
-  for (const groupName of unprotectedGroupOrder) {
-    if (!collapseGroup(groupName)) continue;
-    rendered = renderCurrent();
-    if (rendered.length <= maxLength) return complete(rendered);
-  }
-
-  if (protectedGroupName && newestMultilineOwner) {
-    const removedBeforePreservation = new Set(removed);
-    const retainedCharactersBeforePreservation = new Map(
-      candidates.map(({ node }) => [node, node.retainedCharacters] as const),
-    );
-    const preservationCandidates = candidates.filter(
-      ({ block, node }) =>
-        block !== newestMultilineOwner.block &&
-        node.priority <= newestMultilineOwner.node.priority,
-    );
-    const preserved = fitByReducingDetails(preservationCandidates);
-    if (preserved) return complete(preserved);
-
-    removed.clear();
-    removedBeforePreservation.forEach((node) => removed.add(node));
-    for (const [
-      node,
-      retainedCharacters,
-    ] of retainedCharactersBeforePreservation) {
-      if (retainedCharacters === undefined) {
-        delete node.retainedCharacters;
-      } else {
-        node.retainedCharacters = retainedCharacters;
-      }
-    }
-
-    if (protectedGroupName === "skill-harness" && !hasNewerNormalBlock) {
-      const protectedDetails = candidates.filter(
-        ({ block }) => block === newestMultilineOwner.block,
-      );
-      const reducedProtectedGroup = fitByReducingDetails(protectedDetails);
-      if (reducedProtectedGroup) return complete(reducedProtectedGroup);
-    }
-
-    if (collapseGroup(protectedGroupName)) {
-      rendered = renderCurrent();
-      if (rendered.length <= maxLength) return complete(rendered);
-    }
-  }
-
-  for (const groupName of internalGroupOrder) {
-    if (!removeGroup(groupName)) continue;
-    rendered = renderCurrent();
-    if (rendered.length <= maxLength) return complete(rendered);
-  }
-
-  const detailReduced = fitByReducingDetails(candidates);
-  if (detailReduced) return complete(detailReduced);
-  const baselineLineCount = countNonblankLines(
-    getRenderedBodyLines(
-      blocks,
-      new Set(),
-      undefined,
-      collapsedBlocks,
-      removedBlocks,
-    ),
-  );
-  const emergency = renderEmergencyHeaders(
-    blocks.filter((block) => !removedBlocks.has(block)),
-    baselineLineCount,
-    maxLength,
-    collapsedBlocks,
-  );
   for (const block of blocks) {
-    if (block.internalGroupName && !emergency.retainedBlocks.has(block)) {
-      advanceGroupDisplayState(
-        displayState,
-        block.internalGroupName,
-        "removed",
-      );
-    }
+    if (block.protected || !block.header.disclosure) continue;
+    if ((displayState[block.key] ?? "expanded") !== "expanded") continue;
+    advanceDisplayState(displayState, block.key, "collapsed");
+    content = renderCurrent();
+    if (content.length <= maxLength) return complete(content);
   }
-  return complete(emergency.content);
+
+  for (const block of blocks) {
+    if (block.protected) continue;
+    if ((displayState[block.key] ?? "expanded") === "removed") continue;
+    advanceDisplayState(displayState, block.key, "removed");
+    content = renderCurrent();
+    if (content.length <= maxLength) return complete(content);
+  }
+
+  return complete(
+    content.length <= maxLength ? content : `${OPENING_FENCE}${CLOSING_FENCE}`,
+  );
 }
 
 export function renderStatusContentWithState(
   toolHistory: readonly ToolEntry[],
   _isFinal: boolean,
   maxLength = STATUS_MAX_LENGTH,
-  priorState = createDefaultInternalGroupDisplayState(),
+  priorState = createDefaultStatusDisplayState(),
 ): StatefulStatusRenderResult {
-  const contentParts: StatusBlock[] = [];
-  const initialState = mergeInternalGroupDisplayStates(priorState);
-  const sourceIndexes = new Map(
-    toolHistory.map((entry, index) => [entry, index] as const),
+  const displayState = mergeStatusDisplayStates(priorState);
+  const subagentBlocks = getSubagentGroupEntries(toolHistory).map((group) =>
+    renderSubagentGroup(
+      group.name === "active-memory" ? "🧩" : "💡",
+      group.name,
+      group.entries,
+    ),
   );
-  const subagentGroups = getSubagentGroupEntries(toolHistory);
-  const eligibleSubagentGroups = subagentGroups.filter(
-    (group) => initialState[getGroupStateKey(group.name)] !== "removed",
-  );
-  const normalEntries = toolHistory
+  const normalBlocks = toolHistory
     .filter(
-      (t) =>
-        !(
-          isSubagentToolEntry(t, "active-memory") ||
-          isSubagentToolEntry(t, "skill-harness") ||
-          isMainAgentEntry(t)
-        ),
+      (entry) =>
+        !isSubagentToolEntry(entry, "active-memory") &&
+        !isSubagentToolEntry(entry, "skill-harness") &&
+        !isMainAgentEntry(entry),
     )
-    .slice(-STATUS_MAX_ENTRIES);
-  const subagentGroupBudget = STATUS_MAX_ENTRIES - normalEntries.length;
-  const visibleSubagentGroups =
-    subagentGroupBudget >= eligibleSubagentGroups.length
-      ? eligibleSubagentGroups
-      : subagentGroupBudget > 0
-        ? eligibleSubagentGroups.slice(-subagentGroupBudget)
-        : [];
-  const visibleSubagentGroupNames = new Set(
-    visibleSubagentGroups.map((group) => group.name),
+    .map(createEntryBlock);
+  const mainAgentFailure = toolHistory.filter(isMainAgentEntry).at(-1);
+  const failureBlock =
+    mainAgentFailure?.status === "error"
+      ? createMainAgentFailureBlock()
+      : undefined;
+  const eligibleBlocks = [...subagentBlocks, ...normalBlocks].filter(
+    (block) => (displayState[block.key] ?? "expanded") !== "removed",
   );
-  for (const group of subagentGroups) {
-    if (!visibleSubagentGroupNames.has(group.name)) {
-      advanceGroupDisplayState(initialState, group.name, "removed");
+  const availableSlots = STATUS_MAX_ENTRIES - (failureBlock ? 1 : 0);
+  const selectedBlocks = eligibleBlocks.slice(-availableSlots);
+  const selectedKeys = new Set(selectedBlocks.map((block) => block.key));
+  for (const block of eligibleBlocks) {
+    if (!selectedKeys.has(block.key)) {
+      advanceDisplayState(displayState, block.key, "removed");
     }
   }
 
-  for (const group of subagentGroups) {
-    contentParts.push(
-      renderSubagentGroup(
-        group.name === "active-memory" ? "🧩" : "💡",
-        group.name,
-        group.entries,
-        sourceIndexes,
-      ),
-    );
-  }
-
-  const mainAgentFailure = toolHistory.filter(isMainAgentEntry).at(-1);
-  if (mainAgentFailure?.status === "error") {
-    contentParts.push(
-      createMainAgentFailureBlock(
-        mainAgentFailure,
-        sourceIndexes.get(mainAgentFailure) ?? 0,
-      ),
-    );
-  }
-
-  for (const entry of normalEntries) {
-    contentParts.push(createEntryBlock(entry, sourceIndexes.get(entry) ?? 0));
-  }
-
-  return renderBoundedStatus(contentParts, maxLength, initialState);
+  return renderBoundedStatus(
+    failureBlock ? [...selectedBlocks, failureBlock] : selectedBlocks,
+    maxLength,
+    displayState,
+  );
 }
 
 export function renderStatusContent(

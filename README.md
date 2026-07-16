@@ -21,7 +21,7 @@ The plugin is designed to fail open: if Discord credentials are missing or Disco
 
 ## What it shows
 
-Status messages are Discord ANSI code blocks. Internal subagent groups appear first, followed by a main-agent failure when present, then normal tools.
+Status messages are Discord ANSI code blocks. Internal subagent groups appear first, normal tools follow, and a main-agent failure appears last when present.
 
 ### Example display
 
@@ -42,12 +42,14 @@ This example shows `active-memory` and `skill-harness` groups, nested tool param
         ├─ reason: User asked for a review
         └─ confidence: 0.92
 
-🔍 web_search ✔ [450ms]
+🔍 web_search ▾ ✔ [450ms]
     └─ query: OpenClaw plugin SDK
 ```
 
 Status markers:
 
+- `▾` details are expanded.
+- `▸` details were collapsed to fit the message.
 - `←` pending or currently visible as the latest non-final completed entry.
 - `✔` completed.
 - `✘` errored.
@@ -58,7 +60,7 @@ Rendering rules to preserve:
 - Normal tools render after `active-memory` and `skill-harness` groups.
 - `active-memory` and `skill-harness` group order is stable.
 - Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.
-- A failed main agent renders as `💥 agent ✘` after internal groups and before normal tools. It is an additional protected block outside the shared 6-entry tool/group budget. The concrete error appears beneath it when OpenClaw provides one; missing error text is not invented.
+- A failed main agent renders once as `💥 agent ✘` at the bottom. It occupies one slot in the shared 6-entry budget, has no detail row, and is protected from normal block removal.
 - `skill-harness` JSON object results flatten to key-value fields.
 - `skill-harness` plain text results render as `result: <text>`.
 - Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.
@@ -69,11 +71,11 @@ Rendering rules to preserve:
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - The `skill-harness` group duration comes directly from the producer's terminal parent lifecycle event. Individual phase durations still fall back to locally observed start/completion timing when the event does not provide `durationMs`.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds round to at most two decimal places; durations of 10 seconds or more round to at most one decimal place. Trailing fractional zeros and a leftover decimal point are omitted.
-- Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. At the outer level, each complete internal group counts as one entry alongside each normal tool in a shared 6-entry budget. With both internal groups visible, the fifth normal tool rolls out the entire `active-memory` group and the sixth rolls out the entire `skill-harness` group; retained `toolHistory` is unchanged.
-- Ordinary single-line parameter values keep up to 70 Unicode code points. Multiline-capable `command`, `error`, and `result` fields render after ordinary fields even when their current value is single-line, preserve their complete sanitized content whenever the whole status fits, and retain producer-supplied line breaks without adding hard wraps; visual wrapping of long source lines is left to the Discord client. `active-memory` result text follows this rule. Within `skill-harness`, `topic`, `basis`, `reason`, and `result` use the same behavior and sort alphabetically with the other multiline-capable fields. Only when the complete status still exceeds its whole-message bound after internal-group bounding does the renderer precisely truncate the oldest eligible fields in the lowest active retention-priority tier, append exact `(+N chars)` (`char` when singular) counts, and avoid splitting surrogate pairs.
+- Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. Internal groups, normal tools, and a main-agent failure share one 6-entry outer budget; the failure uses the last slot when present. Older eligible blocks are removed from the top without mutating retained `toolHistory`.
+- Every visible field keeps at most 70 Unicode code points after sanitization and serialization. Truncated values append an exact gray `(+N chars)` hint (`char` when singular) without splitting surrogate pairs. Producer field order and supplied line breaks are preserved within that fixed prefix; the renderer does not add hard wraps.
 - Compact metadata rows pack booleans, finite numbers of up to 12 code points, and explicitly allowlisted short enum strings. String eligibility is scoped by tool or `skill-harness` phase; matching field names from unrelated tools remain on separate rows.
-- Internal `active-memory` and `skill-harness` headers show a non-bold light-gray disclosure marker matching the `(+N chars)` omission hints: `▾` while details are expanded and `▸` after global bounding collapses the group. Within one session generation, each group can only degrade from expanded to collapsed to removed; a later frame cannot resurrect it. Outer entry limits, normal-entry slicing, and per-group child limits are applied before the renderer identifies the newest visible multiline owner. When that owner belongs to an internal group, the other group collapses first and older fields of equal or lower retention priority may be precisely truncated before the owner collapses; higher-priority errors still win over recency. If content still does not fit, complete internal groups collapse before their headers are removed. Collapsed descendants and completely removed blocks do not contribute to the omission baseline. Remaining ordinary parameters roll out before results, errors, nested tool headers, and top-level status headers; equal-priority details roll out oldest first. Compact scalar rows and multiline values remain atomic, and tree connectors are recomputed after removal.
-- Bounded output includes ANSI and omission-marker overhead in every length check, ends with a complete ANSI fence, emits the exact number of omitted nonblank detail lines as a gray `(+N lines)` marker (`line` when singular), sanitizes untrusted visible text, and never mutates retained `toolHistory` merely to fit the display. Completely removed top-level blocks are omitted silently instead of creating a trailing line marker.
+- Every internal group and normal tool header shows a non-bold light-gray disclosure marker: `▾` while details are expanded and `▸` after bounding collapses the block. A stable per-entry display identity keeps each block monotonic within one session generation: `expanded → collapsed → removed`. Confirmed Discord mutations advance confirmed state; uncertain delivery advances a conservative safety floor; later frames cannot resurrect or re-expand a degraded block.
+- Bounded output counts ANSI sequences and fence overhead. If the fixed 70-code-point fields still exceed the configured length, the renderer first collapses eligible blocks from top to bottom. Only after every eligible block is collapsed does it remove blocks from top to bottom, while preserving a bottom main-agent failure. It emits no global `(+N items)` or `(+N lines)` marker and falls back to a complete empty ANSI fence only when even protected content cannot fit.
 
 ## How it works
 
@@ -90,7 +92,7 @@ Session and race-safety behavior:
 
 - Each session serializes Discord create/edit/delete operations through `pendingOp`.
 - Tool, agent, and `skill-harness` producer events use OpenClaw `runId` provenance together with `generation`, `ownerSessionKey`, `finalized`, and current-session checks, so a superseded run cannot mutate a replacement session before or after an awaited Discord request.
-- The renderer returns content plus a per-group display state. Confirmed Discord creates/edits advance confirmed state; exhausted network or final `5xx` outcomes advance a conservative safety floor without pretending delivery was confirmed; explicit rejection leaves both unchanged. Rendering always starts from the more degraded state, so ambiguous delivery cannot cause a later visual resurrection.
+- The renderer returns content plus a per-block display state. Confirmed Discord creates/edits advance confirmed state; exhausted network or final `5xx` outcomes advance a conservative safety floor without pretending delivery was confirmed; explicit rejection leaves both unchanged. Rendering always starts from the more degraded state, so ambiguous delivery cannot cause a later visual resurrection.
 - Status creates use Discord `nonce` with `enforce_nonce`. An uncertain create preserves and reuses the same nonce across later high-level retries until Discord returns a usable message ID or the session is reset. Because a nonce replay can return the earlier message after history has changed, the plugin immediately PATCHes the current rendered content before marking that retry confirmed. An uncertain PATCH disables the unchanged-content shortcut until a later PATCH is confirmed.
 - Finalized sessions do not create duplicate status messages from late tool events.
 - Direct-message sessions can resolve a Discord DM channel before sending.
@@ -178,7 +180,7 @@ This release targets OpenClaw/plugin SDK `2026.6.11`, declares `2026.6.11` as th
 | `maxDisplayMs`           | `number` | `600000` | Maximum time a status message may remain before force cleanup.     |
 | `orphanTtlMs`            | `number` | `300000` | Time to keep orphaned tool calls while waiting for a session link. |
 
-Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer tool/group entries, plus a protected main-agent failure when present, and up to 3 children independently inside each `active-memory` and `skill-harness` group.
+Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `active-memory` and `skill-harness` group.
 
 ## Companion workflows
 

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  createDefaultInternalGroupDisplayState,
+  createDefaultStatusDisplayState,
   isContentTooLong,
-  mergeInternalGroupDisplayStates,
+  mergeStatusDisplayStates,
   renderStatusContent,
   renderStatusContentWithState,
 } from "./render.js";
@@ -33,31 +33,29 @@ function stripAnsi(content: string): string {
   return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
 }
 
-describe("internal-group display state", () => {
-  it("creates fresh expanded defaults and merges each group monotonically", () => {
-    const first = createDefaultInternalGroupDisplayState();
-    const second = createDefaultInternalGroupDisplayState();
+describe("status block display state", () => {
+  it("creates fresh defaults and merges every block monotonically", () => {
+    const first = createDefaultStatusDisplayState();
+    const second = createDefaultStatusDisplayState();
 
-    expect(first).toEqual({
-      activeMemory: "expanded",
-      skillHarness: "expanded",
-    });
+    expect(first).toEqual({});
     expect(second).not.toBe(first);
     expect(
-      mergeInternalGroupDisplayStates(
-        { activeMemory: "collapsed", skillHarness: "expanded" },
-        { activeMemory: "expanded", skillHarness: "removed" },
+      mergeStatusDisplayStates(
+        { "group:active-memory": "collapsed", "tool:call_1": "removed" },
+        { "group:active-memory": "expanded", "tool:call_2": "collapsed" },
       ),
     ).toEqual({
-      activeMemory: "collapsed",
-      skillHarness: "removed",
+      "group:active-memory": "collapsed",
+      "tool:call_1": "removed",
+      "tool:call_2": "collapsed",
     });
   });
 
   it("accepts a deep-frozen prior state without mutation", () => {
     const prior = Object.freeze({
-      activeMemory: "collapsed" as const,
-      skillHarness: "removed" as const,
+      "group:active-memory": "collapsed" as const,
+      "group:skill-harness": "removed" as const,
     });
     const history = [
       makeEntry({
@@ -80,9 +78,27 @@ describe("internal-group display state", () => {
     expect(stripAnsi(result.content)).not.toContain("skill-harness");
     expect(result.displayState).toEqual(prior);
     expect(prior).toEqual({
-      activeMemory: "collapsed",
-      skillHarness: "removed",
+      "group:active-memory": "collapsed",
+      "group:skill-harness": "removed",
     });
+  });
+
+  it("applies prior state to a normal tool by stable display id", () => {
+    const result = renderStatusContentWithState(
+      [
+        makeEntry({
+          displayId: "stable-call",
+          toolCallId: "provider-call",
+          status: "completed",
+        }),
+      ],
+      true,
+      1_700,
+      { "tool:stable-call": "collapsed" },
+    );
+
+    expect(stripAnsi(result.content)).toContain("⚙️ bash ▸ ✔");
+    expect(stripAnsi(result.content)).not.toContain("command: ls");
   });
 });
 
@@ -177,9 +193,9 @@ describe("ANSI main-tool contract", () => {
     expect(result).toBe(
       [
         "```ansi",
-        `${BOLD_CYAN}⚙️ bash${RESET} ${GREEN}✔${RESET} ${YELLOW}[1s]${RESET}`,
-        `    ├─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
-        `    └─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
+        `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${GREEN}✔${RESET} ${YELLOW}[1s]${RESET}`,
+        `    ├─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
+        `    └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -192,9 +208,11 @@ describe("ANSI main-tool contract", () => {
     );
 
     expect(result).toBe(
-      ["```ansi", `${BOLD_CYAN}⚙️ bash${RESET} ${YELLOW}←${RESET}`, "```"].join(
-        "\n",
-      ),
+      [
+        "```ansi",
+        `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${YELLOW}←${RESET}`,
+        "```",
+      ].join("\n"),
     );
   });
 
@@ -213,7 +231,7 @@ describe("ANSI main-tool contract", () => {
     expect(result).toBe(
       [
         "```ansi",
-        `${BOLD_CYAN}⚙️ bash${RESET} ${RED}✘${RESET}`,
+        `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${RED}✘${RESET}`,
         `    └─ ${RED}error:${RESET} ${GREEN}permission denied${RESET}`,
         "```",
       ].join("\n"),
@@ -227,9 +245,11 @@ describe("ANSI main-tool contract", () => {
     );
 
     expect(result).toBe(
-      ["```ansi", `${BOLD_CYAN}⚙️ bash${RESET} ${CYAN}♻︎${RESET}`, "```"].join(
-        "\n",
-      ),
+      [
+        "```ansi",
+        `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+        "```",
+      ].join("\n"),
     );
   });
 });
@@ -268,20 +288,22 @@ describe("display-value formatting", () => {
     );
   });
 
-  it("uses head-tail truncation only for recognized path keys", () => {
-    const path = `${"a".repeat(20)}${"m".repeat(10)}${"z".repeat(50)}`;
+  it.each(["command", "result", "error", "topic", "path"])(
+    "applies the same 70-code-point prefix limit to %s",
+    (key) => {
+      const value = `${"a".repeat(70)}${"z".repeat(3)}`;
 
-    const result = stripAnsi(
-      renderStatusContent(
-        [makeEntry({ params: { path }, status: "completed" })],
-        true,
-      ),
-    );
+      const result = stripAnsi(
+        renderStatusContent(
+          [makeEntry({ params: { [key]: value }, status: "completed" })],
+          true,
+        ),
+      );
 
-    expect(result).toContain(
-      `path: ${"a".repeat(20)}...${"z".repeat(50)} (+10 chars)`,
-    );
-  });
+      expect(result).toContain(`${key}: ${"a".repeat(70)}... (+3 chars)`);
+      expect(result).not.toContain("z");
+    },
+  );
 
   it("sanitizes ANSI, control characters, fences, newlines, and tabs", () => {
     const value = "safe\u001b[31mred\u001b[0m```end\u0000\tline\nnext";
@@ -292,10 +314,70 @@ describe("display-value formatting", () => {
     );
     const plain = stripAnsi(result);
 
-    expect(plain).toContain("query: saferedˋˋˋend\\tline\\nnext");
+    expect(plain).toContain(
+      ["    └─ query: |", "        saferedˋˋˋend\\tline", "        next"].join(
+        "\n",
+      ),
+    );
     expect(result.match(/```/g)).toHaveLength(2);
     expect(result).not.toContain("\u0000");
     expect(result).not.toContain("\u001b[31mred");
+  });
+
+  it("sanitizes top-level and nested tool names before rendering", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          toolCallId: "active-memory:unsafe",
+          toolName: "active-memory:read\n\u001b[31mred```",
+          params: {},
+          status: "completed",
+        }),
+        makeEntry({
+          toolCallId: "unsafe",
+          toolName: "bash\n\u001b[31mred\u001b[0m```",
+          params: {},
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).toContain("read redˋˋˋ ✔");
+    expect(plain).toContain("bash redˋˋˋ ▾ ✔");
+    expect(result.match(/```/g)).toHaveLength(2);
+    expect(result).not.toContain("\u001b[31mred");
+  });
+
+  it("keeps malicious parameter keys on one safe tree line", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: { "bad\n\u001b[31mkey```": "value" },
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+    const plain = stripAnsi(result);
+
+    expect(plain).toContain("bad\\nkeyˋˋˋ: value");
+    expect(result.match(/```/g)).toHaveLength(2);
+    expect(result).not.toContain("\u001b[31mkey");
+  });
+
+  it("does not split surrogate pairs when truncating field values", () => {
+    const value = "😀".repeat(71);
+    const result = stripAnsi(
+      renderStatusContent(
+        [makeEntry({ params: { query: value }, status: "completed" })],
+        true,
+      ),
+    );
+
+    expect(result).toContain(`${"😀".repeat(70)}... (+1 char)`);
+    expect(result).not.toContain("�");
   });
 });
 
@@ -472,7 +554,7 @@ describe("compact scalar rows", () => {
 });
 
 describe("multiline values", () => {
-  it("renders command lines at the bottom with an unbroken connector", () => {
+  it("renders command lines in producer order with an unbroken connector", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -490,15 +572,15 @@ describe("multiline values", () => {
 
     expect(result).toContain(
       [
-        "    ├─ cwd: /repo",
-        "    └─ command: |",
-        "        pnpm run typecheck",
-        "        pnpm run test",
+        "    ├─ command: |",
+        "    │   pnpm run typecheck",
+        "    │   pnpm run test",
+        "    └─ cwd: /repo",
       ].join("\n"),
     );
   });
 
-  it("sorts multiple multiline-capable fields alphabetically after ordinary fields", () => {
+  it("preserves producer order after compact fields", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -517,21 +599,21 @@ describe("multiline values", () => {
       ),
     );
 
+    expect(result.indexOf("result: summary")).toBeLessThan(
+      result.indexOf("cwd: /repo"),
+    );
     expect(result.indexOf("cwd: /repo")).toBeLessThan(
-      result.indexOf("query: status renderer"),
-    );
-    expect(result.indexOf("query: status renderer")).toBeLessThan(
-      result.indexOf("command: pnpm run test"),
-    );
-    expect(result.indexOf("command: pnpm run test")).toBeLessThan(
       result.indexOf("error: warning"),
     );
     expect(result.indexOf("error: warning")).toBeLessThan(
-      result.indexOf("result: summary"),
+      result.indexOf("command: pnpm run test"),
+    );
+    expect(result.indexOf("command: pnpm run test")).toBeLessThan(
+      result.indexOf("query: status renderer"),
     );
   });
 
-  it("preserves complete multiline values when the status fits", () => {
+  it("applies one 70-code-point limit across a multiline value", () => {
     const command = [
       `${"a".repeat(70)}x`,
       "line 2",
@@ -548,18 +630,20 @@ describe("multiline values", () => {
       ),
     );
 
-    expect(result).toContain(`${"a".repeat(70)}x`);
-    expect(result).toContain("line 5");
-    expect(result).toContain("hidden");
-    expect(result).not.toMatch(/\(\+\d+ chars?\)/u);
+    const omitted = [...command.replaceAll("\r\n", "\n")].length - 70;
+    expect(result).toContain(`${"a".repeat(70)}... (+${omitted} chars)`);
+    expect(result).not.toContain(`${"a".repeat(70)}x`);
+    expect(result).not.toContain("line 2");
+    expect(result).not.toContain("hidden");
   });
 
-  it("preserves escaped tabs without applying a local width limit", () => {
+  it("counts escaped tabs against the shared field limit", () => {
+    const command = `${"\t".repeat(35)}x\nnext`;
     const result = stripAnsi(
       renderStatusContent(
         [
           makeEntry({
-            params: { command: `${"\t".repeat(35)}x\nnext` },
+            params: { command },
             status: "completed",
           }),
         ],
@@ -567,9 +651,9 @@ describe("multiline values", () => {
       ),
     );
 
-    expect(result).toContain(`${"\\t".repeat(35)}x`);
-    expect(result).toContain("next");
-    expect(result).not.toMatch(/\(\+\d+ chars?\)/u);
+    const omitted = [...command.replaceAll("\t", "\\t")].length - 70;
+    expect(result).toContain(`${"\\t".repeat(35)}... (+${omitted} chars)`);
+    expect(result).not.toContain("next");
   });
 });
 
@@ -630,7 +714,7 @@ describe("ANSI internal group contract", () => {
     );
   });
 
-  it("renders a main-agent failure in bold blue with an error child", () => {
+  it("renders a main-agent failure as a header-only protected block", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -645,12 +729,9 @@ describe("ANSI internal group contract", () => {
     );
 
     expect(result).toBe(
-      [
-        "```ansi",
-        `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`,
-        `    └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
-        "```",
-      ].join("\n"),
+      ["```ansi", `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`, "```"].join(
+        "\n",
+      ),
     );
   });
 });
@@ -889,7 +970,7 @@ describe("renderStatusContent", () => {
       ],
       false,
     );
-    expect(stripAnsi(result)).toContain("⚙️ bash ✘");
+    expect(stripAnsi(result)).toContain("⚙️ bash ▾ ✘");
     expect(stripAnsi(result)).toContain("error: permission denied");
   });
 
@@ -999,7 +1080,7 @@ describe("renderStatusContent", () => {
     );
   });
 
-  it("keeps a long single-line active-memory result complete for Discord to wrap", () => {
+  it("applies the shared field limit to an active-memory result", () => {
     const text = `result-${"x".repeat(240)}-end`;
     const entries: ToolEntry[] = [
       {
@@ -1011,8 +1092,10 @@ describe("renderStatusContent", () => {
     ];
 
     const result = stripAnsi(renderStatusContent(entries, true));
-    expect(result).toContain(`result: ${text}`);
-    expect(result).not.toMatch(/\(\+\d+ chars?\)/u);
+    const omitted = [...text].length - 70;
+    expect(result).toContain(
+      `result: ${[...text].slice(0, 70).join("")}... (+${omitted} chars)`,
+    );
   });
 
   it("renders subagent result entries after other nested tools regardless of history order", () => {
@@ -1398,7 +1481,7 @@ describe("renderStatusContent", () => {
     );
   });
 
-  it("renders skill-harness multiline-capable phase fields alphabetically", () => {
+  it("preserves skill-harness field order while rendering all multiline values", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "skill-harness:phase",
@@ -1417,10 +1500,10 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     const orderedFields = [
       "confidence: 0.9",
-      "reason: reason line 1",
-      "basis: basis line 1",
-      "result: |",
       "topic: |",
+      "result: |",
+      "reason: |",
+      "basis: |",
     ];
 
     for (let index = 1; index < orderedFields.length; index += 1) {
@@ -1448,10 +1531,8 @@ describe("renderStatusContent", () => {
     ];
 
     const result = stripAnsi(renderStatusContent(entries, true));
-    expect(result).not.toContain("basis: |");
-    expect(result).not.toContain("reason: |");
-    expect(result).toContain("basis: basis line 1\\nbasis line 2");
-    expect(result).toContain("reason: reason line 1\\nreason line 2");
+    expect(result).toContain("basis: |");
+    expect(result).toContain("reason: |");
     expect(result).toContain("result: |");
     expect(result).toContain("topic: |");
   });

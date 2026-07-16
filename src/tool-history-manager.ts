@@ -13,6 +13,7 @@ export class ToolHistoryManager {
    * Adds a new tool entry to the history
    */
   addEntry(history: ToolEntry[], entry: ToolEntry): void {
+    this.ensureDisplayId(entry);
     history.push(entry);
     this.trim(history);
   }
@@ -21,6 +22,7 @@ export class ToolHistoryManager {
    * Adds multiple tool entries to the history
    */
   addEntries(history: ToolEntry[], entries: ToolEntry[]): void {
+    entries.forEach((entry) => this.ensureDisplayId(entry));
     history.push(...entries);
     this.trim(history);
   }
@@ -32,10 +34,12 @@ export class ToolHistoryManager {
   upsertEntries(history: ToolEntry[], entries: ToolEntry[]): ToolEntry[] {
     const newEntries: ToolEntry[] = [];
     for (const entry of entries) {
+      this.ensureDisplayId(entry);
       const existingInHistory = history.find(
         (t) => t.toolCallId === entry.toolCallId,
       );
       if (existingInHistory) {
+        this.ensureDisplayId(existingInHistory);
         this.updateEntry(history, entry.toolCallId, {
           status: existingInHistory.status === "error" ? "error" : entry.status,
           params: entry.params,
@@ -75,7 +79,9 @@ export class ToolHistoryManager {
   ): boolean {
     const index = history.findIndex((t) => t.toolCallId === toolCallId);
     if (index !== -1) {
+      const displayId = history[index].displayId ?? history[index].toolCallId;
       Object.assign(history[index], updates);
+      history[index].displayId = displayId;
       return true;
     }
     return false;
@@ -122,6 +128,7 @@ export class ToolHistoryManager {
     prefix: SubagentToolName,
     replacements: ToolEntry[],
   ): void {
+    replacements.forEach((entry) => this.ensureDisplayId(entry));
     this.replaceGroupInPlace(
       history,
       (entry) => this.isSubagentEntry(entry, prefix),
@@ -145,5 +152,9 @@ export class ToolHistoryManager {
     const retained = history.filter((entry) => !predicate(entry));
     retained.splice(startIdx, 0, ...replacements);
     history.splice(0, history.length, ...retained);
+  }
+
+  private ensureDisplayId(entry: ToolEntry): void {
+    entry.displayId ??= entry.toolCallId;
   }
 }

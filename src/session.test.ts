@@ -209,7 +209,10 @@ describe("updateStatusMessage", () => {
       "call_keep",
     ]);
     expect(session.lastRenderedContent?.length).toBeLessThanOrEqual(120);
-    expect(session.lastRenderedContent).toMatch(/\(\+\d+ lines?\)/u);
+    expect(session.lastRenderedContent).not.toMatch(
+      /\(\+\d+ (?:items?|lines?)\)/u,
+    );
+    expect(session.lastRenderedContent).toContain("▸");
     expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
   });
 
@@ -261,9 +264,11 @@ describe("updateStatusMessage", () => {
     });
     defaultStore.sessions.set(session.contextKey, session);
 
-    await updateStatusMessage(session, () => "token", true, undefined, 400);
+    await updateStatusMessage(session, () => "token", true, undefined, 100);
 
-    expect(session.confirmedDisplayState?.activeMemory).toBe("removed");
+    expect(session.confirmedDisplayState?.["group:active-memory"]).toBe(
+      "removed",
+    );
     expect(session.monotonicSafetyFloor).toBeUndefined();
   });
 
@@ -307,13 +312,15 @@ describe("updateStatusMessage", () => {
       () => "token",
       true,
       undefined,
-      400,
+      100,
     );
     await vi.runAllTimersAsync();
     await uncertainUpdate;
 
     expect(session.confirmedDisplayState).toBeUndefined();
-    expect(session.monotonicSafetyFloor?.activeMemory).toBe("removed");
+    expect(session.monotonicSafetyFloor?.["group:active-memory"]).toBe(
+      "removed",
+    );
     expect(session.lastRenderedContent).toBe("old-content");
 
     session.toolHistory = createBoundedHistory().slice(0, 2);
@@ -323,7 +330,9 @@ describe("updateStatusMessage", () => {
       String((fetchMock.mock.calls[3]?.[1] as RequestInit).body),
     ) as { content: string };
     expect(retryBody.content).not.toContain("active-memory");
-    expect(session.confirmedDisplayState?.activeMemory).toBe("removed");
+    expect(session.confirmedDisplayState?.["group:active-memory"]).toBe(
+      "removed",
+    );
   });
 
   it("does not use the unchanged-content shortcut after an uncertain edit", async () => {
@@ -383,20 +392,22 @@ describe("updateStatusMessage", () => {
       () => "token",
       true,
       undefined,
-      400,
+      100,
     );
     await vi.runAllTimersAsync();
     await uncertainUpdate;
     const uncertainNonce = session.statusCreateNonce;
 
     expect(uncertainNonce).toEqual(expect.any(String));
-    expect(session.monotonicSafetyFloor?.activeMemory).toBe("removed");
+    expect(session.monotonicSafetyFloor?.["group:active-memory"]).toBe(
+      "removed",
+    );
 
-    await updateStatusMessage(session, () => "", true, undefined, 400);
+    await updateStatusMessage(session, () => "", true, undefined, 100);
     expect(session.statusCreateNonce).toBe(uncertainNonce);
 
     session.toolHistory = createBoundedHistory().slice(0, 2);
-    await updateStatusMessage(session, () => "token", true, undefined, 400);
+    await updateStatusMessage(session, () => "token", true, undefined, 100);
 
     const postCalls = fetchMock.mock.calls.filter(
       ([_, init]) => (init as RequestInit).method === "POST",
@@ -408,7 +419,9 @@ describe("updateStatusMessage", () => {
     expect((fetchMock.mock.calls[4]?.[1] as RequestInit).method).toBe("PATCH");
     expect(session.statusMessageId).toBe("status_1");
     expect(session.statusCreateNonce).toBeUndefined();
-    expect(session.confirmedDisplayState?.activeMemory).toBe("removed");
+    expect(session.confirmedDisplayState?.["group:active-memory"]).toBe(
+      "removed",
+    );
   });
 
   it("does not commit a deferred PATCH outcome into a replacement session", async () => {

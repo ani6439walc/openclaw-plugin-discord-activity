@@ -9,7 +9,7 @@ import { createMessageNonce } from "./discord-api.js";
 import { createSessionStore } from "./store.js";
 import { createOrphanManager } from "./orphans.js";
 import {
-  mergeInternalGroupDisplayStates,
+  mergeStatusDisplayStates,
   renderStatusContentWithState,
 } from "./render.js";
 import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
@@ -36,7 +36,7 @@ function resetSessionState(session: SessionEntry) {
 }
 
 function getSessionDisplayFloor(session: SessionEntry) {
-  return mergeInternalGroupDisplayStates(
+  return mergeStatusDisplayStates(
     session.confirmedDisplayState,
     session.monotonicSafetyFloor,
   );
@@ -48,14 +48,14 @@ function commitDisplayState(
   outcome: "applied" | "uncertain",
 ) {
   if (outcome === "applied") {
-    session.confirmedDisplayState = mergeInternalGroupDisplayStates(
+    session.confirmedDisplayState = mergeStatusDisplayStates(
       session.confirmedDisplayState,
       displayState,
     );
     return;
   }
 
-  session.monotonicSafetyFloor = mergeInternalGroupDisplayStates(
+  session.monotonicSafetyFloor = mergeStatusDisplayStates(
     session.monotonicSafetyFloor,
     displayState,
   );

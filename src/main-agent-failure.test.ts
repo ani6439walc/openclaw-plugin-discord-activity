@@ -35,7 +35,7 @@ describe("main agent failure rendering", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders internal groups, agent failure, then normal tools", () => {
+  it("renders internal groups, normal tools, then a header-only agent failure", () => {
     const result = renderStatusContent(
       [
         entry({
@@ -64,16 +64,16 @@ describe("main agent failure rendering", () => {
 
     const plain = stripAnsi(result);
     expect(plain).toContain("💥 agent ✘");
-    expect(plain).toContain("error: provider timeout");
-    expect(plain).toContain("bash ✘");
+    expect(plain).not.toContain("error: provider timeout");
+    expect(plain).toContain("bash ▾ ✘");
     expect(plain).toContain("error: permission denied");
     expect(result.indexOf("active-memory")).toBeLessThan(
       result.indexOf("skill-harness"),
     );
     expect(result.indexOf("skill-harness")).toBeLessThan(
-      result.indexOf("💥 agent"),
+      result.indexOf("bash"),
     );
-    expect(result.indexOf("💥 agent")).toBeLessThan(result.indexOf("bash"));
+    expect(result.indexOf("bash")).toBeLessThan(result.indexOf("💥 agent"));
   });
 
   it("does not invent an error detail when the failure has none", () => {
@@ -92,7 +92,7 @@ describe("main agent failure rendering", () => {
     expect(stripAnsi(result)).not.toContain("error:");
   });
 
-  it("does not count the agent failure against the normal tool display limit", () => {
+  it("counts the protected agent failure in the shared six-block limit", () => {
     const normalEntries = Array.from({ length: 7 }, (_, index) =>
       entry({
         toolCallId: `call_${index}`,
@@ -113,7 +113,8 @@ describe("main agent failure rendering", () => {
 
     expect(stripAnsi(result)).toContain("💥 agent ✘");
     expect(result).not.toContain("normal_0");
-    for (let index = 1; index < 7; index += 1) {
+    expect(result).not.toContain("normal_1");
+    for (let index = 2; index < 7; index += 1) {
       expect(result).toContain(`normal_${index}`);
     }
   });
@@ -152,7 +153,7 @@ describe("main agent failure rendering", () => {
     );
     const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
     expect(plainContent).toContain("💥 agent ✘");
-    expect(plainContent).toContain("error: provider timeout");
+    expect(plainContent).not.toContain("error: provider timeout");
     expect(session?.clearTimer).toBeDefined();
   });
 

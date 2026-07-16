@@ -70,10 +70,6 @@ export function getToolIcon(name: string): string {
 }
 
 const SINGLE_LINE_DISPLAY_LIMIT = 70;
-const PATH_HEAD_LIMIT = 20;
-const PATH_TAIL_LIMIT = 50;
-const MULTILINE_DISPLAY_FIELDS = new Set(["command", "error", "result"]);
-const SKILL_HARNESS_MULTILINE_DISPLAY_FIELDS = new Set(["result", "topic"]);
 
 const COMPACT_STRING_FIELDS_BY_TOOL: Readonly<
   Record<string, readonly string[]>
@@ -88,24 +84,10 @@ export type DisplayField = {
   key: string;
   value: string;
   multilineLines?: string[];
-  multilineCapable: boolean;
-  sourceCharacters?: readonly string[];
-  sourceIsMultiline?: boolean;
   omittedHint?: string;
   truncated: boolean;
   compactEligible: boolean;
 };
-
-function isPathKey(key: string): boolean {
-  return (
-    key === "path" ||
-    key === "file_path" ||
-    key === "filePath" ||
-    key === "workdir" ||
-    key === "cwd" ||
-    /(?:_|-)path$/u.test(key)
-  );
-}
 
 function serializeDisplayValue(value: unknown): string {
   if (typeof value === "string") return value || '""';
@@ -129,111 +111,47 @@ function omissionHint(count: number): string {
   return ` (+${count} ${count === 1 ? "char" : "chars"})`;
 }
 
-function formatSingleLineValue(
-  key: string,
+function formatDisplayValue(
   value: unknown,
-): Pick<DisplayField, "value" | "omittedHint" | "truncated"> {
-  const serialized = sanitizeInlineText(serializeDisplayValue(value));
-  const characters = [...serialized];
-  if (characters.length <= SINGLE_LINE_DISPLAY_LIMIT) {
-    return { value: serialized, truncated: false };
-  }
-
-  if (isPathKey(key)) {
-    const omitted = characters.length - PATH_HEAD_LIMIT - PATH_TAIL_LIMIT;
-    return {
-      value: `${characters.slice(0, PATH_HEAD_LIMIT).join("")}...${characters.slice(-PATH_TAIL_LIMIT).join("")}`,
-      omittedHint: omissionHint(omitted),
-      truncated: true,
-    };
-  }
-
-  const omitted = characters.length - SINGLE_LINE_DISPLAY_LIMIT;
-  return {
-    value: `${characters.slice(0, SINGLE_LINE_DISPLAY_LIMIT).join("")}...`,
-    omittedHint: omissionHint(omitted),
-    truncated: true,
-  };
-}
-
-function renderMultilineCapableValue(
-  sourceCharacters: readonly string[],
-  sourceIsMultiline: boolean,
-  retainedCharacterCount = sourceCharacters.length,
 ): Pick<
   DisplayField,
   "value" | "multilineLines" | "omittedHint" | "truncated"
-> {
-  const retainedCharacters = sourceCharacters.slice(0, retainedCharacterCount);
+> & { isMultiline: boolean } {
+  const sourceValue = sanitizeVisibleText(serializeDisplayValue(value))
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n");
+  const sourceIsMultiline =
+    typeof value === "string" && sourceValue.includes("\n");
+  const sourceCharacters = [
+    ...(sourceIsMultiline
+      ? sourceValue.replaceAll("\t", "\\t")
+      : sanitizeInlineText(sourceValue)),
+  ];
+  const retainedCharacters = sourceCharacters.slice(
+    0,
+    SINGLE_LINE_DISPLAY_LIMIT,
+  );
   const omitted = sourceCharacters.length - retainedCharacters.length;
   const retainedValue = retainedCharacters.join("");
   const suffix = omitted > 0 ? "..." : "";
 
   if (sourceIsMultiline) {
-    const multilineLines = retainedValue
-      .split("\n")
-      .map((line) => line.replaceAll("\t", "\\t"));
+    const multilineLines = retainedValue.split("\n");
     multilineLines[multilineLines.length - 1] += suffix;
     return {
       value: "|",
       multilineLines,
       omittedHint: omitted > 0 ? omissionHint(omitted) : undefined,
       truncated: omitted > 0,
+      isMultiline: true,
     };
   }
 
   return {
-    value: `${sanitizeInlineText(retainedValue)}${suffix}`,
+    value: `${retainedValue}${suffix}`,
     omittedHint: omitted > 0 ? omissionHint(omitted) : undefined,
     truncated: omitted > 0,
-  };
-}
-
-function formatMultilineCapableValue(
-  value: unknown,
-): Pick<
-  DisplayField,
-  | "value"
-  | "multilineLines"
-  | "omittedHint"
-  | "sourceCharacters"
-  | "sourceIsMultiline"
-  | "truncated"
-> {
-  const sourceValue = sanitizeVisibleText(serializeDisplayValue(value))
-    .replaceAll("\r\n", "\n")
-    .replaceAll("\r", "\n");
-  const sourceIsMultiline =
-    typeof value === "string" && sourceValue.includes("\n");
-  const sourceCharacters = [...sourceValue];
-  return {
-    ...renderMultilineCapableValue(sourceCharacters, sourceIsMultiline),
-    sourceCharacters,
-    sourceIsMultiline,
-  };
-}
-
-export function limitDisplayField(
-  field: DisplayField,
-  retainedCharacterCount: number,
-): DisplayField {
-  if (
-    field.sourceCharacters === undefined ||
-    field.sourceIsMultiline === undefined
-  ) {
-    return field;
-  }
-  const boundedRetainedCount = Math.max(
-    0,
-    Math.min(retainedCharacterCount, field.sourceCharacters.length),
-  );
-  return {
-    ...field,
-    ...renderMultilineCapableValue(
-      field.sourceCharacters,
-      field.sourceIsMultiline,
-      boundedRetainedCount,
-    ),
+    isMultiline: false,
   };
 }
 
@@ -247,17 +165,6 @@ function getCompactStringFields(
   return COMPACT_STRING_FIELDS_BY_TOOL[displayName.toLowerCase()] ?? [];
 }
 
-function isMultilineDisplayField(
-  key: string,
-  toolName: string | undefined,
-): boolean {
-  return (
-    MULTILINE_DISPLAY_FIELDS.has(key) ||
-    (toolName?.startsWith("skill-harness") === true &&
-      SKILL_HARNESS_MULTILINE_DISPLAY_FIELDS.has(key))
-  );
-}
-
 export function formatDisplayFields(
   params: unknown,
   options: { toolName?: string } = {},
@@ -268,13 +175,7 @@ export function formatDisplayFields(
   return Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([rawKey, value]) => {
-      const multilineCapable = isMultilineDisplayField(
-        rawKey,
-        options.toolName,
-      );
-      const formatted = multilineCapable
-        ? formatMultilineCapableValue(value)
-        : formatSingleLineValue(rawKey, value);
+      const { isMultiline, ...formatted } = formatDisplayValue(value);
       const numericText =
         typeof value === "number" && Number.isFinite(value)
           ? String(value)
@@ -282,9 +183,8 @@ export function formatDisplayFields(
       return {
         key: sanitizeInlineText(rawKey),
         ...formatted,
-        multilineCapable,
         compactEligible:
-          !multilineCapable &&
+          !isMultiline &&
           (typeof value === "boolean" ||
             (numericText !== "" && [...numericText].length <= 12) ||
             (typeof value === "string" &&

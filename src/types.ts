@@ -9,6 +9,7 @@ export type ChannelMeta = {
 
 export type ToolEntry = {
   toolCallId: string;
+  displayId?: string;
   toolName: string;
   params: any;
   status: "pending" | "completed" | "error" | "orphan-completed";
@@ -19,12 +20,9 @@ export type ToolEntry = {
 
 export type SubagentToolName = "active-memory" | "skill-harness";
 
-export type InternalGroupDisplayLevel = "expanded" | "collapsed" | "removed";
+export type StatusBlockDisplayLevel = "expanded" | "collapsed" | "removed";
 
-export type InternalGroupDisplayState = {
-  activeMemory: InternalGroupDisplayLevel;
-  skillHarness: InternalGroupDisplayLevel;
-};
+export type StatusDisplayState = Record<string, StatusBlockDisplayLevel>;
 
 export type AgentMessageContentItem = {
   type?: string;
@@ -66,8 +64,8 @@ export type SessionEntry = {
   statusCreateNonce?: string;
   lastRenderedContent?: string;
   contentDeliveryUncertain?: boolean;
-  confirmedDisplayState?: InternalGroupDisplayState;
-  monotonicSafetyFloor?: InternalGroupDisplayState;
+  confirmedDisplayState?: StatusDisplayState;
+  monotonicSafetyFloor?: StatusDisplayState;
   finalized?: boolean;
   toolHistory: ToolEntry[];
   pendingOp?: Promise<void>;
@@ -124,7 +122,7 @@ export type StatusRenderResult = {
 
 export type StatefulStatusRenderResult = {
   content: string;
-  displayState: InternalGroupDisplayState;
+  displayState: StatusDisplayState;
 };
 
 export type MessageReceivedEvent = {

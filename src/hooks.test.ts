@@ -507,7 +507,7 @@ describe("createHookHandlers", () => {
         }),
       ]);
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "memory_search ✔",
+        "memory_search ▾ ✔",
       );
       expect(session?.lastRenderedContent).not.toContain(
         "openclawmemory_search",
@@ -536,7 +536,7 @@ describe("createHookHandlers", () => {
 
       const session = store.sessions.get("discord:channel:123");
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "skill_view ←",
+        "skill_view ▾ ←",
       );
       expect(session?.lastRenderedContent).not.toContain("openclawskill_view");
     });
@@ -597,7 +597,7 @@ describe("createHookHandlers", () => {
         }),
       ]);
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "memory_search ✔",
+        "memory_search ▾ ✔",
       );
       expect(session?.lastRenderedContent).not.toContain(
         "openclawmemory_search",
@@ -843,7 +843,7 @@ describe("createHookHandlers", () => {
         }),
       );
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "🚀 exec ✔ [538ms]",
+        "🚀 exec ▾ ✔ [538ms]",
       );
     });
 
@@ -901,7 +901,7 @@ describe("createHookHandlers", () => {
         }),
       );
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "🚀 exec ✔ [1.5s]",
+        "🚀 exec ▾ ✔ [1.5s]",
       );
     });
 
@@ -944,7 +944,7 @@ describe("createHookHandlers", () => {
         }),
       );
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "🚀 exec ♻︎ [250ms]",
+        "🚀 exec ▾ ♻︎ [250ms]",
       );
     });
 
@@ -987,7 +987,7 @@ describe("createHookHandlers", () => {
         }),
       );
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("bash ✘ [100ms]");
+      expect(plainContent).toContain("bash ▾ ✘ [100ms]");
       expect(plainContent).toContain("permission denied");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });

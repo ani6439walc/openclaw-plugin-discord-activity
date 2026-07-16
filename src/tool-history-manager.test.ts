@@ -29,6 +29,27 @@ describe("ToolHistoryManager", () => {
 
     expect(history).toHaveLength(1);
     expect(history[0]).toEqual(entry);
+    expect(history[0].displayId).toBe("call123");
+  });
+
+  it("preserves display identity when a provider call id changes", () => {
+    const history: ToolEntry[] = [];
+    manager.addEntry(history, {
+      toolCallId: "before-call",
+      toolName: "web_search",
+      params: {},
+      status: "pending",
+    });
+
+    manager.updateEntry(history, "before-call", {
+      toolCallId: "after-call",
+      status: "completed",
+    });
+
+    expect(history[0]).toMatchObject({
+      displayId: "before-call",
+      toolCallId: "after-call",
+    });
   });
 
   it("should update an existing tool entry", () => {
