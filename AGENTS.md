@@ -54,7 +54,7 @@ Keep the current module boundaries:
 - `openclaw.plugin.json`: manifest-visible activation and config schema.
 - `README.md`: user-facing behavior, config, architecture, and workflows.
 
-Latest codebase inspection: this repo is a small TypeScript plugin, not a large application. Excluding dependencies/build/indexes, pygount reports about 4.0k TypeScript code lines. Direct line counts show about 2.8k runtime TypeScript lines and 3.2k test/tooling TypeScript lines, so tests remain larger than runtime (`~1.16x`). The main complexity hotspot is `src/hooks.ts`; keep new behavior out of it unless hook orchestration genuinely belongs there.
+Latest codebase inspection: this repo is a small TypeScript plugin, not a large application. Excluding dependencies/build/indexes, pygount reports about 2.9k runtime TypeScript code lines and 4.6k test/tooling code lines. Direct line counts report about 4.1k runtime lines and 7.2k test/tooling lines, so tests remain larger than runtime. The main complexity hotspot is `src/hooks.ts`; keep new behavior out of it unless hook orchestration genuinely belongs there.
 
 ## Runtime Behavior
 
@@ -98,7 +98,7 @@ Important behavior to preserve:
 - Root tree connectors begin under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise begin under the second text character of their parent text.
 - Every visible field keeps at most 70 Unicode code points after sanitization and serialization. Truncated values append an exact gray `(+N chars)` hint (`char` when singular) without splitting surrogate pairs. Preserve producer field order and supplied line breaks within the fixed prefix; do not add hard wraps.
 - Bounded output counts ANSI sequences and fence overhead, emits no global `(+N items)` or `(+N lines)` marker, and ends with a complete ANSI fence. Direct renderer limits below the 12-code-unit empty-fence minimum are invalid; an empty fence is the final fallback when even protected content cannot fit. Runtime config remains constrained to 100–1700.
-- Compact metadata rows may include booleans, finite numeric values of up to 12 code points, and short string enums explicitly scoped by tool or `skill-harness` phase in `COMPACT_STRING_FIELDS_BY_TOOL`. Do not make string field names globally compact: unrelated tools may use the same key for long free-form text.
+- Compact metadata rows include any single-line fields whose total formatted width (key + value + colon/space/omission hint) is less than or equal to 34 characters, regardless of their data types.
 
 ## Coding Rules
 

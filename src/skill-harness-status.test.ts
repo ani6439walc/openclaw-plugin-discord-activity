@@ -75,13 +75,15 @@ describe("parseSkillHarnessPipelineEntry", () => {
     expect(entry?.error).toBeUndefined();
   });
 
-  it("preserves completed reason, basis, and result fields", () => {
+  it("preserves completed public fields while filtering out basis and reason", () => {
     const entry = parseSkillHarnessPipelineEntry(
       makePipelineEvent({
         state: "completed",
         reason: "classification matched",
         basis: "explicit request",
         result: "generated hint",
+        topic: "User greeting",
+        confidence: 0.95,
         error: "stale failure",
       }),
     );
@@ -90,13 +92,15 @@ describe("parseSkillHarnessPipelineEntry", () => {
       expect.objectContaining({
         status: "completed",
         params: {
-          reason: "classification matched",
-          basis: "explicit request",
           result: "generated hint",
+          topic: "User greeting",
+          confidence: 0.95,
         },
       }),
     );
     expect(entry?.error).toBeUndefined();
+    expect(entry?.params).not.toHaveProperty("reason");
+    expect(entry?.params).not.toHaveProperty("basis");
   });
 
   it("maps pipeline lifecycle events to the parent entry with producer duration", () => {

@@ -1,5 +1,4 @@
 import { sanitizeInlineText, sanitizeVisibleText } from "./ansi.js";
-import { getDisplayToolName } from "./tool-name.js";
 
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
@@ -70,15 +69,6 @@ export function getToolIcon(name: string): string {
 }
 
 const SINGLE_LINE_DISPLAY_LIMIT = 70;
-
-const COMPACT_STRING_FIELDS_BY_TOOL: Readonly<
-  Record<string, readonly string[]>
-> = {
-  "skill-harness:topic-triage": ["domain", "complexity"],
-  "skill-harness:intent-classify": ["intent", "complexity"],
-  memory_search: ["corpus"],
-  web_fetch: ["extractMode"],
-};
 
 export type DisplayField = {
   key: string;
@@ -155,14 +145,19 @@ function formatDisplayValue(
   };
 }
 
-function getCompactStringFields(
-  toolName: string | undefined,
-): readonly string[] {
-  if (!toolName) return [];
-  const displayName = toolName.startsWith("active-memory:")
-    ? getDisplayToolName(toolName.slice("active-memory:".length))
-    : getDisplayToolName(toolName);
-  return COMPACT_STRING_FIELDS_BY_TOOL[displayName.toLowerCase()] ?? [];
+function isPathField(key: string): boolean {
+  const k = key.toLowerCase();
+  return k.includes("path") || k === "cwd" || k === "dir" || k === "directory";
+}
+
+function getSortWeight(key: string): number {
+  const k = key.toLowerCase();
+  if (isPathField(key)) return 1;
+  if (k === "command") return 2;
+  if (k === "topic") return 3;
+  if (k === "result") return 4;
+  if (k === "error") return 5;
+  return 0;
 }
 
 export function formatDisplayFields(
@@ -170,28 +165,30 @@ export function formatDisplayFields(
   options: { toolName?: string } = {},
 ): DisplayField[] {
   if (!params || typeof params !== "object") return [];
-  const compactStringFields = getCompactStringFields(options.toolName);
 
-  return Object.entries(params)
+  const fields = Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([rawKey, value]) => {
       const { isMultiline, ...formatted } = formatDisplayValue(value);
-      const numericText =
-        typeof value === "number" && Number.isFinite(value)
-          ? String(value)
-          : "";
+      const key = sanitizeInlineText(rawKey);
+      const width = [
+        ...`${key}: ${formatted.value}${formatted.omittedHint ?? ""}`,
+      ].length;
       return {
-        key: sanitizeInlineText(rawKey),
+        key,
         ...formatted,
-        compactEligible:
-          !isMultiline &&
-          (typeof value === "boolean" ||
-            (numericText !== "" && [...numericText].length <= 12) ||
-            (typeof value === "string" &&
-              !formatted.truncated &&
-              compactStringFields.includes(rawKey))),
+        compactEligible: !isMultiline && width <= 34,
       };
     });
+
+  fields.sort((a, b) => {
+    const wA = getSortWeight(a.key);
+    const wB = getSortWeight(b.key);
+    if (wA !== wB) return wA - wB;
+    return a.key.localeCompare(b.key, "en");
+  });
+
+  return fields;
 }
 
 const MULTILINE_PARAM_MAX_CHARACTERS = 750;

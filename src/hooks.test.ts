@@ -1436,7 +1436,7 @@ describe("createHookHandlers", () => {
       expect(plainContent).toContain("result: matched greeting keyword");
       expect(plainContent).not.toContain("matchedKeyword");
       expect(plainContent).not.toContain("score:");
-      expect(plainContent).toContain("reason: exact keyword matched");
+      expect(plainContent).not.toContain("reason");
       expect(plainContent).toContain("prompt-prefix-injection ✔");
       expect(plainContent).not.toContain("rawContext");
       expect(plainContent).not.toMatch(/fastpath-a[12]/i);

@@ -63,6 +63,28 @@ describe("bounded status rendering", () => {
     assertNoGlobalOmissionMarker(result.content);
   });
 
+  it("keeps concurrent pending headers while collapsing them from top to bottom", () => {
+    const history = [
+      makeEntry("first", { detail: "a".repeat(70) }, { status: "pending" }),
+      makeEntry("second", { detail: "b".repeat(70) }, { status: "pending" }),
+      makeEntry("third", { detail: "c".repeat(70) }, { status: "pending" }),
+    ];
+    const expanded = renderStatusContent(history, false);
+    const result = renderStatusContentWithState(
+      history,
+      false,
+      expanded.length - 1,
+    );
+    const plain = stripAnsi(result.content);
+
+    expect(result.displayState).toEqual({ "tool:first": "collapsed" });
+    expect(plain).toContain("tool_first ▸ ←");
+    expect(plain).toContain("tool_second ▾ ←");
+    expect(plain).toContain("tool_third ▾ ←");
+    expect(plain).not.toContain("detail: a");
+    expect(plain).toContain("detail: b");
+  });
+
   it("collapses every block before removing the oldest block", () => {
     const history = [
       makeEntry("first", { detail: "a".repeat(70) }),

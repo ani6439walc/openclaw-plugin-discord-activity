@@ -194,8 +194,7 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${GREEN}✔${RESET} ${YELLOW}[1s]${RESET}`,
-        `    ├─ ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
-        `    └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET}`,
+        `    └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET} · ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -403,10 +402,8 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "    ├─ limit: 50 · offset: 0 · caseSensitive: false\n" +
-        "    ├─ retries: 2\n" +
-        "    ├─ query: renderStatusContent\n" +
-        "    └─ path: src",
+      "    ├─ caseSensitive: false · limit: 50 · offset: 0\n" +
+        "    └─ query: renderStatusContent · retries: 2 · path: src",
     );
   });
 
@@ -445,11 +442,11 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      `${MAGENTA}limit:${RESET} ${GREEN}50${RESET} · ${MAGENTA}enabled:${RESET} ${GREEN}true${RESET}`,
+      `${MAGENTA}enabled:${RESET} ${GREEN}true${RESET} · ${MAGENTA}limit:${RESET} ${GREEN}50${RESET}`,
     );
   });
 
-  it("packs allowlisted topic-triage enums before multiline-capable fields", () => {
+  it("packs topic-triage metadata fields based on width", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -472,14 +469,13 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "changed: false · domain: health · complexity: low\n" +
-        "        ├─ reason: same-topic\n" +
-        '        ├─ keywords: ["weight","clinic"]\n' +
+      "changed: false · complexity: low · domain: health\n" +
+        '        ├─ keywords: ["weight","clinic"] · reason: same-topic\n' +
         "        └─ topic: Update corrected weight tracking",
     );
   });
 
-  it("packs allowlisted intent-classify enum fields", () => {
+  it("packs intent-classify metadata fields based on width", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -499,8 +495,7 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "intent: update · complexity: low\n" +
-        "        └─ reason: explicit correction",
+      "        └─ complexity: low · intent: update · reason: explicit correction",
     );
   });
 
@@ -526,15 +521,13 @@ describe("compact scalar rows", () => {
         ),
       );
 
-      const compactRow = "minScore: 0.2 · maxResults: 5 · corpus: memory";
-      expect(result).toContain(compactRow);
-      expect(result.indexOf(compactRow)).toBeLessThan(
-        result.indexOf("query: weight clinic"),
-      );
+      const firstRow = "corpus: memory · maxResults: 5 · minScore: 0.2";
+      expect(result).toContain(firstRow);
+      expect(result).toContain("query: weight clinic");
     },
   );
 
-  it("does not compact an allowlisted key for an unrelated tool", () => {
+  it("compacts keys based on width regardless of tool allowlist", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -548,8 +541,7 @@ describe("compact scalar rows", () => {
       ),
     );
 
-    expect(result).toContain("    ├─ limit: 5\n    └─ corpus: memory");
-    expect(result).not.toContain("limit: 5 · corpus: memory");
+    expect(result).toContain("    └─ corpus: memory · limit: 5");
   });
 });
 
@@ -572,15 +564,15 @@ describe("multiline values", () => {
 
     expect(result).toContain(
       [
-        "    ├─ command: |",
-        "    │   pnpm run typecheck",
-        "    │   pnpm run test",
-        "    └─ cwd: /repo",
+        "    ├─ cwd: /repo",
+        "    └─ command: |",
+        "        pnpm run typecheck",
+        "        pnpm run test",
       ].join("\n"),
     );
   });
 
-  it("preserves producer order after compact fields", () => {
+  it("sorts fields by weight and alphabetical order", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -599,18 +591,12 @@ describe("multiline values", () => {
       ),
     );
 
-    expect(result.indexOf("result: summary")).toBeLessThan(
-      result.indexOf("cwd: /repo"),
-    );
-    expect(result.indexOf("cwd: /repo")).toBeLessThan(
-      result.indexOf("error: warning"),
-    );
-    expect(result.indexOf("error: warning")).toBeLessThan(
-      result.indexOf("command: pnpm run test"),
-    );
-    expect(result.indexOf("command: pnpm run test")).toBeLessThan(
-      result.indexOf("query: status renderer"),
-    );
+    const firstRow =
+      "query: status renderer · cwd: /repo · command: pnpm run test";
+    const secondRow = "result: summary · error: warning";
+    expect(result).toContain(firstRow);
+    expect(result).toContain(secondRow);
+    expect(result.indexOf(firstRow)).toBeLessThan(result.indexOf(secondRow));
   });
 
   it("applies one 70-code-point limit across a multiline value", () => {
@@ -696,8 +682,7 @@ describe("ANSI internal group contract", () => {
       [
         "🧩 active-memory ▾ ✘",
         "    ├─ memory_search ✔ [100ms]",
-        "    │   ├─ limit: 5",
-        "    │   └─ query: hello",
+        "    │   └─ limit: 5 · query: hello",
         "    ├─ memory_write ✘",
         "    │   └─ error: permission denied",
         "    ├─ result: |",
@@ -1500,10 +1485,10 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     const orderedFields = [
       "confidence: 0.9",
+      "basis: |",
+      "reason: |",
       "topic: |",
       "result: |",
-      "reason: |",
-      "basis: |",
     ];
 
     for (let index = 1; index < orderedFields.length; index += 1) {

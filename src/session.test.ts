@@ -6,7 +6,8 @@ import {
   deferred,
   flushPromises,
 } from "../test-helpers.js";
-import { renderStatusContent } from "./render.js";
+import { renderStatusContent, renderStatusContentWithState } from "./render.js";
+import { ToolHistoryManager } from "./tool-history-manager.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -270,6 +271,60 @@ describe("updateStatusMessage", () => {
       "removed",
     );
     expect(session.monotonicSafetyFloor).toBeUndefined();
+  });
+
+  it("keeps an applied ordinary-tool removal after dedupe rewrites its toolCallId", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const toolHistory = [
+      createToolEntry({
+        toolCallId: "call_old",
+        toolName: "old_tool",
+        params: { detail: "a".repeat(70) },
+      }),
+      createToolEntry({
+        toolCallId: "call_newer",
+        toolName: "newer_tool",
+        params: { detail: "b".repeat(70) },
+      }),
+    ];
+    const retainedHeaderLength = renderStatusContentWithState(
+      [toolHistory[1]],
+      true,
+      1_700,
+      { "tool:call_newer": "collapsed" },
+    ).content.length;
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory,
+      lastRenderedContent: "old-content",
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(
+      session,
+      () => "token",
+      true,
+      undefined,
+      retainedHeaderLength,
+    );
+
+    expect(session.confirmedDisplayState?.["tool:call_old"]).toBe("removed");
+    const historyManager = new ToolHistoryManager();
+    expect(
+      historyManager.updateEntry(session.toolHistory, "call_old", {
+        toolCallId: "call_rewritten",
+        params: { detail: "short" },
+      }),
+    ).toBe(true);
+    expect(session.toolHistory[0].displayId).toBe("call_old");
+
+    await updateStatusMessage(session, () => "token", true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(session.lastRenderedContent).not.toContain("old_tool");
+    expect(session.lastRenderedContent).toContain("newer_tool");
+    expect(session.confirmedDisplayState?.["tool:call_old"]).toBe("removed");
   });
 
   it("does not advance display state after a rejected edit", async () => {
