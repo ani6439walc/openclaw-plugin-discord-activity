@@ -41,7 +41,7 @@ describe("buildIsPluginEnabledForAgent", () => {
     );
     const notAllowed = buildIsPluginEnabledForAgent(
       createConfig({
-        allow: ["discord-tool-status"],
+        allow: ["discord-activity"],
         entries: {
           "active-memory": {
             enabled: true,

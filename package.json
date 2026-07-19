@@ -1,7 +1,7 @@
 {
-  "name": "discord-tool-status",
-  "displayName": "Discord Tool Status",
-  "description": "Shows live tool-call status as a Discord message that is updated and deleted when the agent finishes.",
+  "name": "discord-activity",
+  "displayName": "Discord Activity",
+  "description": "Shows live agent and tool activity as a Discord message that is updated and deleted when the agent finishes.",
   "version": "2026.7.1-beta.5",
   "type": "module",
   "license": "MIT",
@@ -9,19 +9,20 @@
   "contributors": [
     "Wan, Jiun Wei <wei840222@gmail.com>"
   ],
-  "homepage": "https://github.com/ani6439walc/openclaw-plugin-discord-tool-status#readme",
+  "homepage": "https://github.com/ani6439walc/openclaw-plugin-discord-activity#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ani6439walc/openclaw-plugin-discord-tool-status.git"
+    "url": "git+https://github.com/ani6439walc/openclaw-plugin-discord-activity.git"
   },
   "bugs": {
-    "url": "https://github.com/ani6439walc/openclaw-plugin-discord-tool-status/issues"
+    "url": "https://github.com/ani6439walc/openclaw-plugin-discord-activity/issues"
   },
   "keywords": [
     "openclaw",
     "plugin",
     "discord",
-    "tool-status"
+    "activity",
+    "progress"
   ],
   "files": [
     "README.md",

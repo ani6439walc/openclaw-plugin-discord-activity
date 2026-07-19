@@ -21,7 +21,7 @@ const DEFAULT_CONFIG = {
   maxDisplayMs: DEFAULT_MAX_DISPLAY_MS,
 };
 
-const DiscordToolStatusConfigSchema = z
+const DiscordActivityConfigSchema = z
   .object({
     maxToolHistoryLength: z
       .number()
@@ -40,8 +40,8 @@ const DiscordToolStatusConfigSchema = z
   })
   .catch(DEFAULT_CONFIG);
 
-export type PluginConfig = z.infer<typeof DiscordToolStatusConfigSchema>;
+export type PluginConfig = z.infer<typeof DiscordActivityConfigSchema>;
 
 export function resolveConfig(raw: unknown): PluginConfig {
-  return DiscordToolStatusConfigSchema.parse(raw);
+  return DiscordActivityConfigSchema.parse(raw);
 }

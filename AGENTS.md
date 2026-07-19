@@ -1,4 +1,4 @@
-# Agent Guide: Discord Tool Status
+# Agent Guide: Discord Activity
 
 This repository is an OpenClaw plugin. It shows live tool-call status in Discord by creating one ANSI-colored status message per Discord conversation, editing it as tools run, folding in internal `active-memory` and `skill-harness` subagent status, and deleting the message after the agent finishes.
 

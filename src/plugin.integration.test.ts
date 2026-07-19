@@ -46,7 +46,7 @@ describe("plugin", () => {
   it("should create plugin successfully", () => {
     const plugin = createPlugin(mockApi);
     expect(plugin).toBeDefined();
-    expect(plugin.id).toBe("discord-tool-status");
+    expect(plugin.id).toBe("discord-activity");
     expect(typeof plugin.register).toBe("function");
   });
 
@@ -80,7 +80,7 @@ describe("plugin", () => {
       mockApi.agent.events.registerAgentEventSubscription,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "discord-tool-status:skill-harness-pipeline",
+        id: "discord-activity:skill-harness-pipeline",
         streams: ["plugin:skill-harness"],
         handle: expect.any(Function),
       }),

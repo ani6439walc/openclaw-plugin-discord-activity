@@ -1,9 +1,9 @@
-# Discord Tool Status Plugin for OpenClaw
+# Discord Activity Plugin for OpenClaw
 
-[![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://clawhub.ai/wei840222/plugins/discord-tool-status)
+[![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://clawhub.ai/wei840222/plugins/discord-activity)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Discord Tool Status is an OpenClaw plugin that shows live agent/tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
+Discord Activity is an OpenClaw plugin that shows live agent and tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
 
 ## Why this exists
 
@@ -27,7 +27,7 @@ Status messages are Discord ANSI code blocks. Internal subagent groups appear fi
 
 The image below is an example of how a live tool-status message appears in Discord:
 
-![Discord Tool Status showing nested companion workflows, tool durations, compact metadata, and exact truncation hints](https://raw.githubusercontent.com/ani6439walc/openclaw-plugin-discord-tool-status/main/example.png)
+![Discord Activity showing nested companion workflows, tool durations, compact metadata, and exact truncation hints](https://raw.githubusercontent.com/ani6439walc/openclaw-plugin-discord-activity/main/example.png)
 
 This example shows `active-memory` and `skill-harness` groups, nested tool parameters, compact metadata rows, duration badges, and exact character-omission hints in one continuously edited Discord message. The same structure in simplified text form is:
 
@@ -125,10 +125,10 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 
 ## Installation
 
-Install the published plugin from [ClawHub](https://clawhub.ai/wei840222/plugins/discord-tool-status):
+Install the published plugin from [ClawHub](https://clawhub.ai/wei840222/plugins/discord-activity):
 
 ```bash
-openclaw plugins install clawhub:discord-tool-status
+openclaw plugins install clawhub:discord-activity
 ```
 
 For local development, install the plugin package wherever your OpenClaw deployment loads local plugins, then install dependencies and build the extension:
@@ -144,7 +144,7 @@ Enable the plugin in your OpenClaw plugin configuration:
 {
   "plugins": {
     "entries": {
-      "discord-tool-status": {
+      "discord-activity": {
         "enabled": true,
         "config": {
           "maxToolHistoryLength": 30,
@@ -184,7 +184,7 @@ Runtime display limits are stricter than `maxToolHistoryLength`: the renderer ke
 
 ## Companion workflows
 
-Discord Tool Status is useful beside plugins that run longer tool workflows from Discord. For example, if public X/Twitter automation is handled by TweetClaw, install and configure TweetClaw separately while using Discord Tool Status for progress visibility.
+Discord Activity is useful beside plugins that run longer tool workflows from Discord. For example, if public X/Twitter automation is handled by TweetClaw, install and configure TweetClaw separately while using Discord Activity for progress visibility.
 
 Visible external actions such as posting tweets, sending replies, or direct messages should still use OpenClaw's normal approval flow. This plugin only reports progress; it does not grant approval or bypass safety controls.
 

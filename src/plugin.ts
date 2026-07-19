@@ -56,10 +56,10 @@ export function createPlugin(
   });
 
   return definePluginEntry({
-    id: "discord-tool-status",
-    name: "Discord Tool Status",
+    id: "discord-activity",
+    name: "Discord Activity",
     description:
-      "Shows live tool-call status as a Discord message that is updated and deleted when the agent finishes.",
+      "Shows live agent and tool activity as a Discord message that is updated and deleted when the agent finishes.",
     register() {
       const runtimeApi = api as unknown as {
         agent?: {
@@ -78,7 +78,7 @@ export function createPlugin(
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
       registerAgentEventSubscription?.({
-        id: "discord-tool-status:skill-harness-pipeline",
+        id: "discord-activity:skill-harness-pipeline",
         streams: ["plugin:skill-harness"],
         handle: handlers.onSkillHarnessPipelineEvent,
       });
