@@ -148,7 +148,7 @@ Enable the plugin in your OpenClaw plugin configuration:
         "enabled": true,
         "config": {
           "maxToolHistoryLength": 30,
-          "maxDisplayMs": 600000
+          "maxDisplaySeconds": 180
         }
       }
     }
@@ -173,12 +173,12 @@ This release targets OpenClaw/plugin SDK `2026.6.11`, declares `2026.6.11` as th
 
 ## Configuration
 
-| Property                 | Type     | Default  | Description                                                        |
-| ------------------------ | -------- | -------- | ------------------------------------------------------------------ |
-| `maxToolHistoryLength`   | `number` | `30`     | Maximum number of tool entries retained in memory before trimming. |
-| `maxStatusMessageLength` | `number` | `1700`   | Maximum rendered status length; allowed range is 100–1700.         |
-| `maxDisplayMs`           | `number` | `600000` | Maximum time a status message may remain before force cleanup.     |
-| `orphanTtlMs`            | `number` | `300000` | Time to keep orphaned tool calls while waiting for a session link. |
+| Property                 | Type     | Default | Description                                                        |
+| ------------------------ | -------- | ------- | ------------------------------------------------------------------ |
+| `maxToolHistoryLength`   | `number` | `30`    | Maximum number of tool entries retained in memory before trimming. |
+| `maxStatusMessageLength` | `number` | `1700`  | Maximum rendered status length; allowed range is 100–1700.         |
+| `maxDisplaySeconds`      | `number` | `180`   | Maximum idle time after status activity before force cleanup.      |
+| `orphanTtlSeconds`       | `number` | `300`   | Time to keep orphaned tool calls while waiting for a session link. |
 
 Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `active-memory` and `skill-harness` group.
 
@@ -228,7 +228,7 @@ Package hygiene note: this package publishes `dist/`. `pnpm run build` cleans `d
 - Discord API failures are logged and skipped so agent replies are not blocked.
 - Discord REST calls retry rate limits, transient server errors, and network errors.
 - Per-session message operations are serialized to avoid create/edit/delete races.
-- Finalized status messages are deleted after cleanup and force-cleaned after `maxDisplayMs`.
+- Finalized status messages are deleted after cleanup. Active status messages are force-cleaned only after `maxDisplaySeconds` without further status activity.
 
 ---
 

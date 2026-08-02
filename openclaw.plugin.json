@@ -24,17 +24,17 @@
         "default": 1700,
         "description": "Maximum length of Discord status message content, capped at 1700 characters"
       },
-      "orphanTtlMs": {
+      "orphanTtlSeconds": {
         "type": "integer",
         "minimum": 1,
-        "default": 300000,
-        "description": "Time in milliseconds before orphaned tool calls are pruned"
+        "default": 300,
+        "description": "Time in seconds before orphaned tool calls are pruned"
       },
-      "maxDisplayMs": {
+      "maxDisplaySeconds": {
         "type": "integer",
-        "minimum": 1000,
-        "default": 600000,
-        "description": "Maximum time in milliseconds a status message may remain before automatic cleanup"
+        "minimum": 1,
+        "default": 180,
+        "description": "Maximum idle time in seconds after status activity before automatic cleanup"
       }
     }
   }

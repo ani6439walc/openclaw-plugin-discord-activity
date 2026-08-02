@@ -427,6 +427,47 @@ describe("updateStatusMessage", () => {
     expect(session.lastRenderedContent).toBe(contentA);
   });
 
+  it("keeps a status message until its latest activity becomes idle", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      const url = String(input);
+      if (method === "POST" && url.includes("/messages")) {
+        return jsonResponse({ id: "status_1" });
+      }
+      if (method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const session = createMockSessionEntry({
+      toolHistory: [createToolEntry({ status: "pending" })],
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token", false, 100);
+    await vi.advanceTimersByTimeAsync(90);
+
+    session.toolHistory = [createToolEntry({ status: "completed" })];
+    await updateStatusMessage(session, () => "token", false, 100);
+
+    await vi.advanceTimersByTimeAsync(10);
+    expect(
+      fetchMock.mock.calls.some(
+        ([_, init]) => (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(90);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([_, init]) => (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toHaveLength(1);
+    expect(defaultStore.sessions.has(session.contextKey)).toBe(false);
+  });
+
   it("reuses one create nonce after an uncertain POST", async () => {
     vi.useFakeTimers();
     const fetchMock = vi

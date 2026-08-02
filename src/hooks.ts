@@ -253,7 +253,7 @@ export function createHookHandlers(deps: HookDeps) {
       session,
       getToken,
       isFinal,
-      config.maxDisplayMs,
+      config.maxDisplaySeconds * 1000,
       config.maxStatusMessageLength,
     );
   }
@@ -585,7 +585,7 @@ export function createHookHandlers(deps: HookDeps) {
         { toolCallId },
       );
       if (orphan) {
-        if (observedAtMs - orphan.createdAt <= config.orphanTtlMs) {
+        if (observedAtMs - orphan.createdAt <= config.orphanTtlSeconds * 1000) {
           toolEntry = {
             toolCallId: orphan.toolCallId,
             toolName: orphan.toolName,

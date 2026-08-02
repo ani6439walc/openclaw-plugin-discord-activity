@@ -8,8 +8,8 @@ describe("ToolHistoryManager", () => {
   const config = {
     maxToolHistoryLength: DEFAULT_MAX_TOOL_HISTORY_LENGTH,
     maxStatusMessageLength: 1700,
-    orphanTtlMs: 300000,
-    maxDisplayMs: 600000,
+    orphanTtlSeconds: 300,
+    maxDisplaySeconds: 180,
   };
 
   beforeEach(() => {
