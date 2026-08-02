@@ -289,7 +289,7 @@ function startMaxDisplayTimer(
     }
 
     logger.warn(
-      `status message exceeded maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
+      `status message was idle for maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
       { contextKey, maxDisplayMs },
     );
 
@@ -320,6 +320,16 @@ export async function updateStatusMessage(
     defaultStore.isCurrentSession(session) &&
     session.generation === expectedGeneration &&
     session.ownerSessionKey === expectedOwner;
+
+  if (
+    session.statusMessageId &&
+    maxDisplayMs &&
+    maxDisplayMs > 0 &&
+    isExpectedCurrentSession()
+  ) {
+    startMaxDisplayTimer(session, session.contextKey, maxDisplayMs, getToken);
+  }
+
   const op = (async () => {
     if (priorOp) {
       logger.debug("[update_status_message] waiting for pending op...");

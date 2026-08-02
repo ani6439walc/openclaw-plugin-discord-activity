@@ -35,7 +35,7 @@ Keep the current module boundaries:
 
 - `src/plugin.ts`: assembly layer. Resolve plugin config, token resolver, companion-plugin enablement checks, instantiate shared runtime state, and register OpenClaw hooks.
 - `src/hooks.ts`: OpenClaw hook behavior. Own session routing, tool lifecycle updates, subagent placeholder/result handling, orphan reconciliation, and finalization.
-- `src/session.ts`: Discord status message lifecycle. Send, edit, retire, delete, serialize pending message operations, handle DM fallback, enforce max display cleanup, and schedule bounded detached delete recovery.
+- `src/session.ts`: Discord status message lifecycle. Send, edit, retire, delete, serialize pending message operations, handle DM fallback, enforce idle status cleanup, and schedule bounded detached delete recovery.
 - `src/store.ts`: active session and Discord context tracking.
 - `src/orphans.ts`: temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.
 - `src/parser.ts`: session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result/error extraction.
@@ -86,6 +86,7 @@ Important behavior to preserve:
 - Use the producer-provided `durationMs` from the terminal skill-harness parent lifecycle event for the group duration. Keep locally observed start/completion fallback only for individual legacy phase events.
 - Render durations up to and including 1000ms in milliseconds. Above 1000ms and under 10 seconds, round seconds to at most two decimal places; from 10 seconds onward, round to at most one decimal place. Omit trailing fractional zeros and a leftover decimal point.
 - Finalized sessions should not create duplicate status messages from late tool events.
+- `maxDisplaySeconds` is an idle timeout, not a total status lifetime: arm it after a confirmed create, then re-arm it for each current-session status update before queued Discord work. Convert it to milliseconds only at timer boundaries. Normal final cleanup and replacement retirement still take precedence.
 - Tool, agent, and skill-harness lifecycle events with a mismatched `runId` must not mutate or finalize a replacement session for the same Discord conversation. Guard provenance before any history mutation.
 - Per-session Discord operations must remain serialized through `pendingOp` to avoid create/edit/delete races. Capture generation and owner before awaiting Discord, then revalidate before committing message IDs, rendered content, or display state.
 - Top-level block display state is generation-scoped and monotonic: `expanded → collapsed → removed`. Stable `displayId` values keep ordinary tools from resurrecting when dedupe changes `toolCallId`. Confirmed Discord creates/edits advance `confirmedDisplayState`; exhausted network or final `5xx` outcomes advance `monotonicSafetyFloor`; explicit rejection advances neither. Render from their per-block maximum, and reset both on replacement or cleanup.

@@ -1,8 +1,8 @@
 import type { OrphanEntry, OrphanToolManager } from "./types.js";
-import { ORPHAN_TTL_MS } from "./constants.js";
+import { ORPHAN_TTL_SECONDS } from "./constants.js";
 
 export function createOrphanManager(
-  ttlMs: number = ORPHAN_TTL_MS,
+  ttlMs: number = ORPHAN_TTL_SECONDS * 1000,
 ): OrphanToolManager {
   const entries = new Map<string, OrphanEntry>();
 

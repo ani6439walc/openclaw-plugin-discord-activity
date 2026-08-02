@@ -2,23 +2,23 @@ import { z } from "zod";
 import {
   DEFAULT_MAX_TOOL_HISTORY_LENGTH,
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
-  DEFAULT_ORPHAN_TTL_MS,
-  DEFAULT_MAX_DISPLAY_MS,
+  DEFAULT_ORPHAN_TTL_SECONDS,
+  DEFAULT_MAX_DISPLAY_SECONDS,
 } from "./constants.js";
 export {
   DEFAULT_MAX_TOOL_HISTORY_LENGTH,
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
-  DEFAULT_ORPHAN_TTL_MS,
+  DEFAULT_ORPHAN_TTL_SECONDS,
   DEFAULT_CLEANUP_DELAY_MS,
   DEFAULT_AGENT_END_DELAY_MS,
-  DEFAULT_MAX_DISPLAY_MS,
+  DEFAULT_MAX_DISPLAY_SECONDS,
 } from "./constants.js";
 
 const DEFAULT_CONFIG = {
   maxToolHistoryLength: DEFAULT_MAX_TOOL_HISTORY_LENGTH,
   maxStatusMessageLength: DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
-  orphanTtlMs: DEFAULT_ORPHAN_TTL_MS,
-  maxDisplayMs: DEFAULT_MAX_DISPLAY_MS,
+  orphanTtlSeconds: DEFAULT_ORPHAN_TTL_SECONDS,
+  maxDisplaySeconds: DEFAULT_MAX_DISPLAY_SECONDS,
 };
 
 const DiscordActivityConfigSchema = z
@@ -35,8 +35,16 @@ const DiscordActivityConfigSchema = z
       .min(100)
       .max(DEFAULT_MAX_STATUS_MESSAGE_LENGTH)
       .catch(DEFAULT_MAX_STATUS_MESSAGE_LENGTH),
-    orphanTtlMs: z.number().int().positive().catch(DEFAULT_ORPHAN_TTL_MS),
-    maxDisplayMs: z.number().int().min(1000).catch(DEFAULT_MAX_DISPLAY_MS),
+    orphanTtlSeconds: z
+      .number()
+      .int()
+      .positive()
+      .catch(DEFAULT_ORPHAN_TTL_SECONDS),
+    maxDisplaySeconds: z
+      .number()
+      .int()
+      .positive()
+      .catch(DEFAULT_MAX_DISPLAY_SECONDS),
   })
   .catch(DEFAULT_CONFIG);
 
