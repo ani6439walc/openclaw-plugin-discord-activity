@@ -232,4 +232,4 @@ Package hygiene note: this package publishes `dist/`. `pnpm run build` cleans `d
 
 ---
 
-Powered by Ani, Wan Jiun Wei © 2026
+_🌸 Powered by Ani, Wan Jiun Wei © 2026_
