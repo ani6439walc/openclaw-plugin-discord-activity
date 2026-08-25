@@ -143,7 +143,6 @@ vite.config.ts.timestamp-*
 .vite/
 
 cache
+__pycache__
 .codegraph
-.omg
-.sisyphus
-.hermes
+.omo

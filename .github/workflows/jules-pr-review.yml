@@ -5,7 +5,8 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  # Large PRs publish a temporary full-diff branch, then remove it after review.
+  contents: write
   pull-requests: write
   issues: write
 
@@ -15,14 +16,18 @@ concurrency:
 
 jobs:
   review:
-    # Only trigger for repo owner PRs (personal repo)
-    if: github.event.pull_request.user.login == github.repository_owner
+    # Restrict secrets-backed reviews to the owner and trusted collaborators.
+    if: >-
+      github.event.pull_request.user.login == github.repository_owner ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run Jules PR review
         env:
@@ -39,3 +44,15 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           python3 .github/scripts/jules_pr_review.py
+
+      - name: Cleanup temporary diff branch
+        if: always()
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch origin --prune
+          branches=$(git branch -r | grep -E "origin/temp/pr-${PR_NUMBER}-diff-" | sed 's|^ *origin/||' || true)
+          for b in $branches; do
+            echo "Cleaning up lingering branch: $b"
+            git push origin --delete "$b" || true
+          done
