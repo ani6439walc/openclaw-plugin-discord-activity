@@ -31,30 +31,18 @@ Package-shape rule: `package.json` publishes `dist`, and `pnpm run build` cleans
 
 ## Source Map
 
-Keep the current module boundaries:
+Load module details only when needed through CodeGraph; do not maintain a duplicated per-file inventory here. Start with the prompt closest to the change:
 
-- `src/plugin.ts`: assembly layer. Resolve plugin config, token resolver, companion-plugin enablement checks, instantiate shared runtime state, and register OpenClaw hooks.
-- `src/hooks.ts`: OpenClaw hook behavior. Own session routing, tool lifecycle updates, subagent placeholder/result handling, orphan reconciliation, and finalization.
-- `src/session.ts`: Discord status message lifecycle. Send, edit, retire, delete, serialize pending message operations, handle DM fallback, enforce idle status cleanup, and schedule bounded detached delete recovery.
-- `src/store.ts`: active session and Discord context tracking.
-- `src/orphans.ts`: temporary storage and lookup helpers for tool calls that arrive before a Discord session is available.
-- `src/parser.ts`: session-key parsing, Discord context extraction, sender/channel ID extraction, and final subagent result/error extraction.
-- `src/render.ts`: convert tool history into bounded semantic ANSI Discord status content without mutating history.
-- `src/formatting.ts`: icons and parameter formatting helpers.
-- `src/tool-name.ts`: shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.
-- `src/skill-harness-status.ts`: parse `plugin:skill-harness` pipeline events, sanitize visible fields, compute child durations, and merge duplicate phase updates.
-- `src/discord-api.ts`: Discord REST calls, applied/rejected/uncertain mutation outcomes, idempotent create nonces, bounded retries, delete outcome classification, and DM channel resolution.
-- `src/discord-message-operations.ts`: token-gated send/edit/delete outcome functions and compatibility wrappers around Discord API calls, including DM fallback.
-- `src/tool-history-manager.ts`: focused helper for tool-history add/update/replace/trim operations and subagent groups.
-- `src/config.ts`: Zod-backed plugin config parsing and defaults.
-- `src/types.ts`: shared event, session, store, and tool-entry types.
-- `api.ts`, `index.ts`, `token.ts`: plugin SDK bridge, exported plugin entrypoint, and Discord token resolution.
-- `test-helpers.ts`, `vitest.config.ts`: test-only support; these should not be published as runtime artifacts.
-- `src/*.test.ts`: colocated Vitest coverage for each module.
-- `openclaw.plugin.json`: manifest-visible activation and config schema.
-- `README.md`: user-facing behavior, config, architecture, and workflows.
+```bash
+codegraph explore "plugin lifecycle hooks rendering discord status"
+codegraph explore "message_received before_tool_call after_tool_call agent_end session routing"
+codegraph explore "updateStatusMessage Discord create edit delete retry DM fallback"
+codegraph explore "renderStatusContent ANSI status bounds tool history"
+codegraph explore "plugin config manifest token resolver registration"
+codegraph explore "<target symbol or behavior> affected tests"
+```
 
-Latest codebase inspection: this repo is a small TypeScript plugin, not a large application. Excluding dependencies/build/indexes, pygount reports about 2.9k runtime TypeScript code lines and 4.6k test/tooling code lines. Direct line counts report about 4.1k runtime lines and 7.2k test/tooling lines, so tests remain larger than runtime. The main complexity hotspot is `src/hooks.ts`; keep new behavior out of it unless hook orchestration genuinely belongs there.
+Use the returned source and call paths to load only the necessary symbols. If exploration is insufficient, narrow with `codegraph query`, `codegraph node`, `codegraph callers`, `codegraph callees`, or `codegraph impact`.
 
 ## Runtime Behavior
 
