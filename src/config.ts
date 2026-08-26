@@ -19,6 +19,7 @@ const DEFAULT_CONFIG = {
   maxStatusMessageLength: DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   orphanTtlSeconds: DEFAULT_ORPHAN_TTL_SECONDS,
   maxDisplaySeconds: DEFAULT_MAX_DISPLAY_SECONDS,
+  replyMode: "all" as const,
 };
 
 const DiscordActivityConfigSchema = z
@@ -45,6 +46,7 @@ const DiscordActivityConfigSchema = z
       .int()
       .positive()
       .catch(DEFAULT_MAX_DISPLAY_SECONDS),
+    replyMode: z.enum(["all", "direct"]).catch(DEFAULT_CONFIG.replyMode),
   })
   .catch(DEFAULT_CONFIG);
 

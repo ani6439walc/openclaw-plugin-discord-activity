@@ -12,6 +12,7 @@ const DEFAULT_CONFIG = {
   maxStatusMessageLength: DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   orphanTtlSeconds: DEFAULT_ORPHAN_TTL_SECONDS,
   maxDisplaySeconds: DEFAULT_MAX_DISPLAY_SECONDS,
+  replyMode: "all",
 };
 
 describe("resolveConfig", () => {
@@ -82,6 +83,33 @@ describe("resolveConfig", () => {
     });
   });
 
+  it("accepts valid reply modes and falls back per-field for invalid values", () => {
+    expect(resolveConfig({ replyMode: "all", maxDisplaySeconds: 30 })).toEqual({
+      ...DEFAULT_CONFIG,
+      maxDisplaySeconds: 30,
+    });
+
+    expect(
+      resolveConfig({ replyMode: "direct", maxDisplaySeconds: 30 }),
+    ).toEqual({
+      ...DEFAULT_CONFIG,
+      replyMode: "direct",
+      maxDisplaySeconds: 30,
+    });
+
+    expect(resolveConfig({ replyMode: 42, maxDisplaySeconds: 30 })).toEqual({
+      ...DEFAULT_CONFIG,
+      maxDisplaySeconds: 30,
+    });
+
+    expect(
+      resolveConfig({ replyMode: "unsupported", maxDisplaySeconds: 30 }),
+    ).toEqual({
+      ...DEFAULT_CONFIG,
+      maxDisplaySeconds: 30,
+    });
+  });
+
   it("accepts boundary-valid numeric values", () => {
     expect(
       resolveConfig({
@@ -95,6 +123,7 @@ describe("resolveConfig", () => {
       maxStatusMessageLength: 100,
       orphanTtlSeconds: 1,
       maxDisplaySeconds: 1,
+      replyMode: "all",
     });
 
     expect(

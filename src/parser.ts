@@ -129,6 +129,15 @@ export function extractUserIdFromDirectSessionKey(
   return match?.[1];
 }
 
+export function isCanonicalDirectSessionKey(
+  sessionKey: string | undefined,
+): boolean {
+  return (
+    typeof sessionKey === "string" &&
+    /(?:^|:)discord:direct:\d+(?![\s\S])/i.test(sessionKey)
+  );
+}
+
 export function extractAgentIdFromSessionKey(
   sessionKey: string | undefined,
 ): string | undefined {
