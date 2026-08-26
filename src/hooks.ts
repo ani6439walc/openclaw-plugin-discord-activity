@@ -255,6 +255,7 @@ export function createHookHandlers(deps: HookDeps) {
       isFinal,
       config.maxDisplaySeconds * 1000,
       config.maxStatusMessageLength,
+      config.replyMode,
     );
   }
 

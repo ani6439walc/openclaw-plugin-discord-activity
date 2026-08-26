@@ -144,5 +144,7 @@ vite.config.ts.timestamp-*
 
 cache
 __pycache__
+.agents
 .codegraph
+.codex
 .omo

@@ -83,6 +83,28 @@ function countChannelMessagePosts(fetchMock: ReturnType<typeof vi.fn>): number {
   return countCalls(fetchMock, "POST", /\/channels\/[^/]+\/messages$/);
 }
 
+type StatusPostBody = {
+  readonly content?: string;
+  readonly message_reference?: { readonly message_id: string };
+};
+
+function getStatusPostBodies(
+  fetchMock: ReturnType<typeof vi.fn>,
+): readonly StatusPostBody[] {
+  return fetchMock.mock.calls
+    .filter(([input, init]) => {
+      const url = String(input);
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      return method === "POST" && /\/channels\/[^/]+\/messages$/.test(url);
+    })
+    .map(
+      ([, init]) =>
+        JSON.parse(
+          String((init as RequestInit | undefined)?.body ?? "{}"),
+        ) as StatusPostBody,
+    );
+}
+
 function stripAnsi(content: string): string {
   return content.replaceAll(/\u001b\[[0-9;]*m/g, "");
 }
@@ -241,6 +263,98 @@ describe("createHookHandlers", () => {
       );
       expect(store.contexts.size).toBe(0);
     });
+
+    it("characterizes the default hook flow with a channel reply reference", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      config = resolveConfig({});
+      handlers = createHookHandlers({
+        store,
+        orphans,
+        getToken,
+        config,
+        isActiveMemoryEnabled,
+        isSkillHarnessEnabled,
+      });
+      const sessionKey = "agent:main:discord:channel:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "channel:123" } },
+        { channelId: "discord", sessionKey, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {} },
+        { sessionKey, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      const postBodies = getStatusPostBodies(fetchMock);
+      expect(postBodies).toHaveLength(1);
+      expect(postBodies[0]?.message_reference).toEqual({
+        message_id: "user_msg_1",
+      });
+    });
+
+    it.each([
+      {
+        replyMode: "all",
+        sessionKey: "agent:main:discord:channel:123",
+        expectedReference: { message_id: "user_msg_1" },
+      },
+      {
+        replyMode: "direct",
+        sessionKey: "agent:main:discord:direct:123",
+        expectedReference: { message_id: "user_msg_1" },
+      },
+      {
+        replyMode: "direct",
+        sessionKey: "agent:main:discord:channel:123",
+        expectedReference: undefined,
+      },
+      {
+        replyMode: "direct",
+        sessionKey: "agent:main:discord:group:123",
+        expectedReference: undefined,
+      },
+    ] as const)(
+      "uses resolveConfig replyMode in the handler status POST for $sessionKey",
+      async ({ replyMode, sessionKey, expectedReference }) => {
+        const fetchMock = createDiscordFetchMock();
+        isActiveMemoryEnabled.mockReturnValue(false);
+        isSkillHarnessEnabled.mockReturnValue(false);
+        config = resolveConfig({ replyMode });
+        handlers = createHookHandlers({
+          store,
+          orphans,
+          getToken,
+          config,
+          isActiveMemoryEnabled,
+          isSkillHarnessEnabled,
+        });
+
+        await handlers.onMessageReceived(
+          { messageId: "user_msg_1", metadata: { to: "channel:123" } },
+          { channelId: "discord", sessionKey, accountId: "default" },
+        );
+        await handlers.onBeforeToolCall(
+          { toolCallId: "call_1", toolName: "bash", params: {} },
+          { sessionKey, toolName: "bash", toolCallId: "call_1" },
+        );
+        await handlers.onAfterToolCall(
+          {
+            toolCallId: "call_1",
+            toolName: "bash",
+            params: {},
+            durationMs: 10,
+          },
+          { sessionKey, toolName: "bash", toolCallId: "call_1" },
+        );
+
+        const postBodies = getStatusPostBodies(fetchMock);
+        expect(postBodies).toHaveLength(1);
+        expect(postBodies[0]?.message_reference).toEqual(expectedReference);
+      },
+    );
   });
 
   describe("stale-run isolation", () => {

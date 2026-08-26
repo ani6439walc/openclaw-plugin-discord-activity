@@ -36,6 +36,22 @@ function createBoundedHistory() {
   ];
 }
 
+function getStatusPostBody(fetchMock: ReturnType<typeof vi.fn>): {
+  readonly message_reference?: { readonly message_id: string };
+} {
+  const statusPost = fetchMock.mock.calls.find(([input, init]) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    return method === "POST" && /\/channels\/[^/]+\/messages$/.test(url);
+  });
+  if (!statusPost) {
+    throw new Error("Expected a Discord status POST");
+  }
+  const body: { readonly message_reference?: { readonly message_id: string } } =
+    JSON.parse(String(statusPost[1]?.body ?? "{}"));
+  return body;
+}
+
 describe("updateStatusMessage", () => {
   afterEach(() => {
     defaultStore.sessions.clear();
@@ -43,6 +59,107 @@ describe("updateStatusMessage", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
+
+  it("characterizes the default status create reply behavior with and without a user message id", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const sessionWithMessageId = createMockSessionEntry({
+      ownerSessionKey: "discord:channel:123456",
+      userMessageId: "user_message_1",
+      toolHistory: [createToolEntry({ status: "pending" })],
+    });
+    defaultStore.sessions.set(
+      sessionWithMessageId.contextKey,
+      sessionWithMessageId,
+    );
+
+    await updateStatusMessage(sessionWithMessageId, () => "token");
+
+    expect(getStatusPostBody(fetchMock).message_reference).toEqual({
+      message_id: "user_message_1",
+    });
+
+    defaultStore.sessions.clear();
+    fetchMock.mockClear();
+    const sessionWithoutMessageId = createMockSessionEntry({
+      contextKey: "discord:channel:654321",
+      ownerSessionKey: "discord:channel:654321",
+      userMessageId: undefined,
+      toolHistory: [createToolEntry({ status: "pending" })],
+    });
+    defaultStore.sessions.set(
+      sessionWithoutMessageId.contextKey,
+      sessionWithoutMessageId,
+    );
+
+    await updateStatusMessage(sessionWithoutMessageId, () => "token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getStatusPostBody(fetchMock).message_reference).toBeUndefined();
+  });
+
+  it.each([
+    ["all", "discord:channel:123456", true],
+    ["all", "discord:group:123456", true],
+    ["all", "agent:main:discord:direct:123456", true],
+    ["direct", "discord:channel:123456", false],
+    ["direct", "discord:group:123456", false],
+    ["direct", "agent:main:discord:direct:123456", true],
+  ] as const)(
+    "creates a status POST with replyMode %s for %s",
+    async (replyMode, ownerSessionKey, shouldReply) => {
+      const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
+      vi.stubGlobal("fetch", fetchMock);
+      const session = createMockSessionEntry({
+        channelId: "status_channel_123456",
+        ownerSessionKey,
+        userMessageId: "user_message_1",
+        toolHistory: [createToolEntry({ status: "pending" })],
+      });
+      defaultStore.sessions.set(session.contextKey, session);
+
+      await updateStatusMessage(
+        session,
+        () => "token",
+        false,
+        undefined,
+        undefined,
+        replyMode,
+      );
+
+      expect(getStatusPostBody(fetchMock).message_reference).toEqual(
+        shouldReply ? { message_id: "user_message_1" } : undefined,
+      );
+    },
+  );
+
+  it.each(["all", "direct"] as const)(
+    "creates a status POST without a reply reference when replyMode %s has no user message id",
+    async (replyMode) => {
+      const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
+      vi.stubGlobal("fetch", fetchMock);
+      const session = createMockSessionEntry({
+        channelId: "status_channel_123456",
+        ownerSessionKey: "agent:main:discord:direct:123456",
+        userMessageId: undefined,
+        toolHistory: [createToolEntry({ status: "pending" })],
+      });
+      defaultStore.sessions.set(session.contextKey, session);
+
+      await updateStatusMessage(
+        session,
+        () => "token",
+        false,
+        undefined,
+        undefined,
+        replyMode,
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getStatusPostBody(fetchMock).message_reference).toBeUndefined();
+    },
+  );
 
   it("does not create a non-final status message for a finalized session without a message id", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));

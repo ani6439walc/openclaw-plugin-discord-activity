@@ -35,6 +35,12 @@
         "minimum": 1,
         "default": 180,
         "description": "Maximum idle time in seconds after status activity before automatic cleanup"
+      },
+      "replyMode": {
+        "type": "string",
+        "enum": ["all", "direct"],
+        "default": "all",
+        "description": "Whether status messages reply to all source messages when available or only in canonical private-message sessions; channel and group statuses remain standalone"
       }
     }
   }

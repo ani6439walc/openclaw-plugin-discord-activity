@@ -8,6 +8,7 @@ import {
 import { createMessageNonce } from "./discord-api.js";
 import { createSessionStore } from "./store.js";
 import { createOrphanManager } from "./orphans.js";
+import { isCanonicalDirectSessionKey } from "./parser.js";
 import {
   mergeStatusDisplayStates,
   renderStatusContentWithState,
@@ -312,6 +313,7 @@ export async function updateStatusMessage(
   isFinal = false,
   maxDisplayMs?: number,
   maxStatusMessageLength = DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
+  replyMode: "all" | "direct" = "all",
 ) {
   const priorOp = session.pendingOp;
   const expectedGeneration = session.generation;
@@ -369,11 +371,16 @@ export async function updateStatusMessage(
     if (isNewMessage) {
       const isRetryingUncertainCreate = session.statusCreateNonce !== undefined;
       const createNonce = session.statusCreateNonce ?? createMessageNonce();
+      const replyToId =
+        replyMode === "all" ||
+        isCanonicalDirectSessionKey(session.ownerSessionKey)
+          ? session.userMessageId
+          : undefined;
       const result = await sendDiscordStatusWithDmFallbackWithResult(
         getToken,
         session,
         content,
-        session.userMessageId,
+        replyToId,
         createNonce,
       );
 
