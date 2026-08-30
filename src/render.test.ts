@@ -151,6 +151,7 @@ describe("tool icon categories", () => {
     ["gateway", "🧱"],
     ["nodes", "🔌"],
     // MCP tools (default)
+    ["mcp__read", "🔗"],
     ["context7_resolve_library_id", "⚙️"],
     ["google-developer-search", "⚙️"],
     ["sequential_thinking", "⚙️"],
