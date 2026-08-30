@@ -77,6 +77,8 @@ export function createPlugin(
       api.on("message_sending", handlers.onMessageSending);
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
+      api.on("before_compaction", handlers.onBeforeCompaction);
+      api.on("after_compaction", handlers.onAfterCompaction);
       registerAgentEventSubscription?.({
         id: "discord-activity:skill-harness-pipeline",
         streams: ["plugin:skill-harness"],

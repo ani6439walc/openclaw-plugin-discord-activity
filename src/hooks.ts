@@ -13,8 +13,10 @@ import type {
   AgentContext,
   AgentEndEvent,
   AgentPipelineEvent,
+  BeforeCompactionEvent,
+  AfterCompactionEvent,
 } from "./types.js";
-import { clearSessionTimer } from "./helpers.js";
+import { clearMaxDisplayTimer, clearSessionTimer } from "./helpers.js";
 import {
   getDiscordContextKey,
   isActiveMemorySessionKey,
@@ -226,6 +228,28 @@ export function createHookHandlers(deps: HookDeps) {
   // Initialize the ToolHistoryManager
   const toolHistoryManager = new ToolHistoryManager(config);
 
+  function getCompactionToolCallId(session: SessionEntry): string {
+    return `compaction:${session.compactionEpoch ?? 0}`;
+  }
+
+  function finishCompactionEntry(
+    session: SessionEntry,
+    status: "completed" | "error",
+  ): void {
+    const toolCallId = getCompactionToolCallId(session);
+    const entry = session.toolHistory.find(
+      (candidate) => candidate.toolCallId === toolCallId,
+    );
+    const durationMs =
+      typeof entry?.startedAtMs === "number"
+        ? Math.max(0, Date.now() - entry.startedAtMs)
+        : undefined;
+    toolHistoryManager.updateEntry(session.toolHistory, toolCallId, {
+      status,
+      ...(durationMs === undefined ? {} : { durationMs }),
+    });
+  }
+
   function logHookEvent(
     hookName: string,
     _event: unknown,
@@ -377,8 +401,13 @@ export function createHookHandlers(deps: HookDeps) {
     if (!store.isCurrentSession(session)) return;
     if (!bindSessionRun(session, ctx.runId)) return;
     if (requireVisibleState && !store.hasVisibleStatusState(session)) return;
+    const compactionEpoch = session.compactionEpoch ?? 0;
     session.finalized = true;
     await updateSessionStatus(session, true);
+    if ((session.compactionEpoch ?? 0) !== compactionEpoch) {
+      session.finalized = false;
+      return;
+    }
     scheduleSessionCleanup(
       contextKey,
       session,
@@ -718,6 +747,9 @@ export function createHookHandlers(deps: HookDeps) {
     logHookEvent("agent_end", event, ctx);
 
     const contextKey = getDiscordContextKey(ctx.sessionKey);
+    const compactionWasActiveAtDispatch = contextKey
+      ? store.sessions.get(contextKey)?.compactionActive === true
+      : false;
     if (contextKey) {
       if (isActiveMemorySessionKey(ctx.sessionKey)) {
         const sourceSessionKey = getActiveMemorySourceSessionKey(
@@ -785,6 +817,10 @@ export function createHookHandlers(deps: HookDeps) {
 
       const session = await store.resolveSession(contextKey, ctx.sessionKey);
       if (!session || !bindSessionRun(session, ctx.runId)) return;
+      if (compactionWasActiveAtDispatch) {
+        session.compactionActive = false;
+        finishCompactionEntry(session, "error");
+      }
 
       if (event.success === false || event.error) {
         const failureEntry: ToolEntry = {
@@ -814,6 +850,63 @@ export function createHookHandlers(deps: HookDeps) {
         session,
       );
     }
+  }
+
+  async function onBeforeCompaction(
+    event: BeforeCompactionEvent,
+    ctx: AgentContext,
+  ) {
+    if (shouldSkipSession(ctx, "before_compaction")) return;
+    logHookEvent("before_compaction", event, ctx);
+
+    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    if (!contextKey) return;
+    const session = await store.resolveSession(contextKey, ctx.sessionKey);
+    if (!session || !bindSessionRun(session, ctx.runId)) return;
+    if (!store.hasVisibleStatusState(session)) return;
+
+    session.compactionActive = true;
+    session.compactionEpoch = (session.compactionEpoch ?? 0) + 1;
+    session.finalized = false;
+    clearSessionTimer(session);
+    clearMaxDisplayTimer(session);
+
+    const failureIndex = session.toolHistory.findIndex(
+      (entry) => entry.toolCallId === "agent" && entry.toolName === "agent",
+    );
+    if (failureIndex >= 0) {
+      session.toolHistory.splice(failureIndex, 1);
+    }
+
+    toolHistoryManager.addEntry(session.toolHistory, {
+      toolCallId: getCompactionToolCallId(session),
+      toolName: "compaction",
+      params: {},
+      status: "pending",
+      startedAtMs: Date.now(),
+    });
+
+    await updateSessionStatus(session, false);
+    clearMaxDisplayTimer(session);
+  }
+
+  async function onAfterCompaction(
+    event: AfterCompactionEvent,
+    ctx: AgentContext,
+  ) {
+    if (shouldSkipSession(ctx, "after_compaction")) return;
+    logHookEvent("after_compaction", event, ctx);
+
+    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    if (!contextKey) return;
+    const session = await store.resolveSession(contextKey, ctx.sessionKey);
+    if (!session || !bindSessionRun(session, ctx.runId)) return;
+    if (!session.compactionActive) return;
+
+    finishCompactionEntry(session, "completed");
+    session.compactionActive = false;
+    session.finalized = false;
+    await updateSessionStatus(session, false);
   }
 
   async function onSkillHarnessPipelineEvent(event: AgentPipelineEvent) {
@@ -875,6 +968,8 @@ export function createHookHandlers(deps: HookDeps) {
     onMessageSending,
     onBeforeAgentReply,
     onAgentEnd,
+    onBeforeCompaction,
+    onAfterCompaction,
     onSkillHarnessPipelineEvent,
   });
 }

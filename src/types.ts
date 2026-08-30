@@ -67,6 +67,8 @@ export type SessionEntry = {
   confirmedDisplayState?: StatusDisplayState;
   monotonicSafetyFloor?: StatusDisplayState;
   finalized?: boolean;
+  compactionActive?: boolean;
+  compactionEpoch?: number;
   toolHistory: ToolEntry[];
   pendingOp?: Promise<void>;
   clearTimer?: ReturnType<typeof setTimeout>;
@@ -189,6 +191,22 @@ export type AgentEndEvent = {
   success?: boolean;
   error?: string;
   durationMs?: number;
+};
+
+export type BeforeCompactionEvent = {
+  messageCount: number;
+  compactingCount?: number;
+  tokenCount?: number;
+  messages?: unknown[];
+  sessionFile?: string;
+};
+
+export type AfterCompactionEvent = {
+  messageCount: number;
+  tokenCount?: number;
+  compactedCount: number;
+  sessionFile?: string;
+  previousSessionId?: string;
 };
 
 export type AgentPipelineEvent = {

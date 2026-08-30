@@ -190,7 +190,7 @@ describe("bounded status rendering", () => {
       expect(plain).toContain(`tool_${index}`);
     }
     expect(plain).toMatch(/tool_6[\s\S]*💥 agent ✘/u);
-    expect(plain).not.toContain("provider timeout");
+    expect(plain).toContain("error: provider timeout");
   });
 
   it("keeps the main-agent failure after ordinary blocks are removed", () => {

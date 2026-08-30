@@ -699,7 +699,7 @@ describe("ANSI internal group contract", () => {
     );
   });
 
-  it("renders a main-agent failure as a header-only protected block", () => {
+  it("renders a main-agent failure with its concrete error", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -714,9 +714,12 @@ describe("ANSI internal group contract", () => {
     );
 
     expect(result).toBe(
-      ["```ansi", `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`, "```"].join(
-        "\n",
-      ),
+      [
+        "```ansi",
+        `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`,
+        `    └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
+        "```",
+      ].join("\n"),
     );
   });
 });
