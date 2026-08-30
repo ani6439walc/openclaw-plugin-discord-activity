@@ -34,13 +34,29 @@ export function getOpenClawToolSuffix(toolName: string): string | undefined {
 export function isCodexOpenClawToolName(toolName: string): boolean {
   return getOpenClawToolSuffix(toolName) !== undefined;
 }
+export function isMcpToolName(toolName: string): boolean {
+  if (isCodexOpenClawToolName(toolName)) return false;
+  return toolName.includes("__");
+}
+
+function formatMcpToolName(toolName: string): string {
+  const replaced = toolName.replaceAll("__", "_");
+  return `${replaced} (MCP)`;
+}
 
 export function getDisplayToolName(toolName: string): string {
-  return getOpenClawToolSuffix(toolName) ?? toolName;
+  const openclawSuffix = getOpenClawToolSuffix(toolName);
+  if (openclawSuffix !== undefined) return openclawSuffix;
+  if (isMcpToolName(toolName)) return formatMcpToolName(toolName);
+  return toolName;
 }
 
 export function canonicalToolNameForDedupe(toolName: string): string {
-  return normalizeToolName(getDisplayToolName(toolName));
+  const openclawSuffix = getOpenClawToolSuffix(toolName);
+  if (openclawSuffix !== undefined) return normalizeToolName(openclawSuffix);
+  if (toolName.includes("__"))
+    return normalizeToolName(toolName.replaceAll("__", "_"));
+  return normalizeToolName(toolName);
 }
 
 export function preferDisplayToolName(
