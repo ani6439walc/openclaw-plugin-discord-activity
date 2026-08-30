@@ -24,6 +24,7 @@ export function getToolIcon(name: string): string {
   // Execution & Process
   if (n.includes("exec")) return "🚀";
   if (n.includes("process")) return "⏳";
+  if (n.includes("compaction")) return "🗜️";
 
   // Knowledge, Memory & Wiki
   if (n.includes("memory")) return "🧠";

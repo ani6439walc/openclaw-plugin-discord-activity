@@ -35,7 +35,7 @@ describe("main agent failure rendering", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders internal groups, normal tools, then a header-only agent failure", () => {
+  it("renders internal groups, normal tools, then an agent failure with its error", () => {
     const result = renderStatusContent(
       [
         entry({
@@ -64,7 +64,7 @@ describe("main agent failure rendering", () => {
 
     const plain = stripAnsi(result);
     expect(plain).toContain("💥 agent ✘");
-    expect(plain).not.toContain("error: provider timeout");
+    expect(plain).toContain("error: provider timeout");
     expect(plain).toContain("bash ▾ ✘");
     expect(plain).toContain("error: permission denied");
     expect(result.indexOf("active-memory")).toBeLessThan(
@@ -153,7 +153,7 @@ describe("main agent failure rendering", () => {
     );
     const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
     expect(plainContent).toContain("💥 agent ✘");
-    expect(plainContent).not.toContain("error: provider timeout");
+    expect(plainContent).toContain("error: provider timeout");
     expect(session?.clearTimer).toBeDefined();
   });
 

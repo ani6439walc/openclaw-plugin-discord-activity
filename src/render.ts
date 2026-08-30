@@ -440,7 +440,7 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
   };
 }
 
-function createMainAgentFailureBlock(): StatusBlock {
+function createMainAgentFailureBlock(entry: ToolEntry): StatusBlock {
   const header: StatusHeader = {
     icon: "💥",
     name: "agent",
@@ -451,7 +451,7 @@ function createMainAgentFailureBlock(): StatusBlock {
   return {
     key: "agent",
     header,
-    children: [],
+    children: createEntryFieldNodes(entry),
     protected: true,
   };
 }
@@ -572,7 +572,7 @@ export function renderStatusContentWithState(
   const mainAgentFailure = toolHistory.filter(isMainAgentEntry).at(-1);
   const failureBlock =
     mainAgentFailure?.status === "error"
-      ? createMainAgentFailureBlock()
+      ? createMainAgentFailureBlock(mainAgentFailure)
       : undefined;
   const eligibleBlocks = [...subagentBlocks, ...normalBlocks].filter(
     (block) => (displayState[block.key] ?? "expanded") !== "removed",

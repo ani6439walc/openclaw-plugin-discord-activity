@@ -34,6 +34,8 @@ function resetSessionState(session: SessionEntry) {
   session.confirmedDisplayState = undefined;
   session.monotonicSafetyFloor = undefined;
   session.finalized = false;
+  session.compactionActive = false;
+  session.compactionEpoch = 0;
 }
 
 function getSessionDisplayFloor(session: SessionEntry) {

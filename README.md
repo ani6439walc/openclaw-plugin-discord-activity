@@ -85,8 +85,9 @@ The plugin listens to OpenClaw runtime events and maps them to one active Discor
 2. **`before_tool_call`** adds a pending tool entry. If the Discord session is not known yet, the tool call is stored as an orphan.
 3. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves or derives completed duration data, and updates the status message.
 4. **`before_agent_reply` / `message_sending`** finalize visible status before the final user-facing reply is sent.
-5. **`agent_end`** records main-agent failure state, handles main-session cleanup, and captures final `active-memory` output and failure details from its internal session.
-6. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
+5. **`before_compaction` / `after_compaction`** preserve the active status across context compaction, show the compaction as pending/completed with duration, cancel attempt-level cleanup, and suspend the idle timer until the compacted run resumes.
+6. **`agent_end`** records and displays the concrete main-agent error, handles main-session cleanup, and captures final `active-memory` output and failure details from its internal session.
+7. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
 
 Session and race-safety behavior:
 

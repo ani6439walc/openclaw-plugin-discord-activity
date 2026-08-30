@@ -1119,6 +1119,134 @@ describe("createHookHandlers", () => {
       consoleSpy.mockRestore();
     });
 
+    it("preserves an active status across an attempt-level agent_end and compaction", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_compact";
+      config = resolveConfig({ maxDisplaySeconds: 2 });
+      handlers = createHookHandlers({
+        store,
+        orphans,
+        getToken,
+        config,
+        isActiveMemoryEnabled,
+        isSkillHarnessEnabled,
+      });
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          runId,
+          accountId: "default",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      const attemptEnd = handlers.onAgentEnd(
+        { success: false, error: "Context overflow" },
+        { sessionKey, runId },
+      );
+      await handlers.onBeforeCompaction(
+        { messageCount: 42 },
+        { sessionKey, runId },
+      );
+      await attemptEnd;
+
+      expect(
+        stripAnsi(
+          store.sessions.get("discord:direct:123")?.lastRenderedContent ?? "",
+        ),
+      ).toContain("🗜️ compaction ▾ ←");
+
+      await vi.advanceTimersByTimeAsync(2500);
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession?.finalized).toBe(false);
+      expect(
+        activeSession?.toolHistory.some(
+          (entry) => entry.toolCallId === "agent",
+        ),
+      ).toBe(false);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+
+      await handlers.onAfterCompaction(
+        { messageCount: 8, compactedCount: 34 },
+        { sessionKey, runId },
+      );
+      expect(
+        stripAnsi(
+          store.sessions.get("discord:direct:123")?.lastRenderedContent ?? "",
+        ),
+      ).toContain("🗜️ compaction ▾ ✔ [2.5s]");
+      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+      await vi.advanceTimersByTimeAsync(1500);
+      await flushPromises();
+
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
+    it("allows terminal cleanup when compaction fails without an after hook", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_failed_compact";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onBeforeCompaction(
+        { messageCount: 42 },
+        { sessionKey, runId },
+      );
+      await handlers.onAgentEnd(
+        { success: false, error: "Compaction failed" },
+        { sessionKey, runId },
+      );
+
+      expect(
+        stripAnsi(
+          store.sessions.get("discord:direct:123")?.lastRenderedContent ?? "",
+        ),
+      ).toContain("🗜️ compaction ▾ ✘");
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await flushPromises();
+
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
     it("does not finalize on before_agent_reply when only pending subagent placeholders exist", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);

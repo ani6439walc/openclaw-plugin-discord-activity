@@ -54,7 +54,7 @@ describe("plugin", () => {
     const plugin = createPlugin(mockApi);
     plugin.register(mockApi);
 
-    expect(mockApi.on).toHaveBeenCalledTimes(6);
+    expect(mockApi.on).toHaveBeenCalledTimes(8);
     expect(mockApi.on).toHaveBeenCalledWith(
       "message_received",
       expect.any(Function),
@@ -76,6 +76,14 @@ describe("plugin", () => {
       expect.any(Function),
     );
     expect(mockApi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "before_compaction",
+      expect.any(Function),
+    );
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "after_compaction",
+      expect.any(Function),
+    );
     expect(
       mockApi.agent.events.registerAgentEventSubscription,
     ).toHaveBeenCalledWith(
@@ -92,6 +100,6 @@ describe("plugin", () => {
     const plugin = createPlugin(mockApi);
 
     expect(() => plugin.register(mockApi)).not.toThrow();
-    expect(mockApi.on).toHaveBeenCalledTimes(6);
+    expect(mockApi.on).toHaveBeenCalledTimes(8);
   });
 });

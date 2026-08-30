@@ -11,13 +11,19 @@ export function clearSessionTimer(session: {
   }
 }
 
+export function clearMaxDisplayTimer(session: {
+  maxDisplayTimer?: ReturnType<typeof setTimeout>;
+}) {
+  if (session.maxDisplayTimer) {
+    clearTimeout(session.maxDisplayTimer);
+    session.maxDisplayTimer = undefined;
+  }
+}
+
 export function clearAllSessionTimers(session: {
   clearTimer?: ReturnType<typeof setTimeout>;
   maxDisplayTimer?: ReturnType<typeof setTimeout>;
 }) {
   clearSessionTimer(session);
-  if (session.maxDisplayTimer) {
-    clearTimeout(session.maxDisplayTimer);
-    session.maxDisplayTimer = undefined;
-  }
+  clearMaxDisplayTimer(session);
 }
