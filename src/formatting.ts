@@ -2,6 +2,7 @@ import { sanitizeInlineText, sanitizeVisibleText } from "./ansi.js";
 
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
+  if (n.includes("__")) return "🔗";
 
   // Web & Communication
   if (n.includes("browser")) return "🌎";
