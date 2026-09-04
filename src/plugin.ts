@@ -21,7 +21,23 @@ export function buildIsPluginEnabledForAgent(
     const entry = plugins.entries?.[pluginId];
     if (!entry?.enabled) return false;
 
-    const agents = entry.config?.agents;
+    const config = entry.config as Record<string, unknown> | undefined;
+    const scope =
+      config?.scope &&
+      typeof config.scope === "object" &&
+      !Array.isArray(config.scope)
+        ? (config.scope as Record<string, unknown>)
+        : undefined;
+
+    const agents =
+      (Array.isArray(scope?.agents)
+        ? (scope.agents as unknown[])
+        : undefined) ??
+      (Array.isArray(config?.agents)
+        ? (config.agents as unknown[])
+        : undefined) ??
+      (pluginId === "skill-harness" ? ["main"] : undefined);
+
     if (!Array.isArray(agents)) return false;
 
     return agents.includes(agentId);

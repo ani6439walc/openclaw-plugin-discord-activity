@@ -55,4 +55,39 @@ describe("buildIsPluginEnabledForAgent", () => {
     expect(denied("main")).toBe(false);
     expect(notAllowed("main")).toBe(false);
   });
+
+  it("resolves agents from scope.agents when configured", () => {
+    const isEnabled = buildIsPluginEnabledForAgent(
+      createConfig({
+        entries: {
+          "skill-harness": {
+            enabled: true,
+            config: { scope: { agents: ["main", "lite"] } },
+          },
+        },
+      }),
+      "skill-harness",
+    );
+
+    expect(isEnabled("main")).toBe(true);
+    expect(isEnabled("lite")).toBe(true);
+    expect(isEnabled("other")).toBe(false);
+  });
+
+  it("defaults to main agent for skill-harness when agent scope is omitted", () => {
+    const isEnabled = buildIsPluginEnabledForAgent(
+      createConfig({
+        entries: {
+          "skill-harness": {
+            enabled: true,
+            config: {},
+          },
+        },
+      }),
+      "skill-harness",
+    );
+
+    expect(isEnabled("main")).toBe(true);
+    expect(isEnabled("other")).toBe(false);
+  });
 });
