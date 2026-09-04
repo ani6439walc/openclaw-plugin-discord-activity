@@ -759,7 +759,7 @@ export function createHookHandlers(deps: HookDeps) {
           ? store.getOrCreateSession(contextKey, sourceSessionKey)
           : undefined;
         if (session) {
-          if (!isSessionRunCurrent(session, ctx.runId)) return;
+          if (ctx.runId && session.supersededRunIds?.has(ctx.runId)) return;
           clearSessionTimer(session);
           const entries = reconcileActiveMemoryTranscriptEntries(
             session.toolHistory,

@@ -1963,7 +1963,7 @@ describe("createHookHandlers", () => {
       );
     });
 
-    it("does not let an active-memory run id block main or skill-harness events", async () => {
+    it("keeps active-memory agent end correlated when its child run id differs from the parent", async () => {
       createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
       isSkillHarnessEnabled.mockReturnValue(true);
@@ -1971,7 +1971,12 @@ describe("createHookHandlers", () => {
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, accountId: "default" },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "main-run-1",
+        },
       );
       const activeMemorySessionKey = `${sessionKey}:active-memory:child`;
       const activeMemoryContext = {
@@ -2008,7 +2013,14 @@ describe("createHookHandlers", () => {
       );
 
       const session = store.sessions.get("discord:direct:123");
-      expect(session?.runId).toBeUndefined();
+      expect(session?.runId).toBe("main-run-1");
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "active-memory",
+          status: "completed",
+          durationMs: 500,
+        }),
+      );
 
       await handlers.onBeforeToolCall(
         {
