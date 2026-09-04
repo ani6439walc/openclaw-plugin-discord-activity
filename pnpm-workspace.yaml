@@ -5,3 +5,6 @@ allowBuilds:
   protobufjs: true
   sharp: true
   tree-sitter-bash: true
+minimumReleaseAgeExclude:
+  - '@openclaw/ai@2026.9.1'
+  - openclaw@2026.9.1
