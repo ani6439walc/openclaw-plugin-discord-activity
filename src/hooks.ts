@@ -398,7 +398,11 @@ export function createHookHandlers(deps: HookDeps) {
       });
       return false;
     }
-    if (session.runId && session.runId !== runId) {
+    if (
+      session.runId &&
+      session.runId !== runId &&
+      !activeMemoryRunIdsBySession.get(session)?.has(runId)
+    ) {
       logger.debug("skip hook for stale run.", {
         contextKey: session.contextKey,
         expectedRunId: session.runId,
@@ -879,6 +883,18 @@ export function createHookHandlers(deps: HookDeps) {
                 : undefined;
 
           if (entries.length > 0 || parentEntry) {
+            if (
+              entries.some((entry) => entry.toolName === "active-memory:result")
+            ) {
+              session.confirmedDisplayState = {
+                ...(session.confirmedDisplayState ?? {}),
+                "group:active-memory": "expanded",
+              };
+              session.monotonicSafetyFloor = {
+                ...(session.monotonicSafetyFloor ?? {}),
+                "group:active-memory": "expanded",
+              };
+            }
             const newEntries =
               entries.length > 0
                 ? toolHistoryManager.upsertEntries(session.toolHistory, entries)

@@ -718,6 +718,67 @@ describe("createHookHandlers", () => {
       );
     });
 
+    it("shows tools from a registered active-memory child run", async () => {
+      createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      const sessionKey = "agent:main:discord:direct:123";
+      const activeMemorySessionKey = `${sessionKey}:active-memory:current`;
+      const activeMemoryRunId = "active-memory-run-current";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_current",
+        },
+      );
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "current active-memory run" },
+        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
+      );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "memory_call",
+          toolName: "memory_get",
+          params: { path: "knowledge/concepts/example.md" },
+          runId: activeMemoryRunId,
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          toolCallId: "memory_call",
+          toolName: "memory_get",
+          runId: activeMemoryRunId,
+        },
+      );
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "memory_call",
+          toolName: "memory_get",
+          params: { path: "knowledge/concepts/example.md" },
+          runId: activeMemoryRunId,
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          toolCallId: "memory_call",
+          toolName: "memory_get",
+          runId: activeMemoryRunId,
+        },
+      );
+
+      expect(
+        store.sessions.get("discord:direct:123")?.toolHistory,
+      ).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "active-memory:memory_call",
+          toolName: "active-memory:memory_get",
+          status: "completed",
+        }),
+      );
+    });
+
     it("ignores an unregistered distinct active-memory child in the current generation", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
@@ -2033,6 +2094,15 @@ describe("createHookHandlers", () => {
         },
       );
 
+      const pendingSession = store.sessions.get("discord:direct:123");
+      if (!pendingSession) throw new Error("expected active session");
+      pendingSession.confirmedDisplayState = {
+        "group:active-memory": "collapsed",
+      };
+      pendingSession.monotonicSafetyFloor = {
+        "group:active-memory": "collapsed",
+      };
+
       await handlers.onAgentEnd(
         {
           messages: [
@@ -2079,6 +2149,9 @@ describe("createHookHandlers", () => {
             status: "completed",
           }),
         ]),
+      );
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "active-memory ▾ ✔",
       );
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
         "result: 每日早報重跑已觸發 Cron job",
@@ -2958,10 +3031,10 @@ describe("createHookHandlers", () => {
       expect(activeMemoryContent).toContain("🧩 active-memory ▾ ✔");
       expect(activeMemoryContent).toContain("💡 skill-harness ▾ ←");
       expect(
-              afterActiveMemory!.lastRenderedContent!.indexOf("skill-harness"),
-            ).toBeLessThan(
-              afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
-            );
+        afterActiveMemory!.lastRenderedContent!.indexOf("skill-harness"),
+      ).toBeLessThan(
+        afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      );
 
       await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
@@ -2983,10 +3056,10 @@ describe("createHookHandlers", () => {
       expect(skillHarnessContent).toContain("🧩 active-memory ▾ ✔");
       expect(skillHarnessContent).toContain("💡 skill-harness ▾ ✔");
       expect(
-              afterSkillHarness!.lastRenderedContent!.indexOf("💡 skill-harness"),
-            ).toBeLessThan(
-              afterSkillHarness!.lastRenderedContent!.indexOf("🧩 active-memory"),
-            );
+        afterSkillHarness!.lastRenderedContent!.indexOf("💡 skill-harness"),
+      ).toBeLessThan(
+        afterSkillHarness!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      );
 
       await handlers.onAgentEnd(
         { messages: [], success: true },
@@ -2999,8 +3072,8 @@ describe("createHookHandlers", () => {
       );
       expect(final?.lastRenderedContent).toContain("skill-harness");
       expect(
-              final!.lastRenderedContent!.indexOf("💡 skill-harness"),
-            ).toBeLessThan(final!.lastRenderedContent!.indexOf("🧩 active-memory"));
+        final!.lastRenderedContent!.indexOf("💡 skill-harness"),
+      ).toBeLessThan(final!.lastRenderedContent!.indexOf("🧩 active-memory"));
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
   });
