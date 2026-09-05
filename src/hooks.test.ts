@@ -511,6 +511,254 @@ describe("createHookHandlers", () => {
   });
 
   describe("queued successor admission", () => {
+    it("fails open when active-memory admission cannot resolve its parent", async () => {
+      const failingStore = {
+        ...store,
+        resolveSession: vi
+          .fn<typeof store.resolveSession>()
+          .mockRejectedValue(new Error("parent session unavailable")),
+      };
+      const failingHandlers = createHookHandlers({
+        store: failingStore,
+        orphans,
+        getToken,
+        config,
+        isActiveMemoryEnabled,
+        isSkillHarnessEnabled,
+      });
+
+      await expect(
+        failingHandlers.onBeforeAgentReply(
+          { cleanedBody: "active-memory admission" },
+          {
+            sessionKey: "agent:main:discord:direct:123:active-memory:child",
+            runId: "active-memory-run-current",
+          },
+        ),
+      ).resolves.toEqual({ handled: false });
+    });
+
+    it("does not let a delayed unregistered active-memory child tool event mutate its successor generation", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      const sessionKey = "agent:main:discord:direct:123";
+      const activeMemorySessionKey = `${sessionKey}:active-memory:old`;
+      const activeMemoryRunId = "active-memory-run-old";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_old",
+        },
+      );
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "queued followup" },
+        { sessionKey, runId: "run_new" },
+      );
+
+      const successor = store.sessions.get("discord:direct:123");
+      const historyBeforeLateChild = [...(successor?.toolHistory ?? [])];
+      const postCountBeforeLateChild = countChannelMessagePosts(fetchMock);
+      const patchCountBeforeLateChild = countCalls(
+        fetchMock,
+        "PATCH",
+        /\/channels\/dm_channel_123\/messages\/status_2$/,
+      );
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "memory_call_old",
+          toolName: "memory_search",
+          params: { query: "old context" },
+          runId: activeMemoryRunId,
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          toolCallId: "memory_call_old",
+          toolName: "memory_search",
+          runId: activeMemoryRunId,
+        },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [],
+          success: false,
+          error: "old active-memory failure",
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          runId: activeMemoryRunId,
+        },
+      );
+
+      expect(successor?.generation).toBe(2);
+      expect(successor?.runId).toBe("run_new");
+      expect(successor?.toolHistory).toEqual(historyBeforeLateChild);
+      expect(countChannelMessagePosts(fetchMock)).toBe(
+        postCountBeforeLateChild,
+      );
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_2$/,
+        ),
+      ).toBe(patchCountBeforeLateChild);
+    });
+
+    it("does not let a no-tool active-memory child run mutate its successor generation", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      const sessionKey = "agent:main:discord:direct:123";
+      const activeMemorySessionKey = `${sessionKey}:active-memory:old`;
+      const activeMemoryRunId = "active-memory-run-old";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_old",
+        },
+      );
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "old active-memory run" },
+        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
+      );
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "queued followup" },
+        { sessionKey, runId: "run_new" },
+      );
+
+      const successor = store.sessions.get("discord:direct:123");
+      const historyBeforeLateChild = [...(successor?.toolHistory ?? [])];
+      const postCountBeforeLateChild = countChannelMessagePosts(fetchMock);
+      const patchCountBeforeLateChild = countCalls(
+        fetchMock,
+        "PATCH",
+        /\/channels\/dm_channel_123\/messages\/status_2$/,
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [],
+          success: false,
+          error: "old active-memory failure",
+        },
+        {
+          sessionKey: activeMemorySessionKey,
+          runId: activeMemoryRunId,
+        },
+      );
+
+      expect(successor?.generation).toBe(2);
+      expect(successor?.runId).toBe("run_new");
+      expect(successor?.toolHistory).toEqual(historyBeforeLateChild);
+      expect(countChannelMessagePosts(fetchMock)).toBe(
+        postCountBeforeLateChild,
+      );
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_2$/,
+        ),
+      ).toBe(patchCountBeforeLateChild);
+    });
+
+    it("reconciles a registered no-tool active-memory child in the current generation", async () => {
+      createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      const sessionKey = "agent:main:discord:direct:123";
+      const activeMemorySessionKey = `${sessionKey}:active-memory:current`;
+      const activeMemoryRunId = "active-memory-run-current";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_current",
+        },
+      );
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "current active-memory run" },
+        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
+      );
+      await handlers.onAgentEnd(
+        { messages: [], success: true, durationMs: 500 },
+        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
+      );
+
+      expect(
+        store.sessions.get("discord:direct:123")?.toolHistory,
+      ).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "active-memory",
+          status: "completed",
+          durationMs: 500,
+        }),
+      );
+    });
+
+    it("ignores an unregistered distinct active-memory child in the current generation", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(false);
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_current",
+        },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      const historyBeforeChild = [...(session?.toolHistory ?? [])];
+      const patchCountBeforeChild = countCalls(
+        fetchMock,
+        "PATCH",
+        /\/channels\/dm_channel_123\/messages\/status_1$/,
+      );
+      await handlers.onAgentEnd(
+        { messages: [], success: false, error: "unregistered child" },
+        {
+          sessionKey: `${sessionKey}:active-memory:unregistered`,
+          runId: "active-memory-run-unregistered",
+        },
+      );
+
+      expect(session?.toolHistory).toEqual(historyBeforeChild);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(patchCountBeforeChild);
+    });
+
     it("binds an admitted run to the unbound inbound generation in place", async () => {
       const fetchMock = createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";
@@ -2295,6 +2543,13 @@ describe("createHookHandlers", () => {
         toolCallId: "memory-call-1",
         runId: "active-memory-run-1",
       };
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "active-memory admission" },
+        {
+          sessionKey: activeMemorySessionKey,
+          runId: "active-memory-run-1",
+        },
+      );
       await handlers.onBeforeToolCall(
         {
           toolCallId: "memory-call-1",

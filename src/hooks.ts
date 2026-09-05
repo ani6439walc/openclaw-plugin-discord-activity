@@ -227,6 +227,14 @@ export function createHookHandlers(deps: HookDeps) {
 
   // Initialize the ToolHistoryManager
   const toolHistoryManager = new ToolHistoryManager(config);
+  const activeMemoryRunIdsBySession = new WeakMap<SessionEntry, Set<string>>();
+
+  function registerActiveMemoryRun(session: SessionEntry, runId: string): void {
+    const activeMemoryRunIds =
+      activeMemoryRunIdsBySession.get(session) ?? new Set<string>();
+    activeMemoryRunIds.add(runId);
+    activeMemoryRunIdsBySession.set(session, activeMemoryRunIds);
+  }
 
   function getCompactionToolCallId(session: SessionEntry): string {
     return `compaction:${session.compactionEpoch ?? 0}`;
@@ -322,6 +330,7 @@ export function createHookHandlers(deps: HookDeps) {
       supersededRunIds: new Set([
         ...(activeSession.supersededRunIds ?? []),
         ...(activeSession.runId ? [activeSession.runId] : []),
+        ...(activeMemoryRunIdsBySession.get(activeSession) ?? []),
       ]),
       finalized: false,
       toolHistory: [],
@@ -734,6 +743,36 @@ export function createHookHandlers(deps: HookDeps) {
     event: BeforeAgentReplyEvent,
     ctx: AgentContext,
   ) {
+    if (isActiveMemorySessionKey(ctx.sessionKey)) {
+      const sourceSessionKey = getActiveMemorySourceSessionKey(ctx.sessionKey);
+      const contextKey = getDiscordContextKey(sourceSessionKey);
+      try {
+        if (ctx.runId && contextKey && sourceSessionKey) {
+          const session = await store.resolveSession(
+            contextKey,
+            sourceSessionKey,
+          );
+          if (
+            session &&
+            store.isCurrentSession(session) &&
+            !session.finalized &&
+            !session.supersededRunIds?.has(ctx.runId)
+          ) {
+            registerActiveMemoryRun(session, ctx.runId);
+          }
+        }
+      } catch (err) {
+        logger.warn(
+          "before_agent_reply: failed to register active-memory run.",
+          {
+            contextKey,
+            sessionKey: ctx.sessionKey,
+            error: String(err),
+          },
+        );
+      }
+      return { handled: false };
+    }
     if (shouldSkipSession(ctx, "before_agent_reply")) return { handled: false };
     logHookEvent("before_agent_reply", event, ctx);
 
@@ -801,6 +840,13 @@ export function createHookHandlers(deps: HookDeps) {
           : undefined;
         if (session) {
           if (ctx.runId && session.supersededRunIds?.has(ctx.runId)) return;
+          if (
+            ctx.runId &&
+            ctx.runId !== session.runId &&
+            !activeMemoryRunIdsBySession.get(session)?.has(ctx.runId)
+          ) {
+            return;
+          }
           clearSessionTimer(session);
           const entries = reconcileActiveMemoryTranscriptEntries(
             session.toolHistory,
