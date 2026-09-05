@@ -360,9 +360,9 @@ describe("progress card rendering", () => {
       false,
     );
 
-    expect(result).toContain(`${BOLD_CYAN}📋 progress · 0/1${RESET}`);
+    expect(result).toContain(`${BOLD_BLUE}📋 progress · 0/1${RESET}`);
     expect(result).toContain(`    ${BLUE}Detailed status${RESET}`);
-    expect(result).not.toContain(`${BOLD_BLUE}📋 progress`);
+    expect(result).not.toContain(`${BOLD_CYAN}📋 progress`);
   });
 
   it("uses a progress aria-label when no plan is present", () => {

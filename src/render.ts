@@ -531,7 +531,7 @@ function createProgressCardBlock(
     header: {
       icon: "📋",
       name: detail ? `progress · ${detail}` : "progress",
-      nameStyle: ANSI.boldCyan,
+      nameStyle: ANSI.boldBlue,
       status: "",
       statusStyle: ANSI.lightGray,
     },
