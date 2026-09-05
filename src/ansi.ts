@@ -1,6 +1,7 @@
 export const ANSI = {
   reset: "\u001b[0m",
   boldBlue: "\u001b[1;34m",
+  blue: "\u001b[34m",
   boldCyan: "\u001b[1;36m",
   cyan: "\u001b[36m",
   green: "\u001b[32m",

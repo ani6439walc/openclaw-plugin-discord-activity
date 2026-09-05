@@ -21,6 +21,7 @@ function makeEntry(overrides: Partial<ToolEntry> = {}): ToolEntry {
 
 const RESET = "\u001b[0m";
 const BOLD_BLUE = "\u001b[1;34m";
+const BLUE = "\u001b[34m";
 const BOLD_CYAN = "\u001b[1;36m";
 const MAGENTA = "\u001b[35m";
 const GREEN = "\u001b[32m";
@@ -317,7 +318,7 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · 1/3 · Tests are running.");
+    expect(result).toContain("📋 progress · 1/3\n    Tests are running.");
     expect(result).not.toContain("**");
     expect(result).not.toContain("https://example.com");
     expect(result).toContain("    ✓ Inspect the failing route");
@@ -326,6 +327,25 @@ describe("progress card rendering", () => {
     expect(result).not.toContain("Old note");
     expect(result).not.toContain("progress_card");
     expect(result.indexOf("📋 progress")).toBeLessThan(result.indexOf("bash"));
+  });
+
+  it("renders the progress header and summary on separate non-bold colored lines", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          toolName: "progress_card",
+          params: {
+            markdown: "**Detailed status**",
+            plan: [{ step: "Continue work", status: "in_progress" }],
+          },
+        }),
+      ],
+      false,
+    );
+
+    expect(result).toContain(`${BLUE}📋 progress · 0/1${RESET}`);
+    expect(result).toContain(`    ${CYAN}Detailed status${RESET}`);
+    expect(result).not.toContain(`${BOLD_BLUE}📋 progress`);
   });
 
   it("uses a progress aria-label when no plan is present", () => {
@@ -345,7 +365,7 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · Download · 3/7 · Working through the archive.",
+      "📋 progress · Download · 3/7\n    Working through the archive.",
     );
     expect(result).not.toContain("<progress");
   });
@@ -368,9 +388,9 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · 0/1 · Current state Build is green See details",
+      "📋 progress · 0/1\n    Current state Build is green See details",
     );
-    expect(result).not.toMatch(/\*\*|https:\/\/|\n    ##|\n    Current state/u);
+    expect(result).not.toMatch(/\*\*|https:\/\/|\n    ##/u);
     expect(result).not.toContain("ˋgreenˋ");
     expect(result).toContain("    → Ship safely");
   });

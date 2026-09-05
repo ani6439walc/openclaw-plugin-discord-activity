@@ -504,18 +504,17 @@ function createProgressCardBlock(
   const omittedSummaryCharacters = markdown.summary
     ? [...markdown.summary].length - [...(summary ?? "")].length
     : 0;
-  const detail = [
-    progressDetail,
-    summary
-      ? `${summary}${
+  const detail = progressDetail;
+  const summaryLine = summary
+    ? `    ${ansiSpan(
+        ANSI.cyan,
+        `${summary}${
           omittedSummaryCharacters > 0
             ? `… (+${omittedSummaryCharacters} chars)`
             : ""
-        }`
-      : undefined,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+        }`,
+      )}`
+    : undefined;
   const planLines = steps.map(({ step, status }) => {
     const marker =
       status === "completed" ? "✓" : status === "in_progress" ? "→" : "·";
@@ -532,13 +531,13 @@ function createProgressCardBlock(
     header: {
       icon: "📋",
       name: detail ? `progress · ${detail}` : "progress",
-      nameStyle: ANSI.boldBlue,
+      nameStyle: ANSI.blue,
       status: "",
       statusStyle: ANSI.lightGray,
     },
     children: [],
-    bodyLines: planLines,
-    compactBodyLines: planLines,
+    bodyLines: [...(summaryLine ? [summaryLine] : []), ...planLines],
+    compactBodyLines: [...(summaryLine ? [summaryLine] : []), ...planLines],
     protected: true,
   };
 }
