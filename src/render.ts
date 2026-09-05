@@ -455,9 +455,9 @@ function getProgressCardSteps(value: unknown): ProgressCardStep[] {
 
 function parseProgressMarkdown(value: unknown): {
   ariaLabel?: string;
-  lines: string[];
+  summary?: string;
 } {
-  if (typeof value !== "string") return { lines: [] };
+  if (typeof value !== "string") return {};
   const sanitized = sanitizeVisibleText(value)
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n");
@@ -467,17 +467,24 @@ function parseProgressMarkdown(value: unknown): {
   const ariaLabel = sanitizeHeaderToken(
     progressMatch?.[1] ?? progressMatch?.[2] ?? "",
   ).trim();
-  const withoutProgress = sanitized.replace(
-    /<progress\b[^>]*>(?:<\/progress>)?/giu,
-    "",
-  );
-  const withoutHtml = withoutProgress.replaceAll(/<[^>]*>/gu, "");
-  const lines = withoutHtml.split("\n");
-  while (lines[0]?.trim() === "") lines.shift();
-  while (lines.at(-1)?.trim() === "") lines.pop();
-  return { ariaLabel: ariaLabel || undefined, lines };
+  const summary = sanitized
+    .replace(/<progress\b[^>]*>(?:<\/progress>)?/giu, " ")
+    .replaceAll(/!\[([^\]]*)\]\([^)]*\)/gu, "$1")
+    .replaceAll(/\[([^\]]+)\]\([^)]*\)/gu, "$1")
+    .replaceAll(/<[^>]*>/gu, " ")
+    .replaceAll(/\*\*([^*]+)\*\*|__([^_]+)__/gu, "$1$2")
+    .replaceAll(/\*([^*]+)\*|_([^_]+)_/gu, "$1$2")
+    .replaceAll(/~~([^~]+)~~/gu, "$1")
+    .replaceAll("ˋ", "")
+    .replaceAll(/^\s{0,3}#{1,6}\s+/gmu, "")
+    .replaceAll(/^\s*(?:[-+*]|\d+[.)])\s+/gmu, "")
+    .replaceAll(/\s+/gu, " ")
+    .trim();
+  return {
+    ariaLabel: ariaLabel || undefined,
+    summary: summary || undefined,
+  };
 }
-
 function createProgressCardBlock(
   entry: ToolEntry | undefined,
 ): StatusBlock | undefined {
@@ -486,12 +493,29 @@ function createProgressCardBlock(
     entry.params && typeof entry.params === "object" ? entry.params : {};
   const steps = getProgressCardSteps(params.plan);
   const markdown = parseProgressMarkdown(params.markdown);
-  if (steps.length === 0 && markdown.lines.every((line) => !line.trim()))
-    return;
+  if (steps.length === 0 && !markdown.summary && !markdown.ariaLabel) return;
 
   const completed = steps.filter((step) => step.status === "completed").length;
-  const detail =
+  const progressDetail =
     steps.length > 0 ? `${completed}/${steps.length}` : markdown.ariaLabel;
+  const summary = markdown.summary
+    ? [...markdown.summary].slice(0, 240).join("")
+    : undefined;
+  const omittedSummaryCharacters = markdown.summary
+    ? [...markdown.summary].length - [...(summary ?? "")].length
+    : 0;
+  const detail = [
+    progressDetail,
+    summary
+      ? `${summary}${
+          omittedSummaryCharacters > 0
+            ? `… (+${omittedSummaryCharacters} chars)`
+            : ""
+        }`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const planLines = steps.map(({ step, status }) => {
     const marker =
       status === "completed" ? "✓" : status === "in_progress" ? "→" : "·";
@@ -503,25 +527,6 @@ function createProgressCardBlock(
           : ANSI.lightGray;
     return `    ${ansiSpan(style, `${marker} ${step}`)}`;
   });
-  const noteLines = markdown.lines.map((line) =>
-    line ? `    ${ansiSpan(ANSI.lightGray, line)}` : "",
-  );
-  const retainedNote = markdown.lines.find((line) => line.trim());
-  const omittedNoteLines =
-    markdown.lines.filter((line) => line.trim()).length -
-    (retainedNote ? 1 : 0);
-  const compactNoteLines = retainedNote
-    ? [
-        `    ${ansiSpan(ANSI.lightGray, [...retainedNote].slice(0, 140).join(""))}`,
-        ...(omittedNoteLines > 0 || [...retainedNote].length > 140
-          ? [
-              `    ${ansiSpan(ANSI.lightGray, `… progress note omitted (${omittedNoteLines} more lines)`)}`,
-            ]
-          : []),
-      ]
-    : [];
-  const bodyLines = [...noteLines, ...planLines];
-
   return {
     key: "progress",
     header: {
@@ -532,8 +537,8 @@ function createProgressCardBlock(
       statusStyle: ANSI.lightGray,
     },
     children: [],
-    bodyLines,
-    compactBodyLines: [...compactNoteLines, ...planLines],
+    bodyLines: planLines,
+    compactBodyLines: planLines,
     protected: true,
   };
 }

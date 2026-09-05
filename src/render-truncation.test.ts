@@ -295,8 +295,8 @@ describe("bounded status rendering", () => {
     expect(plain).toContain("✓ Completed discovery");
     expect(plain).toContain("→ Implement the renderer");
     expect(plain).toContain("· Verify the Discord output");
-    expect(plain).toContain("omitted");
-    expect(plain).not.toContain("tool_old-tool");
+    expect(plain).toContain("(+3777 chars)");
+    expect(plain).toContain("tool_old-tool ▸ ✔");
   });
 
   it("bounds large field sets with one block-level collapse", () => {

@@ -276,7 +276,7 @@ describe("progress card rendering", () => {
             toolName: "openclawprogress_card",
             params: {
               markdown:
-                '<progress aria-label="Tests · 3/7" value="3" max="7"></progress>\n\nTests are running.',
+                '<progress aria-label="Tests · 3/7" value="3" max="7"></progress>\n\n**Tests** are [running](https://example.com).',
               plan: [
                 { step: "Inspect the failing route", status: "completed" },
                 { step: "Repair the session owner", status: "in_progress" },
@@ -290,8 +290,9 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · 1/3");
-    expect(result).toContain("    Tests are running.");
+    expect(result).toContain("📋 progress · 1/3 · Tests are running.");
+    expect(result).not.toContain("**");
+    expect(result).not.toContain("https://example.com");
     expect(result).toContain("    ✓ Inspect the failing route");
     expect(result).toContain("    → Repair the session owner");
     expect(result).toContain("    · Run focused verification");
@@ -316,9 +317,55 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · Download · 3/7");
-    expect(result).toContain("    Working through the archive.");
+    expect(result).toContain(
+      "📋 progress · Download · 3/7 · Working through the archive.",
+    );
     expect(result).not.toContain("<progress");
+  });
+
+  it("flattens multiline Markdown into a plain-text header summary", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolName: "progress_card",
+            params: {
+              markdown:
+                "## Current state\n\n- **Build** is `green`\n- See [details](https://example.com)",
+              plan: [{ step: "Ship safely", status: "in_progress" }],
+            },
+          }),
+        ],
+        false,
+      ),
+    );
+
+    expect(result).toContain(
+      "📋 progress · 0/1 · Current state Build is green See details",
+    );
+    expect(result).not.toMatch(/\*\*|https:\/\/|\n    ##|\n    Current state/u);
+    expect(result).not.toContain("ˋgreenˋ");
+    expect(result).toContain("    → Ship safely");
+  });
+
+  it("renders an aria-label-only progress card without a trailing separator", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolName: "progress_card",
+            params: {
+              markdown:
+                '<progress aria-label="Tests · 3/7" value="3" max="7"></progress>',
+            },
+          }),
+        ],
+        false,
+      ),
+    );
+
+    expect(result).toContain("📋 progress · Tests · 3/7");
+    expect(result).not.toContain("Tests · 3/7 · ");
   });
 
   it("removes the pinned progress block when the latest call clears it", () => {
