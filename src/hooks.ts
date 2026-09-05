@@ -299,6 +299,47 @@ export function createHookHandlers(deps: HookDeps) {
     await updateSessionStatus(session, false);
   }
 
+  async function replaceActivityGeneration(
+    activeSession: SessionEntry,
+    nextOwnerSessionKey: string | undefined,
+    nextRunId: string | undefined,
+    retirementReason: string,
+  ): Promise<SessionEntry> {
+    const context = store.contexts.get(activeSession.contextKey);
+    const ownerSessionKey =
+      nextOwnerSessionKey ??
+      context?.sourceSessionKey ??
+      activeSession.ownerSessionKey;
+    const replacement: SessionEntry = {
+      contextKey: activeSession.contextKey,
+      channelId: context?.actualChannelId ?? activeSession.channelId,
+      userMessageId: context?.userMessageId ?? activeSession.userMessageId,
+      senderId: context?.senderId ?? activeSession.senderId,
+      accountId: context?.accountId ?? activeSession.accountId,
+      ownerSessionKey,
+      generation: activeSession.generation + 1,
+      runId: nextRunId,
+      supersededRunIds: new Set([
+        ...(activeSession.supersededRunIds ?? []),
+        ...(activeSession.runId ? [activeSession.runId] : []),
+      ]),
+      finalized: false,
+      toolHistory: [],
+    };
+
+    clearSessionTimer(activeSession);
+    store.sessions.set(activeSession.contextKey, replacement);
+    retireSession(activeSession, retirementReason, getToken).catch((err) => {
+      logger.warn("failed to retire old session on owner switch.", {
+        contextKey: activeSession.contextKey,
+        error: String(err),
+      });
+    });
+
+    await showPendingSubagentEntries(replacement, ownerSessionKey);
+    return replacement;
+  }
+
   function shouldSkipSession(
     ctx: { sessionKey?: string },
     hookName: string,
@@ -458,36 +499,12 @@ export function createHookHandlers(deps: HookDeps) {
       ) {
         const nextOwnerSessionKey =
           ctx.sessionKey ?? activeSession.ownerSessionKey;
-        clearSessionTimer(activeSession);
-        const replacement: SessionEntry = {
-          contextKey,
-          channelId: actualChannelId,
-          userMessageId: event.messageId,
-          senderId: extractSenderId(event.metadata),
-          accountId: ctx.accountId,
-          ownerSessionKey: nextOwnerSessionKey,
-          generation: activeSession.generation + 1,
-          runId: ctx.runId,
-          supersededRunIds: new Set([
-            ...(activeSession.supersededRunIds ?? []),
-            ...(activeSession.runId ? [activeSession.runId] : []),
-          ]),
-          finalized: false,
-          toolHistory: [],
-        };
-        store.sessions.set(contextKey, replacement);
-        retireSession(
+        await replaceActivityGeneration(
           activeSession,
+          nextOwnerSessionKey,
+          ctx.runId,
           "message_received_owner_switch",
-          getToken,
-        ).catch((err) => {
-          logger.warn("failed to retire old session on owner switch.", {
-            contextKey,
-            error: String(err),
-          });
-        });
-
-        await showPendingSubagentEntries(replacement, nextOwnerSessionKey);
+        );
         return;
       }
 
@@ -720,16 +737,40 @@ export function createHookHandlers(deps: HookDeps) {
     if (shouldSkipSession(ctx, "before_agent_reply")) return { handled: false };
     logHookEvent("before_agent_reply", event, ctx);
 
+    if (!ctx.runId) return { handled: false };
+
     const contextKey = getDiscordContextKey(ctx.sessionKey);
     if (!contextKey) return { handled: false };
-    const session = await store.resolveSession(contextKey, ctx.sessionKey);
-    if (!session) return { handled: false };
-    if (!bindSessionRun(session, ctx.runId)) return { handled: false };
-    if (!store.hasVisibleStatusState(session)) return { handled: false };
-    if (session.finalized) return { handled: false };
 
-    session.finalized = true;
-    await updateSessionStatus(session, true);
+    try {
+      const session = await store.resolveSession(contextKey, ctx.sessionKey);
+      if (!session || session.supersededRunIds?.has(ctx.runId)) {
+        return { handled: false };
+      }
+      if (session.runId === ctx.runId) return { handled: false };
+      if (!session.runId && !session.finalized) {
+        session.runId = ctx.runId;
+        return { handled: false };
+      }
+      if (!session.finalized) return { handled: false };
+
+      await replaceActivityGeneration(
+        session,
+        ctx.sessionKey,
+        ctx.runId,
+        "before_agent_reply_run_replacement",
+      );
+    } catch (err) {
+      logger.warn(
+        "before_agent_reply: failed to initialize activity generation.",
+        {
+          contextKey,
+          sessionKey: ctx.sessionKey,
+          error: String(err),
+        },
+      );
+    }
+
     return { handled: false };
   }
 

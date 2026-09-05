@@ -81,18 +81,23 @@ Rendering rules to preserve:
 
 The plugin listens to OpenClaw runtime events and maps them to one active Discord status message per Discord conversation.
 
-1. **`message_received`** resolves the Discord context, records channel/message metadata, and starts or replaces the active session for the conversation.
-2. **`before_tool_call`** adds a pending tool entry. If the Discord session is not known yet, the tool call is stored as an orphan.
-3. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves or derives completed duration data, and updates the status message.
-4. **`before_agent_reply` / `message_sending`** finalize visible status before the final user-facing reply is sent.
-5. **`before_compaction` / `after_compaction`** preserve the active status across context compaction, show the compaction as pending/completed with duration, cancel attempt-level cleanup, and suspend the idle timer until the compacted run resumes.
-6. **`agent_end`** records and displays the concrete main-agent error, handles main-session cleanup, and captures final `active-memory` output and failure details from its internal session.
-7. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
+1. **`message_received`** resolves the Discord context, captures inbound channel/message routing metadata, and may establish the initial activity generation for the conversation.
+2. **Awaited `before_agent_reply`** admits each main run before Skill Harness and tool events. It binds an admitted run to an unbound initial generation, or creates exactly one fresh successor generation for a queued followup/collect run when no second `message_received` occurs.
+   Admission is non-terminal and always returns `{ handled: false }`.
+3. **`before_tool_call`** adds a pending tool entry. If the Discord session is not known yet, the tool call is stored as an orphan.
+4. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves or derives completed duration data, and updates the status message.
+5. **`message_sending`** finalizes visible status before the final user-facing reply is sent.
+6. **`before_compaction` / `after_compaction`** preserve the active status across context compaction, show the compaction as pending/completed with duration, cancel attempt-level cleanup, and suspend the idle timer until the compacted run resumes.
+7. **Main `agent_end`** records and displays the concrete main-agent error, owns main-session finalization and schedules cleanup, and captures final `active-memory` output and failure details from its internal session.
+8. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
 
 Session and race-safety behavior:
 
 - Each session serializes Discord create/edit/delete operations through `pendingOp`.
-- Tool, agent, and `skill-harness` producer events use OpenClaw `runId` provenance together with `generation`, `ownerSessionKey`, `finalized`, and current-session checks, so a superseded run cannot mutate a replacement session before or after an awaited Discord request.
+- The awaited `before_agent_reply` admission is idempotent for a run already bound to the current generation, so repeated admission does not create another generation or status message.
+- In the plugin's tested lifecycle, queued `followup`/`collect` runs can create one successor generation without another `message_received`; this describes the plugin behavior covered by tests, not a universal upstream guarantee.
+- A replacement preserves the newest known channel, account, sender, owner, and user-message routing metadata, installs the fresh generation before retiring the old one, and keeps direct-reply references intact.
+- Generation, owner, and superseded-run fencing on tool, agent, and `skill-harness` producer events preserves the current replacement state: OpenClaw `runId` provenance, `generation`, `ownerSessionKey`, `finalized`, and current-session checks prevent a superseded run from mutating it before or after an awaited Discord request.
 - The renderer returns content plus a per-block display state. Confirmed Discord creates/edits advance confirmed state; exhausted network or final `5xx` outcomes advance a conservative safety floor without pretending delivery was confirmed; explicit rejection leaves both unchanged. Rendering always starts from the more degraded state, so ambiguous delivery cannot cause a later visual resurrection.
 - Status creates use Discord `nonce` with `enforce_nonce`. An uncertain create preserves and reuses the same nonce across later high-level retries until Discord returns a usable message ID or the session is reset. Because a nonce replay can return the earlier message after history has changed, the plugin immediately PATCHes the current rendered content before marking that retry confirmed. An uncertain PATCH disables the unchanged-content shortcut until a later PATCH is confirmed.
 - Finalized sessions do not create duplicate status messages from late tool events.

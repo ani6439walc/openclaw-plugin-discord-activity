@@ -183,9 +183,9 @@ describe("main agent failure rendering", () => {
     );
     const oldSession = defaultStore.sessions.get("discord:channel:123")!;
     oldSession.toolHistory.push(entry({ status: "completed" }));
-    await handlers.onBeforeAgentReply(
-      { cleanedBody: "old reply" },
-      { sessionKey, runId: "run_old" },
+    await handlers.onMessageSending(
+      { to: "channel:123", content: "old reply" },
+      { channelId: "discord", sessionKey, runId: "run_old" },
     );
 
     await handlers.onMessageReceived(

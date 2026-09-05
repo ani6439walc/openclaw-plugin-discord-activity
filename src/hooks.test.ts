@@ -510,6 +510,313 @@ describe("createHookHandlers", () => {
     });
   });
 
+  describe("queued successor admission", () => {
+    it("binds an admitted run to the unbound inbound generation in place", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, accountId: "default" },
+      );
+
+      const inboundSession = store.sessions.get("discord:direct:123");
+      const postCountBeforeAdmission = countChannelMessagePosts(fetchMock);
+      const result = await handlers.onBeforeAgentReply(
+        { cleanedBody: "first admitted run" },
+        { sessionKey, runId: "run_new" },
+      );
+
+      expect(result).toEqual({ handled: false });
+      expect(store.sessions.get("discord:direct:123")).toBe(inboundSession);
+      expect(inboundSession?.generation).toBe(1);
+      expect(inboundSession?.runId).toBe("run_new");
+      expect(countChannelMessagePosts(fetchMock)).toBe(
+        postCountBeforeAdmission,
+      );
+    });
+
+    it("starts a queued successor generation from before_agent_reply before skill-harness activity", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(true);
+      isSkillHarnessEnabled.mockReturnValue(true);
+      config = resolveConfig({ replyMode: "direct" });
+      handlers = createHookHandlers({
+        store,
+        orphans,
+        getToken,
+        config,
+        isActiveMemoryEnabled,
+        isSkillHarnessEnabled,
+      });
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_old",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "old_call",
+          toolName: "bash",
+          params: { command: "pwd" },
+          runId: "run_old",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "old_call",
+          runId: "run_old",
+        },
+      );
+      const oldSession = store.sessions.get("discord:direct:123");
+      expect(oldSession?.toolHistory).toContainEqual(
+        expect.objectContaining({ toolCallId: "old_call", status: "pending" }),
+      );
+
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+      expect(oldSession?.finalized).toBe(true);
+
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "queued followup" },
+        { sessionKey, runId: "run_new" },
+      );
+
+      const queuedSession = store.sessions.get("discord:direct:123");
+      expect(queuedSession).not.toBe(oldSession);
+      expect(queuedSession?.generation).toBe(2);
+      expect(queuedSession?.runId).toBe("run_new");
+      expect(queuedSession?.supersededRunIds).toContain("run_old");
+      expect(queuedSession?.finalized).toBeFalsy();
+      expect(queuedSession?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "active-memory",
+          status: "pending",
+        }),
+        expect.objectContaining({
+          toolCallId: "skill-harness",
+          status: "pending",
+        }),
+      ]);
+      expect(getStatusPostBodies(fetchMock)).toEqual([
+        expect.objectContaining({
+          message_reference: { message_id: "user_msg_1" },
+        }),
+        expect.objectContaining({
+          message_reference: { message_id: "user_msg_1" },
+        }),
+      ]);
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run_new",
+        stream: "plugin:skill-harness",
+        sessionKey,
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "intent-classification",
+          state: "completed",
+          intent: "queued-followup",
+        },
+      });
+
+      expect(queuedSession?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "skill-harness:run_new:intent-classification",
+          status: "completed",
+          params: { intent: "queued-followup" },
+        }),
+      );
+      expect(stripAnsi(queuedSession?.lastRenderedContent ?? "")).toContain(
+        "intent-classification ✔",
+      );
+    });
+
+    it("guards queued successor takeover and fences late run events", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isSkillHarnessEnabled.mockReturnValue(true);
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_old",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "old_call",
+          toolName: "bash",
+          params: { command: "pwd" },
+          runId: "run_old",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "old_call",
+          runId: "run_old",
+        },
+      );
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "queued followup" },
+        { sessionKey, runId: "run_new" },
+      );
+
+      const queuedSession = store.sessions.get("discord:direct:123");
+      expect(queuedSession?.generation).toBe(2);
+      const postCountAfterAdmission = countChannelMessagePosts(fetchMock);
+      const historyAfterAdmission = [...(queuedSession?.toolHistory ?? [])];
+
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "duplicate queued followup" },
+        { sessionKey, runId: "run_new" },
+      );
+      expect(store.sessions.get("discord:direct:123")).toBe(queuedSession);
+      expect(queuedSession?.generation).toBe(2);
+      expect(queuedSession?.toolHistory).toEqual(historyAfterAdmission);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountAfterAdmission);
+
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "active run takeover" },
+        { sessionKey, runId: "run_hijack" },
+      );
+      expect(store.sessions.get("discord:direct:123")).toBe(queuedSession);
+      expect(queuedSession?.runId).toBe("run_new");
+      expect(queuedSession?.generation).toBe(2);
+      expect(queuedSession?.toolHistory).toEqual(historyAfterAdmission);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountAfterAdmission);
+
+      const mismatchedTakeover = handlers.onBeforeAgentReply(
+        { cleanedBody: "wrong owner" },
+        { sessionKey: "agent:other:discord:direct:123", runId: "run_hijack" },
+      );
+      await vi.advanceTimersByTimeAsync(500);
+      await mismatchedTakeover;
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "old run" },
+        { sessionKey, runId: "run_old" },
+      );
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "child run" },
+        { sessionKey: `${sessionKey}:subagent:child`, runId: "run_child" },
+      );
+      expect(store.sessions.get("discord:direct:123")).toBe(queuedSession);
+      expect(queuedSession?.runId).toBe("run_new");
+      expect(queuedSession?.generation).toBe(2);
+      expect(queuedSession?.toolHistory).toEqual(historyAfterAdmission);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountAfterAdmission);
+
+      const patchCountBeforeLateEvents = countCalls(
+        fetchMock,
+        "PATCH",
+        /\/channels\/dm_channel_123\/messages\/status_2$/,
+      );
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run_old",
+        stream: "plugin:skill-harness",
+        sessionKey,
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "intent-classification",
+          state: "completed",
+          intent: "late-old-run",
+        },
+      });
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "late_old_call",
+          toolName: "bash",
+          params: { command: "old" },
+          runId: "run_old",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "late_old_call",
+          runId: "run_old",
+        },
+      );
+      await handlers.onAgentEnd(
+        { messages: [], success: true },
+        { sessionKey, runId: "run_old" },
+      );
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flushPromises();
+
+      expect(store.sessions.get("discord:direct:123")).toBe(queuedSession);
+      expect(queuedSession?.finalized).toBeFalsy();
+      expect(queuedSession?.clearTimer).toBeUndefined();
+      expect(queuedSession?.toolHistory).toEqual(historyAfterAdmission);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountAfterAdmission);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_2$/,
+        ),
+      ).toBe(patchCountBeforeLateEvents);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_2$/,
+        ),
+      ).toBe(0);
+    });
+
+    it("fails open when queued status initialization cannot resolve a token", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+      isSkillHarnessEnabled.mockReturnValue(true);
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_old",
+        },
+      );
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+
+      getToken.mockImplementation(() => {
+        throw new Error("token resolution failed");
+      });
+      const result = await handlers.onBeforeAgentReply(
+        { cleanedBody: "queued followup" },
+        { sessionKey, runId: "run_new" },
+      );
+
+      const queuedSession = store.sessions.get("discord:direct:123");
+      expect(result).toEqual({ handled: false });
+      expect(queuedSession?.generation).toBe(2);
+      expect(queuedSession?.runId).toBe("run_new");
+      expect(queuedSession?.finalized).toBe(false);
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+  });
+
   describe("onBeforeToolCall", () => {
     it("adds orphan when no session", async () => {
       await handlers.onBeforeToolCall(
@@ -1304,7 +1611,7 @@ describe("createHookHandlers", () => {
 
       const session = store.sessions.get("discord:direct:123");
       expect(session).toBeDefined();
-      expect(session?.finalized).toBe(true);
+      expect(session?.finalized).toBe(false);
       expect(session?.clearTimer).toBeUndefined();
 
       await handlers.onAgentEnd(
@@ -1384,9 +1691,12 @@ describe("createHookHandlers", () => {
         },
       );
 
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "done" },
-        { sessionKey: "agent:main:discord:direct:123" },
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+        },
       );
 
       const firstSession = store.sessions.get("discord:direct:123");
@@ -2273,9 +2583,12 @@ describe("createHookHandlers", () => {
         },
       );
 
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "done" },
-        { sessionKey: "agent:main:discord:direct:123" },
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+        },
       );
 
       const session = store.sessions.get("discord:direct:123");
