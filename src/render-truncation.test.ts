@@ -241,9 +241,9 @@ describe("bounded status rendering", () => {
     const result = renderStatusContentWithState(history, false);
     const plain = stripAnsi(result.content);
 
-    expect(plain).not.toContain("active-memory");
-    expect(plain).toContain("skill-harness");
-    expect(result.displayState["group:active-memory"]).toBe("removed");
+    expect(plain).not.toContain("skill-harness");
+    expect(plain).toContain("active-memory");
+    expect(result.displayState["group:skill-harness"]).toBe("removed");
     assertNoGlobalOmissionMarker(result.content);
   });
 

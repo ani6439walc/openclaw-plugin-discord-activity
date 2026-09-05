@@ -464,18 +464,18 @@ function getSubagentGroupEntries(
     entries: ToolEntry[];
   }> = [];
 
-  const activeMemoryEntries = toolHistory.filter((t) =>
-    isSubagentToolEntry(t, "active-memory"),
-  );
-  if (activeMemoryEntries.length > 0) {
-    groups.push({ name: "active-memory", entries: activeMemoryEntries });
-  }
-
   const skillHarnessEntries = toolHistory.filter((t) =>
     isSubagentToolEntry(t, "skill-harness"),
   );
   if (skillHarnessEntries.length > 0) {
     groups.push({ name: "skill-harness", entries: skillHarnessEntries });
+  }
+
+  const activeMemoryEntries = toolHistory.filter((t) =>
+    isSubagentToolEntry(t, "active-memory"),
+  );
+  if (activeMemoryEntries.length > 0) {
+    groups.push({ name: "active-memory", entries: activeMemoryEntries });
   }
 
   return groups;

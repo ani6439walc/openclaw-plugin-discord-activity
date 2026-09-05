@@ -1219,9 +1219,9 @@ describe("renderStatusContent", () => {
       [...subagentEntries, ...normalEntries.slice(0, 5)],
       true,
     );
-    expect(withFiveNormalTools).not.toContain("🧩 active-memory");
-    expect(stripAnsi(withFiveNormalTools)).toContain("💡 skill-harness ▾ ✔");
-    expect(withFiveNormalTools).toContain("topic-triage");
+    expect(withFiveNormalTools).not.toContain("💡 skill-harness");
+    expect(stripAnsi(withFiveNormalTools)).toContain("🧩 active-memory ▾ ✔");
+    expect(withFiveNormalTools).toContain("memory_search");
     expect(withFiveNormalTools).toContain("normal_tool_4");
 
     const withSixNormalTools = renderStatusContent(
@@ -1571,7 +1571,7 @@ describe("renderStatusContent", () => {
     expect(result).toContain("read");
   });
 
-  it("renders subagent groups first sorted by ascending name", () => {
+  it("renders skill-harness before active-memory and normal tools", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "read", status: "pending" }),
       {
@@ -1597,14 +1597,14 @@ describe("renderStatusContent", () => {
     const amPos = result.indexOf("active-memory");
     const ihPos = result.indexOf("skill-harness");
     const readPos = result.indexOf("read");
-    expect(amPos).toBeLessThan(ihPos);
+    expect(ihPos).toBeLessThan(amPos);
     expect(ihPos).toBeLessThan(readPos);
     expect(amPos).toBeGreaterThanOrEqual(0);
     expect(ihPos).toBeGreaterThanOrEqual(0);
     expect(readPos).toBeGreaterThanOrEqual(0);
   });
 
-  it("renders subagent groups first sorted by ascending name regardless of input order", () => {
+  it("keeps skill-harness first regardless of input order", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "bash", status: "completed" }),
       {
@@ -1624,7 +1624,7 @@ describe("renderStatusContent", () => {
     const amPos = result.indexOf("active-memory");
     const ihPos = result.indexOf("skill-harness");
     const bashPos = result.indexOf("bash");
-    expect(amPos).toBeLessThan(ihPos);
+    expect(ihPos).toBeLessThan(amPos);
     expect(ihPos).toBeLessThan(bashPos);
     expect(amPos).toBeGreaterThanOrEqual(0);
     expect(ihPos).toBeGreaterThanOrEqual(0);
