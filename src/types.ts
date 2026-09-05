@@ -173,6 +173,11 @@ export type MessageSendingEvent = {
   metadata?: Record<string, unknown>;
 };
 
+export type BeforeAgentRunEvent = {
+  prompt: string;
+  messages: unknown[];
+};
+
 export type BeforeAgentReplyEvent = {
   cleanedBody: string;
 };

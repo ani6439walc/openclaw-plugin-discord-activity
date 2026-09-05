@@ -10,6 +10,7 @@ import type {
   AfterToolCallEvent,
   MessageSendingEvent,
   BeforeAgentReplyEvent,
+  BeforeAgentRunEvent,
   AgentContext,
   AgentEndEvent,
   AgentPipelineEvent,
@@ -743,6 +744,28 @@ export function createHookHandlers(deps: HookDeps) {
     return undefined;
   }
 
+  async function onBeforeAgentRun(
+    _event: BeforeAgentRunEvent,
+    ctx: AgentContext,
+  ) {
+    if (!isActiveMemorySessionKey(ctx.sessionKey) || !ctx.runId) return;
+    const sourceSessionKey = getActiveMemorySourceSessionKey(ctx.sessionKey);
+    const contextKey = getDiscordContextKey(sourceSessionKey);
+    if (!contextKey || !sourceSessionKey) return;
+    try {
+      const session = await store.resolveSession(contextKey, sourceSessionKey);
+      if (!session || !store.isCurrentSession(session)) return;
+      if (session.supersededRunIds?.has(ctx.runId)) return;
+      registerActiveMemoryRun(session, ctx.runId);
+    } catch (err) {
+      logger.warn("before_agent_run: failed to register active-memory run.", {
+        contextKey,
+        sessionKey: ctx.sessionKey,
+        error: String(err),
+      });
+    }
+  }
+
   async function onBeforeAgentReply(
     event: BeforeAgentReplyEvent,
     ctx: AgentContext,
@@ -1069,6 +1092,7 @@ export function createHookHandlers(deps: HookDeps) {
     onBeforeToolCall,
     onAfterToolCall,
     onMessageSending,
+    onBeforeAgentRun,
     onBeforeAgentReply,
     onAgentEnd,
     onBeforeCompaction,

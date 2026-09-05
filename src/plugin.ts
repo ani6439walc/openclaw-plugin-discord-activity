@@ -91,6 +91,7 @@ export function createPlugin(
       api.on("before_tool_call", handlers.onBeforeToolCall);
       api.on("after_tool_call", handlers.onAfterToolCall);
       api.on("message_sending", handlers.onMessageSending);
+      api.on("before_agent_run", handlers.onBeforeAgentRun);
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
       api.on("agent_end", handlers.onAgentEnd);
       api.on("before_compaction", handlers.onBeforeCompaction);

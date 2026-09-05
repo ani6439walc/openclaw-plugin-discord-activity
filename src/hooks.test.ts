@@ -632,8 +632,8 @@ describe("createHookHandlers", () => {
           runId: "run_old",
         },
       );
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "old active-memory run" },
+      await handlers.onBeforeAgentRun(
+        { prompt: "old active-memory run", messages: [] },
         { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
       );
       await handlers.onMessageSending(
@@ -718,6 +718,33 @@ describe("createHookHandlers", () => {
       );
     });
 
+    it("fails open when active-memory run registration cannot resolve its parent", async () => {
+      const failingStore = {
+        ...store,
+        resolveSession: vi
+          .fn<typeof store.resolveSession>()
+          .mockRejectedValue(new Error("parent session unavailable")),
+      };
+      const failingHandlers = createHookHandlers({
+        store: failingStore,
+        orphans,
+        getToken,
+        config,
+        isActiveMemoryEnabled,
+        isSkillHarnessEnabled,
+      });
+
+      await expect(
+        failingHandlers.onBeforeAgentRun(
+          { prompt: "active-memory recall", messages: [] },
+          {
+            sessionKey: "agent:main:discord:direct:123:active-memory:current",
+            runId: "active-memory-run-current",
+          },
+        ),
+      ).resolves.toBeUndefined();
+    });
+
     it("shows tools from a registered active-memory child run", async () => {
       createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
@@ -735,8 +762,8 @@ describe("createHookHandlers", () => {
           runId: "run_current",
         },
       );
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "current active-memory run" },
+      await handlers.onBeforeAgentRun(
+        { prompt: "current active-memory run", messages: [] },
         { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
       );
       await handlers.onBeforeToolCall(
@@ -768,14 +795,25 @@ describe("createHookHandlers", () => {
         },
       );
 
-      expect(
-        store.sessions.get("discord:direct:123")?.toolHistory,
-      ).toContainEqual(
+      await handlers.onAgentEnd(
+        {
+          messages: [{ role: "assistant", content: "NONE" }],
+          success: true,
+          durationMs: 500,
+        },
+        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toContainEqual(
         expect.objectContaining({
           toolCallId: "active-memory:memory_call",
           toolName: "active-memory:memory_get",
           status: "completed",
         }),
+      );
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "result: NONE",
       );
     });
 
