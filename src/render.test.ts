@@ -179,6 +179,33 @@ describe("ANSI main-tool contract", () => {
     expect(stripAnsi(result)).toContain("payload: [unserializable]");
   });
 
+  it("omits empty string fields while preserving zero and false", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolName: "skill_view",
+            params: {
+              name: "delegate",
+              file_path: "",
+              whitespace: " \n\t ",
+              offset: 0,
+              enabled: false,
+            },
+            status: "completed",
+          }),
+        ],
+        false,
+      ),
+    );
+
+    expect(result).toContain("name: delegate");
+    expect(result).toContain("offset: 0");
+    expect(result).toContain("enabled: false");
+    expect(result).not.toContain("file_path:");
+    expect(result).not.toContain("whitespace:");
+  });
+
   it("renders a completed main tool as an exact ANSI tree", () => {
     const result = renderStatusContent(
       [

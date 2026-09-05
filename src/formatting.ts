@@ -173,7 +173,12 @@ export function formatDisplayFields(
   if (!params || typeof params !== "object") return [];
 
   const fields = Object.entries(params)
-    .filter(([, value]) => value !== undefined && value !== null)
+    .filter(
+      ([, value]) =>
+        value !== undefined &&
+        value !== null &&
+        (typeof value !== "string" || value.trim() !== ""),
+    )
     .map(([rawKey, value]) => {
       const { isMultiline, ...formatted } = formatDisplayValue(value);
       const key = sanitizeInlineText(rawKey);
