@@ -105,60 +105,77 @@ describe("status block display state", () => {
 
 describe("tool icon categories", () => {
   it.each([
-    // Web & Communication
-    ["browser", "🌎"],
-    ["web_search", "🔎"],
-    ["web_fetch", "📥"],
-    ["message", "✉️"],
-    // File Operations
-    ["read", "📄"],
-    ["write", "✍️"],
-    ["edit", "✂️"],
+    ["agents_list", "👥"],
+    ["anysearch__batch_search", "🔗"],
+    ["anysearch__extract", "🔗"],
+    ["anysearch__get_sub_domains", "🔗"],
+    ["anysearch__search", "🔗"],
     ["apply_patch", "📝"],
-    ["diff", "🔀"],
-    // Media & Formats
-    ["image", "🖼️"],
-    ["image_generate", "🖼️"],
-    ["pdf", "📜"],
-    ["tts", "🔊"],
-    // Execution & Process
+    ["ask_user", "❓"],
+    ["automations", "⏰"],
+    ["browser", "🌎"],
+    ["create_goal", "🪧"],
+    ["diffs", "🔀"],
+    ["edit", "✂️"],
     ["exec", "🚀"],
-    ["process", "⏳"],
-    // Knowledge, Memory & Wiki
+    ["firecrawl_scrape", "🕷️"],
+    ["firecrawl_search", "🔎"],
+    ["gateway", "🧱"],
+    ["get_goal", "🪧"],
+    ["github_identity_status", "⚙️"],
+    ["image_generate", "🖼️"],
+    ["intent", "📌"],
+    ["lobster", "🦞"],
+    ["memory_get", "🧠"],
     ["memory_search", "🧠"],
-    ["wiki_search", "📖"],
-    ["wiki_apply", "📋"],
-    ["wiki_lint", "🧹"],
-    ["wiki_status", "📊"],
-    ["wiki_get", "📚"],
-    // Session & Agent
+    ["message", "✉️"],
+    ["openclaw", "🦞"],
+    ["pdf", "📜"],
+    ["process", "⏳"],
+    ["progress_card", "📋"],
+    ["qmd__get", "🔗"],
+    ["qmd__multi_get", "🔗"],
+    ["qmd__query", "🔗"],
+    ["qmd__status", "🔗"],
+    ["read", "📄"],
+    ["secrets", "🔐"],
+    ["session_status", "📊"],
+    ["sessions", "💬"],
     ["sessions_history", "🗿"],
     ["sessions_list", "🛰️"],
+    ["sessions_search", "🔎"],
     ["sessions_send", "🛸"],
     ["sessions_spawn", "💬"],
     ["sessions_yield", "🏁"],
-    ["subagents", "👥"],
-    // Skill management
+    ["skill_experience", "🎯"],
+    ["skill_list", "🛒"],
     ["skill_search", "🪃"],
     ["skill_view", "🔧"],
-    ["skill_manage", "🛠️"],
-    ["skill_list", "🛒"],
-    // Goal & Plan
-    ["create_goal", "🪧"],
+    ["skill_workshop", "🎯"],
+    ["subagents", "👥"],
+    ["transcripts", "📝"],
+    ["tts", "🔊"],
     ["update_goal", "🪧"],
-    ["update_plan", "🔖"],
-    // Scheduling & Infrastructure
-    ["cron", "⏰"],
-    ["gateway", "🧱"],
-    ["nodes", "🔌"],
-    // MCP tools (default)
-    ["mcp__read", "🔗"],
-    ["context7_resolve_library_id", "⚙️"],
-    ["google-developer-search", "⚙️"],
-    ["sequential_thinking", "⚙️"],
-  ])("maps %s to %s", (toolName, icon) => {
+    ["view_image", "🖼️"],
+    ["web_fetch", "📥"],
+    ["web_search", "🔎"],
+    ["wiki_apply", "📋"],
+    ["wiki_get", "📚"],
+    ["wiki_lint", "🧹"],
+    ["wiki_search", "📖"],
+    ["wiki_status", "📊"],
+    ["write", "✍️"],
+    ["x_search", "🔎"],
+  ])("maps exposed tool %s to %s", (toolName, icon) => {
     expect(getToolIcon(toolName)).toBe(icon);
   });
+
+  it.each(["update_plan", "cron", "nodes"])(
+    "does not retain a special icon for removed tool %s",
+    (toolName) => {
+      expect(getToolIcon(toolName)).toBe("⚙️");
+    },
+  );
 });
 
 describe("ANSI main-tool contract", () => {

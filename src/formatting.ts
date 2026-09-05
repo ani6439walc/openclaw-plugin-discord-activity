@@ -6,16 +6,25 @@ export function getToolIcon(name: string): string {
 
   // Web & Communication
   if (n.includes("browser")) return "🌎";
-  if (n.includes("web_search")) return "🔎";
+  if (
+    n.includes("web_search") ||
+    n === "firecrawl_search" ||
+    n === "x_search"
+  ) {
+    return "🔎";
+  }
   if (n.includes("web_fetch")) return "📥";
+  if (n === "firecrawl_scrape") return "🕷️";
   if (n.includes("message")) return "✉️";
+  if (n === "ask_user") return "❓";
 
-  // File Operations (Read, Write, Edit, Patch, Diff)
+  // File Operations
   if (n.includes("read")) return "📄";
   if (n.includes("write")) return "✍️";
   if (n.includes("edit")) return "✂️";
   if (n.includes("apply_patch")) return "📝";
   if (n.includes("diff")) return "🔀";
+  if (n === "transcripts") return "📝";
 
   // Media & Formats
   if (n.includes("image")) return "🖼️";
@@ -26,6 +35,7 @@ export function getToolIcon(name: string): string {
   if (n.includes("exec")) return "🚀";
   if (n.includes("process")) return "⏳";
   if (n.includes("compaction")) return "🗜️";
+  if (n === "openclaw"||n === "lobster") return "🦞";
 
   // Knowledge, Memory & Wiki
   if (n.includes("memory")) return "🧠";
@@ -41,14 +51,16 @@ export function getToolIcon(name: string): string {
   if (n.includes("session")) {
     if (n.includes("history")) return "🗿";
     if (n.includes("list")) return "🛰️";
+    if (n.includes("search")) return "🔎";
     if (n.includes("send")) return "🛸";
     if (n.includes("yield")) return "🏁";
+    if (n.includes("status")) return "📊";
     return "💬";
   }
   if (n.includes("agent")) return "👥";
 
   // Skill management
-  if (n.includes("skill_")) {
+if (n.includes("skill_")) {
     if (n.includes("search")) return "🪃";
     if (n.includes("view")) return "🔧";
     if (n.includes("manage")) return "🛠️";
@@ -56,16 +68,15 @@ export function getToolIcon(name: string): string {
     return "🎯";
   }
 
-  // Goal management (create_goal, update_goal)
+  // Goals, progress & intent
   if (n.includes("_goal")) return "🪧";
+  if (n === "progress_card") return "📋";
+  if (n === "intent") return "📌";
 
-  // Plan management (update_plan)
-  if (n.includes("_plan")) return "🔖";
-
-  // Scheduling & Infrastructure
-  if (n.includes("cron")) return "⏰";
+  // Scheduling, infrastructure & credentials
+  if (n === "automations") return "⏰";
   if (n.includes("gateway")) return "🧱";
-  if (n.includes("nodes")) return "🔌";
+  if (n === "secrets") return "🔐";
 
   return "⚙️";
 }
