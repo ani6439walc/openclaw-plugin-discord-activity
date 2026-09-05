@@ -507,7 +507,7 @@ function createProgressCardBlock(
   const detail = progressDetail;
   const summaryLine = summary
     ? `    ${ansiSpan(
-        ANSI.cyan,
+        ANSI.blue,
         `${summary}${
           omittedSummaryCharacters > 0
             ? `… (+${omittedSummaryCharacters} chars)`
@@ -531,7 +531,7 @@ function createProgressCardBlock(
     header: {
       icon: "📋",
       name: detail ? `progress · ${detail}` : "progress",
-      nameStyle: ANSI.blue,
+      nameStyle: ANSI.boldCyan,
       status: "",
       statusStyle: ANSI.lightGray,
     },

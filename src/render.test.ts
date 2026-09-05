@@ -329,7 +329,7 @@ describe("progress card rendering", () => {
     expect(result.indexOf("📋 progress")).toBeLessThan(result.indexOf("bash"));
   });
 
-  it("renders the progress header and summary on separate non-bold colored lines", () => {
+  it("renders the progress header like tools and the summary in blue", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -343,8 +343,8 @@ describe("progress card rendering", () => {
       false,
     );
 
-    expect(result).toContain(`${BLUE}📋 progress · 0/1${RESET}`);
-    expect(result).toContain(`    ${CYAN}Detailed status${RESET}`);
+    expect(result).toContain(`${BOLD_CYAN}📋 progress · 0/1${RESET}`);
+    expect(result).toContain(`    ${BLUE}Detailed status${RESET}`);
     expect(result).not.toContain(`${BOLD_BLUE}📋 progress`);
   });
 
