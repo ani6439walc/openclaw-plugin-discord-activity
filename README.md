@@ -21,7 +21,7 @@ The plugin is designed to fail open: if Discord credentials are missing or Disco
 
 ## What it shows
 
-Status messages are Discord ANSI code blocks. Internal subagent groups appear first, normal tools follow, and a main-agent failure appears last when present.
+Status messages are Discord ANSI code blocks. The latest non-empty `progress_card` is pinned first, internal subagent groups follow, normal tools come next, and a main-agent failure appears last when present.
 
 ### Example display
 
@@ -57,6 +57,7 @@ Status markers:
 
 Rendering rules to preserve:
 
+- The latest `progress_card` tool call is rendered as one protected `📋 progress` block above every activity entry instead of appearing as an ordinary tool. Its Markdown note keeps line structure with raw HTML removed, a leading `<progress aria-label="…">` contributes a compact header label when no plan exists, and every valid plan step remains ordered with `✓` completed, `→` in progress, or `·` pending. A later empty card clears the block. Under the hard message limit, ordinary blocks are collapsed/removed before the progress note is compacted; plan steps remain visible whenever the protected content can fit.
 - Normal tools render after `active-memory` and `skill-harness` groups.
 - `active-memory` and `skill-harness` group order is stable.
 - Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.

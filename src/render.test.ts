@@ -254,6 +254,99 @@ describe("ANSI main-tool contract", () => {
   });
 });
 
+describe("progress card rendering", () => {
+  it("pins the latest progress note and complete plan above ordinary tools", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "progress-old",
+            toolName: "progress_card",
+            params: { markdown: "Old note" },
+            status: "completed",
+          }),
+          makeEntry({
+            toolCallId: "bash-call",
+            toolName: "bash",
+            params: { command: "pnpm test" },
+            status: "completed",
+          }),
+          makeEntry({
+            toolCallId: "progress-new",
+            toolName: "openclawprogress_card",
+            params: {
+              markdown:
+                '<progress aria-label="Tests · 3/7" value="3" max="7"></progress>\n\nTests are running.',
+              plan: [
+                { step: "Inspect the failing route", status: "completed" },
+                { step: "Repair the session owner", status: "in_progress" },
+                { step: "Run focused verification", status: "pending" },
+              ],
+            },
+            status: "completed",
+          }),
+        ],
+        false,
+      ),
+    );
+
+    expect(result).toContain("📋 progress · 1/3");
+    expect(result).toContain("    Tests are running.");
+    expect(result).toContain("    ✓ Inspect the failing route");
+    expect(result).toContain("    → Repair the session owner");
+    expect(result).toContain("    · Run focused verification");
+    expect(result).not.toContain("Old note");
+    expect(result).not.toContain("progress_card");
+    expect(result.indexOf("📋 progress")).toBeLessThan(result.indexOf("bash"));
+  });
+
+  it("uses a progress aria-label when no plan is present", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolName: "progress_card",
+            params: {
+              markdown:
+                '<progress aria-label="Download · 3/7" value="3" max="7"></progress>\nWorking through the archive.',
+            },
+          }),
+        ],
+        false,
+      ),
+    );
+
+    expect(result).toContain("📋 progress · Download · 3/7");
+    expect(result).toContain("    Working through the archive.");
+    expect(result).not.toContain("<progress");
+  });
+
+  it("removes the pinned progress block when the latest call clears it", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "progress-set",
+            toolName: "progress_card",
+            params: { markdown: "Visible until cleared" },
+          }),
+          makeEntry({
+            toolCallId: "progress-clear",
+            toolName: "progress_card",
+            params: {},
+          }),
+          makeEntry({ toolCallId: "bash-call", toolName: "bash" }),
+        ],
+        false,
+      ),
+    );
+
+    expect(result).not.toContain("progress");
+    expect(result).not.toContain("Visible until cleared");
+    expect(result).toContain("bash");
+  });
+});
+
 describe("display-value formatting", () => {
   it("truncates ordinary values by Unicode code point with an exact hint", () => {
     const value = `${"a".repeat(69)}😀${"b".repeat(2)}`;

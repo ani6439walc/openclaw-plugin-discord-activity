@@ -15,7 +15,7 @@ import {
   STATUS_MAX_ENTRIES,
   STATUS_MAX_SUBAGENT_ENTRIES,
 } from "./constants.js";
-import { getDisplayToolName } from "./tool-name.js";
+import { canonicalToolNameForDedupe, getDisplayToolName } from "./tool-name.js";
 
 function getSubSuffix(status: ToolEntry["status"]): string {
   if (status === "error") return "✘";
@@ -286,6 +286,8 @@ type StatusBlock = {
   key: string;
   header: StatusHeader;
   children: StatusNode[];
+  bodyLines?: string[];
+  compactBodyLines?: string[];
   protected?: boolean;
 };
 
@@ -302,7 +304,10 @@ function renderStatusHeader(header: StatusHeader, collapsed = false): string {
   const disclosure = header.disclosure
     ? ` ${ansiSpan(ANSI.lightGray, collapsed ? "▸" : "▾")}`
     : "";
-  return `${ansiSpan(header.nameStyle, label)}${disclosure} ${ansiSpan(header.statusStyle, header.status)}${duration}`;
+  const status = header.status
+    ? ` ${ansiSpan(header.statusStyle, header.status)}`
+    : "";
+  return `${ansiSpan(header.nameStyle, label)}${disclosure}${status}${duration}`;
 }
 
 function createFieldNode(fields: DisplayField[]): StatusNode {
@@ -421,6 +426,118 @@ function renderSubagentGroup(
   };
 }
 
+type ProgressCardStep = {
+  step: string;
+  status: "pending" | "in_progress" | "completed";
+};
+
+function isProgressCardEntry(entry: ToolEntry): boolean {
+  return canonicalToolNameForDedupe(entry.toolName) === "progress_card";
+}
+
+function getProgressCardSteps(value: unknown): ProgressCardStep[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const { step, status } = item as Record<string, unknown>;
+    if (
+      typeof step !== "string" ||
+      !step.trim() ||
+      (status !== "pending" &&
+        status !== "in_progress" &&
+        status !== "completed")
+    ) {
+      return [];
+    }
+    return [{ step: sanitizeVisibleText(step.trim()), status }];
+  });
+}
+
+function parseProgressMarkdown(value: unknown): {
+  ariaLabel?: string;
+  lines: string[];
+} {
+  if (typeof value !== "string") return { lines: [] };
+  const sanitized = sanitizeVisibleText(value)
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n");
+  const progressMatch = sanitized.match(
+    /<progress\b[^>]*\baria-label=(?:"([^"]*)"|'([^']*)')[^>]*>(?:<\/progress>)?/iu,
+  );
+  const ariaLabel = sanitizeHeaderToken(
+    progressMatch?.[1] ?? progressMatch?.[2] ?? "",
+  ).trim();
+  const withoutProgress = sanitized.replace(
+    /<progress\b[^>]*>(?:<\/progress>)?/giu,
+    "",
+  );
+  const withoutHtml = withoutProgress.replaceAll(/<[^>]*>/gu, "");
+  const lines = withoutHtml.split("\n");
+  while (lines[0]?.trim() === "") lines.shift();
+  while (lines.at(-1)?.trim() === "") lines.pop();
+  return { ariaLabel: ariaLabel || undefined, lines };
+}
+
+function createProgressCardBlock(
+  entry: ToolEntry | undefined,
+): StatusBlock | undefined {
+  if (!entry) return;
+  const params =
+    entry.params && typeof entry.params === "object" ? entry.params : {};
+  const steps = getProgressCardSteps(params.plan);
+  const markdown = parseProgressMarkdown(params.markdown);
+  if (steps.length === 0 && markdown.lines.every((line) => !line.trim()))
+    return;
+
+  const completed = steps.filter((step) => step.status === "completed").length;
+  const detail =
+    steps.length > 0 ? `${completed}/${steps.length}` : markdown.ariaLabel;
+  const planLines = steps.map(({ step, status }) => {
+    const marker =
+      status === "completed" ? "✓" : status === "in_progress" ? "→" : "·";
+    const style =
+      status === "completed"
+        ? ANSI.green
+        : status === "in_progress"
+          ? ANSI.cyan
+          : ANSI.lightGray;
+    return `    ${ansiSpan(style, `${marker} ${step}`)}`;
+  });
+  const noteLines = markdown.lines.map((line) =>
+    line ? `    ${ansiSpan(ANSI.lightGray, line)}` : "",
+  );
+  const retainedNote = markdown.lines.find((line) => line.trim());
+  const omittedNoteLines =
+    markdown.lines.filter((line) => line.trim()).length -
+    (retainedNote ? 1 : 0);
+  const compactNoteLines = retainedNote
+    ? [
+        `    ${ansiSpan(ANSI.lightGray, [...retainedNote].slice(0, 140).join(""))}`,
+        ...(omittedNoteLines > 0 || [...retainedNote].length > 140
+          ? [
+              `    ${ansiSpan(ANSI.lightGray, `… progress note omitted (${omittedNoteLines} more lines)`)}`,
+            ]
+          : []),
+      ]
+    : [];
+  const bodyLines = [...noteLines, ...planLines];
+
+  return {
+    key: "progress",
+    header: {
+      icon: "📋",
+      name: detail ? `progress · ${detail}` : "progress",
+      nameStyle: ANSI.boldBlue,
+      status: "",
+      statusStyle: ANSI.lightGray,
+    },
+    children: [],
+    bodyLines,
+    compactBodyLines: [...compactNoteLines, ...planLines],
+    protected: true,
+  };
+}
+
 function createEntryBlock(t: ToolEntry): StatusBlock {
   const icon = getToolIcon(t.toolName);
   const toolName = sanitizeHeaderToken(getDisplayToolName(t.toolName));
@@ -494,7 +611,9 @@ function renderBlocks(
       return [
         ...(index > 0 ? [""] : []),
         renderStatusHeader(block.header, collapsed),
-        ...(collapsed ? [] : renderStatusNodes(block.children)),
+        ...(collapsed
+          ? []
+          : (block.bodyLines ?? renderStatusNodes(block.children))),
       ];
     });
   return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
@@ -542,6 +661,13 @@ function renderBoundedStatus(
     if (content.length <= maxLength) return complete(content);
   }
 
+  for (const block of blocks) {
+    if (!block.compactBodyLines) continue;
+    block.bodyLines = block.compactBodyLines;
+    content = renderCurrent();
+    if (content.length <= maxLength) return complete(content);
+  }
+
   return complete(
     content.length <= maxLength ? content : `${OPENING_FENCE}${CLOSING_FENCE}`,
   );
@@ -561,9 +687,13 @@ export function renderStatusContentWithState(
       group.entries,
     ),
   );
+  const progressBlock = createProgressCardBlock(
+    toolHistory.filter(isProgressCardEntry).at(-1),
+  );
   const normalBlocks = toolHistory
     .filter(
       (entry) =>
+        !isProgressCardEntry(entry) &&
         !isSubagentToolEntry(entry, "active-memory") &&
         !isSubagentToolEntry(entry, "skill-harness") &&
         !isMainAgentEntry(entry),
@@ -577,7 +707,8 @@ export function renderStatusContentWithState(
   const eligibleBlocks = [...subagentBlocks, ...normalBlocks].filter(
     (block) => (displayState[block.key] ?? "expanded") !== "removed",
   );
-  const availableSlots = STATUS_MAX_ENTRIES - (failureBlock ? 1 : 0);
+  const availableSlots =
+    STATUS_MAX_ENTRIES - (failureBlock ? 1 : 0) - (progressBlock ? 1 : 0);
   const selectedBlocks = eligibleBlocks.slice(-availableSlots);
   const selectedKeys = new Set(selectedBlocks.map((block) => block.key));
   for (const block of eligibleBlocks) {
@@ -587,7 +718,11 @@ export function renderStatusContentWithState(
   }
 
   return renderBoundedStatus(
-    failureBlock ? [...selectedBlocks, failureBlock] : selectedBlocks,
+    [
+      ...(progressBlock ? [progressBlock] : []),
+      ...selectedBlocks,
+      ...(failureBlock ? [failureBlock] : []),
+    ],
     maxLength,
     displayState,
   );

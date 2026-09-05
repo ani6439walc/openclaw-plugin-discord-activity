@@ -1192,6 +1192,69 @@ describe("createHookHandlers", () => {
       expect(session?.toolHistory[0].toolName).toBe("bash");
     });
 
+    it("pins progress_card content above the live tool status and replaces prior cards", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", {
+        actualChannelId: "123",
+        accountId: "default",
+      });
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "progress_1",
+          toolName: "progress_card",
+          params: { markdown: "First note" },
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "progress_card",
+          toolCallId: "progress_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "bash_1",
+          toolName: "bash",
+          params: { command: "pnpm test" },
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "bash",
+          toolCallId: "bash_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "progress_2",
+          toolName: "openclawprogress_card",
+          params: {
+            markdown: "Verification is running.",
+            plan: [
+              { step: "Implement renderer", status: "completed" },
+              { step: "Verify live output", status: "in_progress" },
+            ],
+          },
+        },
+        {
+          sessionKey: "discord:channel:123:thread:x",
+          toolName: "openclawprogress_card",
+          toolCallId: "progress_2",
+        },
+      );
+
+      const content = stripAnsi(
+        store.sessions.get("discord:channel:123")?.lastRenderedContent ?? "",
+      );
+      expect(content).toContain("📋 progress · 1/2");
+      expect(content).toContain("Verification is running.");
+      expect(content).toContain("✓ Implement renderer");
+      expect(content).toContain("→ Verify live output");
+      expect(content).not.toContain("First note");
+      expect(content.indexOf("📋 progress")).toBeLessThan(
+        content.indexOf("bash"),
+      );
+    });
+
     it("trims tool history using configured maxToolHistoryLength", async () => {
       getToken.mockReturnValue("");
       config = resolveConfig({ maxToolHistoryLength: 2 });

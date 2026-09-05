@@ -247,6 +247,58 @@ describe("bounded status rendering", () => {
     assertNoGlobalOmissionMarker(result.content);
   });
 
+  it("preserves a complete plan after ordinary blocks exceed the outer slot budget", () => {
+    const plan = Array.from({ length: 8 }, (_, index) => ({
+      step: `Plan detail ${index}`,
+      status: index < 3 ? "completed" : index === 3 ? "in_progress" : "pending",
+    }));
+    const history = [
+      makeEntry(
+        "progress",
+        { markdown: "Current objective", plan },
+        { toolName: "progress_card" },
+      ),
+      ...Array.from({ length: 8 }, (_, index) => makeEntry(`normal-${index}`)),
+    ];
+    const result = stripAnsi(renderStatusContent(history, false));
+
+    expect(result).toContain("📋 progress · 3/8");
+    for (const { step } of plan) expect(result).toContain(step);
+    expect(result).not.toContain("tool_normal-0");
+    expect(result).toContain("tool_normal-7");
+  });
+
+  it("keeps the pinned plan while truncating an oversized progress note", () => {
+    const result = renderStatusContentWithState(
+      [
+        makeEntry("old-tool", { detail: "old detail" }),
+        makeEntry(
+          "progress",
+          {
+            markdown: `Important context\n${"long note ".repeat(400)}`,
+            plan: [
+              { step: "Completed discovery", status: "completed" },
+              { step: "Implement the renderer", status: "in_progress" },
+              { step: "Verify the Discord output", status: "pending" },
+            ],
+          },
+          { toolName: "progress_card" },
+        ),
+      ],
+      false,
+      500,
+    );
+    const plain = stripAnsi(result.content);
+
+    expect(result.content.length).toBeLessThanOrEqual(500);
+    expect(plain).toContain("📋 progress · 1/3");
+    expect(plain).toContain("✓ Completed discovery");
+    expect(plain).toContain("→ Implement the renderer");
+    expect(plain).toContain("· Verify the Discord output");
+    expect(plain).toContain("omitted");
+    expect(plain).not.toContain("tool_old-tool");
+  });
+
   it("bounds large field sets with one block-level collapse", () => {
     const params = Object.fromEntries(
       Array.from({ length: 1_000 }, (_, index) => [
