@@ -508,7 +508,7 @@ function createProgressCardBlock(
   const summaryLine = summary
     ? `    ${ansiSpan(
         ANSI.blue,
-        `${summary}${
+        `✦ ${summary}${
           omittedSummaryCharacters > 0
             ? `… (+${omittedSummaryCharacters} chars)`
             : ""

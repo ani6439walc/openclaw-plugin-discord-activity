@@ -35,7 +35,7 @@ export function getToolIcon(name: string): string {
   if (n.includes("exec")) return "🚀";
   if (n.includes("process")) return "⏳";
   if (n.includes("compaction")) return "🗜️";
-  if (n === "openclaw"||n === "lobster") return "🦞";
+  if (n === "openclaw" || n === "lobster") return "🦞";
 
   // Knowledge, Memory & Wiki
   if (n.includes("memory")) return "🧠";
@@ -60,7 +60,7 @@ export function getToolIcon(name: string): string {
   if (n.includes("agent")) return "👥";
 
   // Skill management
-if (n.includes("skill_")) {
+  if (n.includes("skill_")) {
     if (n.includes("search")) return "🪃";
     if (n.includes("view")) return "🔧";
     if (n.includes("manage")) return "🛠️";

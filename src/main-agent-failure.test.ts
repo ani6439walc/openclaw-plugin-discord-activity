@@ -68,11 +68,11 @@ describe("main agent failure rendering", () => {
     expect(plain).toContain("bash ▾ ✘");
     expect(plain).toContain("error: permission denied");
     expect(result.indexOf("skill-harness")).toBeLessThan(
-          result.indexOf("active-memory"),
-        );
+      result.indexOf("active-memory"),
+    );
     expect(result.indexOf("active-memory")).toBeLessThan(
-          result.indexOf("bash"),
-        );
+      result.indexOf("bash"),
+    );
     expect(result.indexOf("bash")).toBeLessThan(result.indexOf("💥 agent"));
   });
 
