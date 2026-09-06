@@ -1,4 +1,5 @@
 import type { ToolEntry, AgentEventMessage } from "./types.js";
+import { sanitizeVisibleText } from "./ansi.js";
 
 function extractAssistantText(msg: AgentEventMessage): string | undefined {
   if (typeof msg.content === "string") {
@@ -60,6 +61,73 @@ function parseToolCallArguments(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+export type ActiveMemoryPromptContext =
+  | { kind: "memory"; text: string }
+  | { kind: "outcome"; outcome: "skipped" | "unavailable" };
+
+const ACTIVE_MEMORY_OPEN_TAG = "<active_memory_plugin>";
+const ACTIVE_MEMORY_CLOSE_TAG = "</active_memory_plugin>";
+const ACTIVE_MEMORY_SKIPPED_OUTCOME =
+  "Active Memory intentionally skipped deep recall because this turn did not ask for past context.";
+const ACTIVE_MEMORY_UNAVAILABLE_OUTCOME =
+  "Active Memory could not retrieve memory for this turn. Do not assume that no relevant memory exists.";
+const MAX_ACTIVE_MEMORY_PROMPT_LINES = 3;
+const MAX_ACTIVE_MEMORY_PROMPT_LINE_CHARS = 220;
+const MAX_ACTIVE_MEMORY_PROMPT_CHARS = 660;
+
+function decodeActiveMemoryXmlEntities(value: string): string {
+  return value.replaceAll(
+    /&(amp|lt|gt|quot|apos);/gu,
+    (entity, name: string) =>
+      ({
+        amp: "&",
+        lt: "<",
+        gt: ">",
+        quot: '"',
+        apos: "'",
+      })[name] ?? entity,
+  );
+}
+
+function boundActiveMemoryPromptText(value: string): string {
+  const lines = sanitizeVisibleText(decodeActiveMemoryXmlEntities(value))
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_ACTIVE_MEMORY_PROMPT_LINES)
+    .map((line) =>
+      [...line].slice(0, MAX_ACTIVE_MEMORY_PROMPT_LINE_CHARS).join(""),
+    );
+  return [...lines.join("\n")]
+    .slice(0, MAX_ACTIVE_MEMORY_PROMPT_CHARS)
+    .join("");
+}
+
+export function parseActiveMemoryPromptContext(
+  prompt: unknown,
+): ActiveMemoryPromptContext | undefined {
+  if (typeof prompt !== "string") return undefined;
+  const openIndex = prompt.indexOf(ACTIVE_MEMORY_OPEN_TAG);
+  if (openIndex < 0) return undefined;
+  const contentStart = openIndex + ACTIVE_MEMORY_OPEN_TAG.length;
+  const closeIndex = prompt.indexOf(ACTIVE_MEMORY_CLOSE_TAG, contentStart);
+  if (closeIndex < 0) return undefined;
+
+  const text = boundActiveMemoryPromptText(
+    prompt.slice(contentStart, closeIndex),
+  );
+  if (!text) return undefined;
+  if (text === ACTIVE_MEMORY_SKIPPED_OUTCOME) {
+    return { kind: "outcome", outcome: "skipped" };
+  }
+  if (text === ACTIVE_MEMORY_UNAVAILABLE_OUTCOME) {
+    return { kind: "outcome", outcome: "unavailable" };
+  }
+  return { kind: "memory", text };
 }
 
 export function getDiscordContextKey(

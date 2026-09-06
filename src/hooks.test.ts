@@ -1964,6 +1964,268 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
+    it("observes active-memory fastpath context from llm_input in a DM", async () => {
+      createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_observed";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onLlmInput(
+        {
+          prompt:
+            "Context:\n<active_memory_plugin>- Prefer aisle seats. (Source: MEMORY.md#L12)</active_memory_plugin>\n\nBook a flight",
+          runId,
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "active-memory:fastpath-observed",
+          params: {
+            status: "observed",
+            result: "- Prefer aisle seats. (Source: MEMORY.md#L12)",
+          },
+          status: "completed",
+        }),
+      );
+      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
+      expect(plainContent).toContain("🧩 active-memory ▾ ✔");
+      expect(plainContent).toContain("fastpath ✔");
+      expect(plainContent).toContain("status: observed");
+      expect(plainContent).toContain("Prefer aisle seats");
+
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId },
+      );
+      expect(
+        session?.toolHistory.some(
+          (entry) => entry.toolCallId === "active-memory:fastpath-inferred",
+        ),
+      ).toBe(false);
+    });
+
+    it.each(["channel", "group"] as const)(
+      "observes fastpath without retaining memory text in a Discord %s",
+      async (kind) => {
+        createDiscordFetchMock();
+        const sessionKey = `agent:main:discord:${kind}:123`;
+        const runId = `run_${kind}`;
+
+        await handlers.onMessageReceived(
+          { messageId: "user_msg_1", metadata: { to: `${kind}:123` } },
+          { channelId: "discord", sessionKey, runId, accountId: "default" },
+        );
+        await handlers.onLlmInput(
+          {
+            prompt:
+              "<active_memory_plugin>Private remembered detail.</active_memory_plugin> request",
+            runId,
+          },
+          { channelId: "discord", sessionKey, runId },
+        );
+
+        const session = store.sessions.get(`discord:${kind}:123`);
+        expect(session?.toolHistory).toContainEqual(
+          expect.objectContaining({
+            toolCallId: "active-memory:fastpath-observed",
+            params: { status: "observed" },
+          }),
+        );
+        expect(JSON.stringify(session?.toolHistory)).not.toContain(
+          "Private remembered detail",
+        );
+        expect(session?.lastRenderedContent).not.toContain(
+          "Private remembered detail",
+        );
+      },
+    );
+
+    it("ignores malformed, outcome, stale, and deep-recall llm_input observations", async () => {
+      createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_current";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      await handlers.onLlmInput(
+        { prompt: "<active_memory_plugin>missing close", runId },
+        { channelId: "discord", sessionKey, runId },
+      );
+      await handlers.onLlmInput(
+        {
+          prompt:
+            "<active_memory_plugin>Active Memory intentionally skipped deep recall because this turn did not ask for past context.</active_memory_plugin>",
+          runId,
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+      await handlers.onLlmInput(
+        {
+          prompt: "<active_memory_plugin>Stale memory.</active_memory_plugin>",
+          runId: "run_stale",
+        },
+        { channelId: "discord", sessionKey, runId: "run_stale" },
+      );
+      expect(
+        store.sessions
+          .get("discord:direct:123")
+          ?.toolHistory.some(
+            (entry) => entry.toolCallId === "active-memory:fastpath-observed",
+          ),
+      ).toBe(false);
+
+      const session = store.sessions.get("discord:direct:123");
+      session?.toolHistory.push({
+        toolCallId: "active-memory:search",
+        toolName: "active-memory:memory_search",
+        params: {},
+        status: "completed",
+      });
+      await handlers.onLlmInput(
+        {
+          prompt:
+            "<active_memory_plugin>Should not display.</active_memory_plugin>",
+          runId,
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+      expect(JSON.stringify(session?.toolHistory)).not.toContain(
+        "Should not display",
+      );
+    });
+
+    it("replaces an observed fastpath entry when deep recall arrives later", async () => {
+      createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_deep_late";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onLlmInput(
+        {
+          prompt:
+            "<active_memory_plugin>Temporary observed context.</active_memory_plugin>",
+          runId,
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "mem_1",
+                  name: "memory_search",
+                  arguments: { query: "hello" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "mem_1",
+              toolName: "memory_search",
+            },
+            { role: "assistant", content: "Deep recall result" },
+          ],
+          success: true,
+        },
+        { sessionKey: `${sessionKey}:active-memory:abc` },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(
+        session?.toolHistory.some(
+          (entry) => entry.toolCallId === "active-memory:fastpath-observed",
+        ),
+      ).toBe(false);
+      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
+      expect(plainContent).toContain("memory_search ✔");
+      expect(plainContent).toContain("result: Deep recall result");
+      expect(plainContent).not.toContain("Temporary observed context");
+    });
+
+    it("upgrades inferred status when llm_input settles after message_sending", async () => {
+      createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_late_llm_input";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.finalized).toBe(true);
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "active-memory:fastpath-inferred",
+        }),
+      );
+
+      await handlers.onLlmInput(
+        {
+          prompt:
+            "<active_memory_plugin>Late observed memory.</active_memory_plugin>",
+          runId,
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      expect(
+        session?.toolHistory.some(
+          (entry) => entry.toolCallId === "active-memory:fastpath-inferred",
+        ),
+      ).toBe(false);
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "active-memory:fastpath-observed",
+          params: { status: "observed", result: "Late observed memory." },
+        }),
+      );
+    });
+
+    it("upserts duplicate fastpath observations without duplicate entries", async () => {
+      createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_duplicate";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      const event = {
+        prompt: "<active_memory_plugin>Observed memory.</active_memory_plugin>",
+        runId,
+      };
+      const ctx = { channelId: "discord", sessionKey, runId };
+
+      await handlers.onLlmInput(event, ctx);
+      await handlers.onLlmInput(event, ctx);
+
+      expect(
+        store.sessions
+          .get("discord:direct:123")
+          ?.toolHistory.filter(
+            (entry) => entry.toolCallId === "active-memory:fastpath-observed",
+          ),
+      ).toHaveLength(1);
+    });
+
     it("marks an unobserved active-memory fastpath as inferred before final cleanup", async () => {
       createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";

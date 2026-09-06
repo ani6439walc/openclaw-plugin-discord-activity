@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isCanonicalDirectSessionKey,
+  parseActiveMemoryPromptContext,
   parseActiveMemoryToolEntries,
 } from "./parser.js";
 
@@ -100,5 +101,75 @@ describe("parseActiveMemoryToolEntries", () => {
         durationMs: 42,
       }),
     );
+  });
+});
+
+describe("active-memory prompt context", () => {
+  it("extracts and decodes the first complete memory block", () => {
+    const result = parseActiveMemoryPromptContext(
+      [
+        "Context:",
+        "<active_memory_plugin>",
+        "- A &amp; B &lt; C &gt; D &quot;quoted&quot; &apos;single&apos;.",
+        "- Second memory. (Source: MEMORY.md#L12)",
+        "</active_memory_plugin>",
+        "<active_memory_plugin>ignored</active_memory_plugin>",
+        "User request",
+      ].join("\n"),
+    );
+
+    expect(result).toEqual({
+      kind: "memory",
+      text: [
+        "- A & B < C > D \"quoted\" 'single'.",
+        "- Second memory. (Source: MEMORY.md#L12)",
+      ].join("\n"),
+    });
+  });
+
+  it.each([
+    undefined,
+    null,
+    42,
+    "no active memory context",
+    "<active_memory_plugin>missing close",
+    "missing open</active_memory_plugin>",
+    "<active_memory_plugin>   </active_memory_plugin>",
+  ])("rejects missing, malformed, or empty context %#", (prompt) => {
+    expect(parseActiveMemoryPromptContext(prompt)).toBeUndefined();
+  });
+
+  it.each([
+    [
+      "Active Memory intentionally skipped deep recall because this turn did not ask for past context.",
+      "skipped",
+    ],
+    [
+      "Active Memory could not retrieve memory for this turn. Do not assume that no relevant memory exists.",
+      "unavailable",
+    ],
+  ] as const)("classifies fixed outcome %s", (text, outcome) => {
+    expect(
+      parseActiveMemoryPromptContext(
+        `<active_memory_plugin>${text}</active_memory_plugin>`,
+      ),
+    ).toEqual({ kind: "outcome", outcome });
+  });
+
+  it("sanitizes control sequences and bounds lines by Unicode code point", () => {
+    const longLine = `😀${"x".repeat(240)}`;
+    const result = parseActiveMemoryPromptContext(
+      `<active_memory_plugin>\u001b[31m${longLine}\u0000\nsecond\nthird\nfourth</active_memory_plugin>`,
+    );
+
+    expect(result?.kind).toBe("memory");
+    if (result?.kind !== "memory") return;
+    const lines = result.text.split("\n");
+    expect(lines).toHaveLength(3);
+    expect([...lines[0]].length).toBe(220);
+    expect(lines[0]?.startsWith("😀")).toBe(true);
+    expect(result.text).not.toContain("\u001b");
+    expect(result.text).not.toContain("\u0000");
+    expect([...result.text].length).toBeLessThanOrEqual(660);
   });
 });

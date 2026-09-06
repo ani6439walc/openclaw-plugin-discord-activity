@@ -93,6 +93,7 @@ export function createPlugin(
       api.on("message_sending", handlers.onMessageSending);
       api.on("before_agent_run", handlers.onBeforeAgentRun);
       api.on("before_agent_reply", handlers.onBeforeAgentReply);
+      api.on("llm_input", handlers.onLlmInput);
       api.on("agent_end", handlers.onAgentEnd);
       api.on("before_compaction", handlers.onBeforeCompaction);
       api.on("after_compaction", handlers.onAfterCompaction);

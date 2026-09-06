@@ -191,6 +191,11 @@ export type AgentContext = {
   messageProvider?: string;
 };
 
+export type LlmInputEvent = {
+  prompt?: unknown;
+  runId?: string;
+};
+
 export type AgentEndEvent = {
   messages?: unknown[];
   success?: boolean;

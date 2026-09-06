@@ -66,7 +66,7 @@ Rendering rules to preserve:
 - `skill-harness` plain text results render as `result: <text>`.
 - Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.
 - The `skill-harness` group status follows its explicit parent lifecycle: it remains `←` while phases run and changes to `✔` only when the producer declares `pipeline:completed`, after no further phase can run. `pipeline:failed` or any failed child renders `✘`.
-- `active-memory` result text renders as `result: <text>`.
+- `active-memory` result text renders as `result: <text>`. Fastpath context observed through `llm_input` renders as `fastpath` with `status: observed`; direct-message sessions also show a sanitized, bounded result, while shared or unknown session types retain status only. If no observable Active Memory child or prompt context appears before finalization, the group falls back to `status: inferred` without claiming a memory hit.
 - Failed `active-memory` child tools keep their own phase-local errors and durations. A distinct parent failure is also shown; identical parent/child error text is rendered once.
 - The `active-memory` group remains `←` while its parent awaits terminal `agent_end`, even when all child tools have completed; a failed child may still render the group as `✘`. A successful terminal parent changes the group to `✔`. Group duration is shown only from that terminal parent, so a pending parent or one without `durationMs` leaves the group duration blank while individual child durations remain visible.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
@@ -89,8 +89,9 @@ The plugin listens to OpenClaw runtime events and maps them to one active Discor
 4. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves or derives completed duration data, and updates the status message.
 5. **`message_sending`** finalizes visible status before the final user-facing reply is sent.
 6. **`before_compaction` / `after_compaction`** preserve the active status across context compaction, show the compaction as pending/completed with duration, cancel attempt-level cleanup, and suspend the idle timer until the compacted run resumes.
-7. **Main `agent_end`** records and displays the concrete main-agent error, owns main-session finalization and schedules cleanup, and captures final `active-memory` output and failure details from its internal session.
-8. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
+7. **`llm_input`** observes only a complete `<active_memory_plugin>` prompt block, never logs the full assembled prompt, and upgrades the Active Memory fastpath from inferred to observed. Memory text is retained only for canonical Discord direct-message sessions.
+8. **Main `agent_end`** records and displays the concrete main-agent error, owns main-session finalization and schedules cleanup, and captures final `active-memory` output and failure details from its internal session.
+9. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
 
 Session and race-safety behavior:
 

@@ -10,6 +10,7 @@ import type {
   AfterToolCallEvent,
   MessageSendingEvent,
   BeforeAgentReplyEvent,
+  LlmInputEvent,
   BeforeAgentRunEvent,
   AgentContext,
   AgentEndEvent,
@@ -20,6 +21,7 @@ import type {
 import { clearMaxDisplayTimer, clearSessionTimer } from "./helpers.js";
 import {
   getDiscordContextKey,
+  isCanonicalDirectSessionKey,
   isActiveMemorySessionKey,
   isSkillHarnessSessionKey,
   isSubagentSessionKey,
@@ -27,6 +29,7 @@ import {
   extractIdFromMetadata,
   extractSenderId,
   extractAgentIdFromSessionKey,
+  parseActiveMemoryPromptContext,
   parseActiveMemoryToolEntries,
 } from "./parser.js";
 import {
@@ -732,6 +735,63 @@ export function createHookHandlers(deps: HookDeps) {
     }
   }
 
+  async function onLlmInput(
+    event: LlmInputEvent,
+    ctx: AgentContext,
+  ): Promise<void> {
+    if (shouldSkipSession(ctx, "llm_input")) return;
+    const parsed = parseActiveMemoryPromptContext(event.prompt);
+    if (parsed?.kind !== "memory") return;
+
+    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    if (!contextKey) return;
+    try {
+      const session = await store.resolveSession(contextKey, ctx.sessionKey);
+      if (!session) return;
+      const runId = event.runId ?? ctx.runId;
+      if (!isSessionRunCurrent(session, runId)) return;
+
+      const parentEntry = session.toolHistory.find(
+        (entry) => entry.toolCallId === "active-memory",
+      );
+      if (!parentEntry || parentEntry.status === "error") return;
+      const hasDeepRecallEntry = session.toolHistory.some(
+        (entry) =>
+          entry.toolName.startsWith("active-memory:") &&
+          entry.toolName !== "active-memory:fastpath",
+      );
+      if (hasDeepRecallEntry) return;
+
+      const isDirect = isCanonicalDirectSessionKey(ctx.sessionKey);
+      const observedEntry: ToolEntry = {
+        toolCallId: "active-memory:fastpath-observed",
+        toolName: "active-memory:fastpath",
+        params: {
+          status: "observed",
+          ...(isDirect ? { result: parsed.text } : {}),
+        },
+        status: "completed",
+      };
+      parentEntry.status = "completed";
+      const inferredIndex = session.toolHistory.findIndex(
+        (entry) => entry.toolCallId === "active-memory:fastpath-inferred",
+      );
+      if (inferredIndex >= 0) session.toolHistory.splice(inferredIndex, 1);
+      const newEntries = toolHistoryManager.upsertEntries(session.toolHistory, [
+        observedEntry,
+      ]);
+      if (newEntries.length > 0) {
+        toolHistoryManager.addEntries(session.toolHistory, newEntries);
+      }
+      await updateSessionStatus(session, session.finalized === true);
+    } catch (err) {
+      logger.warn("llm_input: failed to render active-memory context.", {
+        sessionKey: ctx.sessionKey,
+        error: String(err),
+      });
+    }
+  }
+
   async function onMessageSending(
     event: MessageSendingEvent,
     ctx: MessageContext,
@@ -901,6 +961,20 @@ export function createHookHandlers(deps: HookDeps) {
             session.toolHistory,
             parseActiveMemoryToolEntries(event),
           );
+          if (entries.length > 0) {
+            for (
+              let index = session.toolHistory.length - 1;
+              index >= 0;
+              index -= 1
+            ) {
+              if (
+                session.toolHistory[index]?.toolName ===
+                "active-memory:fastpath"
+              ) {
+                session.toolHistory.splice(index, 1);
+              }
+            }
+          }
           const preservedPlaceholder = session.toolHistory.find(
             (t) => t.toolCallId === "active-memory",
           );
@@ -1117,6 +1191,7 @@ export function createHookHandlers(deps: HookDeps) {
     onBeforeToolCall,
     onAfterToolCall,
     onMessageSending,
+    onLlmInput,
     onBeforeAgentRun,
     onBeforeAgentReply,
     onAgentEnd,
