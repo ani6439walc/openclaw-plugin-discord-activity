@@ -2046,7 +2046,37 @@ describe("createHookHandlers", () => {
       },
     );
 
-    it("ignores malformed, outcome, stale, and deep-recall llm_input observations", async () => {
+    it("renders active-memory fastpath outcomes from llm_input", async () => {
+      createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_outcome";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      await handlers.onLlmInput(
+        {
+          prompt:
+            "<active_memory_plugin>Active Memory intentionally skipped deep recall because this turn did not ask for past context.</active_memory_plugin>",
+          runId,
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "active-memory:fastpath-observed",
+          params: { status: "skipped" },
+        }),
+      );
+      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
+      expect(plainContent).toContain("fastpath ✔");
+      expect(plainContent).toContain("status: skipped");
+    });
+
+    it("ignores malformed, stale, and deep-recall llm_input observations", async () => {
       createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";
       const runId = "run_current";
@@ -2057,14 +2087,6 @@ describe("createHookHandlers", () => {
 
       await handlers.onLlmInput(
         { prompt: "<active_memory_plugin>missing close", runId },
-        { channelId: "discord", sessionKey, runId },
-      );
-      await handlers.onLlmInput(
-        {
-          prompt:
-            "<active_memory_plugin>Active Memory intentionally skipped deep recall because this turn did not ask for past context.</active_memory_plugin>",
-          runId,
-        },
         { channelId: "discord", sessionKey, runId },
       );
       await handlers.onLlmInput(

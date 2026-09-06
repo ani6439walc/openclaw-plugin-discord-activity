@@ -741,7 +741,7 @@ export function createHookHandlers(deps: HookDeps) {
   ): Promise<void> {
     if (shouldSkipSession(ctx, "llm_input")) return;
     const parsed = parseActiveMemoryPromptContext(event.prompt);
-    if (parsed?.kind !== "memory") return;
+    if (!parsed) return;
 
     const contextKey = getDiscordContextKey(ctx.sessionKey);
     if (!contextKey) return;
@@ -766,10 +766,13 @@ export function createHookHandlers(deps: HookDeps) {
       const observedEntry: ToolEntry = {
         toolCallId: "active-memory:fastpath-observed",
         toolName: "active-memory:fastpath",
-        params: {
-          status: "observed",
-          ...(isDirect ? { result: parsed.text } : {}),
-        },
+        params:
+          parsed.kind === "memory"
+            ? {
+                status: "observed",
+                ...(isDirect ? { result: parsed.text } : {}),
+              }
+            : { status: parsed.outcome },
         status: "completed",
       };
       parentEntry.status = "completed";
