@@ -885,7 +885,7 @@ describe("ANSI internal group contract", () => {
 
     expect(stripAnsi(result)).toContain(
       [
-        "🧩 active-memory ▾ ✘",
+        "🧩 active-memory ▾ ♻︎",
         "    ├─ memory_search ✔ [100ms]",
         "    │   └─ limit: 5 · query: hello",
         "    ├─ memory_write ✘",
@@ -897,7 +897,7 @@ describe("ANSI internal group contract", () => {
       ].join("\n"),
     );
     expect(result).toContain(
-      `${BOLD_CYAN}🧩 active-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${RED}✘${RESET}`,
+      `${BOLD_CYAN}🧩 active-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
     expect(result).toContain(
       `${CYAN}memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,

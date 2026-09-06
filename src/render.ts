@@ -370,13 +370,20 @@ function renderSubagentGroup(
   );
   const parentEntry = group.find((entry) => entry.toolName === prefix);
   const authoritativeParent = getAuthoritativeGroupParent(prefix, parentEntry);
-  const parentSuffix = group.some((entry) => entry.status === "error")
-    ? "✘"
-    : authoritativeParent
-      ? getSubSuffix(authoritativeParent.status)
-      : realEntries.length
-        ? getParentSuffix(realEntries)
-        : getParentSuffix(group);
+  const hasError = group.some((entry) => entry.status === "error");
+  const hasResult = realEntries.some((entry) =>
+    isSubagentResultEntry(entry, prefix),
+  );
+  const parentSuffix =
+    prefix === "active-memory" && hasError && hasResult
+      ? "♻︎"
+      : hasError
+        ? "✘"
+        : authoritativeParent
+          ? getSubSuffix(authoritativeParent.status)
+          : realEntries.length
+            ? getParentSuffix(realEntries)
+            : getParentSuffix(group);
   const parentErrorEntry = group.find(
     (entry) =>
       entry.toolName === prefix && entry.status === "error" && entry.error,
@@ -407,9 +414,11 @@ function renderSubagentGroup(
   const parentStatus: ToolEntry["status"] =
     parentSuffix === "✘"
       ? "error"
-      : parentSuffix === "✔"
-        ? "completed"
-        : "pending";
+      : parentSuffix === "♻︎"
+        ? "orphan-completed"
+        : parentSuffix === "✔"
+          ? "completed"
+          : "pending";
   const groupDurationMs = getGroupDurationMs(group, prefix);
   return {
     key: `group:${prefix}`,
