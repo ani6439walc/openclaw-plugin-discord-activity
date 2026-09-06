@@ -335,7 +335,7 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · 1/3\n    ✦ Tests are running.");
+    expect(result).toContain("📋 progress · 1/3\n    @ Tests are running.");
     expect(result).not.toContain("**");
     expect(result).not.toContain("https://example.com");
     expect(result).toContain("    ✓ Inspect the failing route");
@@ -361,7 +361,7 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(`${BOLD_BLUE}📋 progress · 0/1${RESET}`);
-    expect(result).toContain(`    ${BLUE}✦ Detailed status${RESET}`);
+    expect(result).toContain(`    ${BLUE}@ Detailed status${RESET}`);
     expect(result).not.toContain(`${BOLD_CYAN}📋 progress`);
   });
 
@@ -382,7 +382,7 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · Download · 3/7\n    ✦ Working through the archive.",
+      "📋 progress · Download · 3/7\n    @ Working through the archive.",
     );
     expect(result).not.toContain("<progress");
   });
@@ -405,7 +405,7 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · 0/1\n    ✦ Current state Build is green See details",
+      "📋 progress · 0/1\n    @ Current state Build is green See details",
     );
     expect(result).not.toMatch(/\*\*|https:\/\/|\n    ##/u);
     expect(result).not.toContain("ˋgreenˋ");
