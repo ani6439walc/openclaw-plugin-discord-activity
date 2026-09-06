@@ -278,6 +278,27 @@ export function createHookHandlers(deps: HookDeps) {
     );
   }
 
+  function completeUnobservedActiveMemoryPlaceholder(
+    session: SessionEntry,
+  ): void {
+    const placeholder = session.toolHistory.find(
+      (entry) => entry.toolCallId === "active-memory",
+    );
+    if (!placeholder || placeholder.status !== "pending") return;
+    const hasObservedActiveMemory = session.toolHistory.some((entry) =>
+      entry.toolName.startsWith("active-memory:"),
+    );
+    if (hasObservedActiveMemory) return;
+
+    placeholder.status = "completed";
+    session.toolHistory.push({
+      toolCallId: "active-memory:fastpath-inferred",
+      toolName: "active-memory:fastpath",
+      params: { status: "inferred" },
+      status: "completed",
+    });
+  }
+
   async function updateSessionStatus(
     session: SessionEntry,
     isFinal: boolean,
@@ -739,6 +760,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return undefined;
     if (!bindSessionRun(session, ctx.runId)) return undefined;
     if (session.finalized) return undefined;
+    completeUnobservedActiveMemoryPlaceholder(session);
     session.finalized = true;
     await updateSessionStatus(session, true);
     return undefined;
@@ -943,6 +965,9 @@ export function createHookHandlers(deps: HookDeps) {
 
       const session = await store.resolveSession(contextKey, ctx.sessionKey);
       if (!session || !bindSessionRun(session, ctx.runId)) return;
+      if (event.success !== false && !event.error) {
+        completeUnobservedActiveMemoryPlaceholder(session);
+      }
       if (compactionWasActiveAtDispatch) {
         session.compactionActive = false;
         finishCompactionEntry(session, "error");

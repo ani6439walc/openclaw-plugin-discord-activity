@@ -1964,6 +1964,28 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
+    it("marks an unobserved active-memory fastpath as inferred before final cleanup", async () => {
+      createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_fastpath";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
+      expect(plainContent).toContain("🧩 active-memory ▾ ✔");
+      expect(plainContent).toContain("fastpath ✔");
+      expect(plainContent).toContain("status: inferred");
+    });
+
     it("does not finalize on before_agent_reply when only pending subagent placeholders exist", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
