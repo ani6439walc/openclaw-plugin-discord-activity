@@ -2,7 +2,7 @@
   "name": "discord-activity",
   "displayName": "Discord Activity",
   "description": "Shows live agent and tool activity as a Discord message that is updated and deleted when the agent finishes.",
-  "version": "2026.9.1",
+  "version": "2026.9.3",
   "type": "module",
   "packageManager": "pnpm@11.22.0",
   "license": "MIT",
@@ -36,12 +36,12 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.9.1",
-      "minGatewayVersion": "2026.9.1"
+      "pluginApi": ">=2026.9.3",
+      "minGatewayVersion": "2026.9.3"
     },
     "build": {
-      "openclawVersion": "2026.9.1",
-      "pluginSdkVersion": "2026.9.1"
+      "openclawVersion": "2026.9.3",
+      "pluginSdkVersion": "2026.9.3"
     }
   },
   "scripts": {
@@ -54,11 +54,11 @@
     "zod": "4.4.3"
   },
   "peerDependencies": {
-    "openclaw": "2026.9.1"
+    "openclaw": "2026.9.3"
   },
   "devDependencies": {
     "typescript": "6.0.3",
-    "vitest": "4.1.11",
+    "vitest": "5.0.0",
     "prettier": "3.9.6"
   }
 }
