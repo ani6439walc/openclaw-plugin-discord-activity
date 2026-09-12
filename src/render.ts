@@ -374,8 +374,10 @@ function renderSubagentGroup(
   const hasResult = realEntries.some((entry) =>
     isSubagentResultEntry(entry, prefix),
   );
+  const isOverallCompleted =
+    hasResult || authoritativeParent?.status === "completed";
   const parentSuffix =
-    prefix === "active-memory" && hasError && hasResult
+    hasError && isOverallCompleted
       ? "♻︎"
       : authoritativeParent
         ? getSubSuffix(authoritativeParent.status)

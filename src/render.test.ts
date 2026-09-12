@@ -1070,7 +1070,7 @@ describe("group wall-clock duration", () => {
     expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ✔ [2s]");
   });
 
-  it("shows checkmark for completed pipeline parent even when an earlier child phase failed", () => {
+  it("shows recycle glyph for completed pipeline parent when an earlier child phase failed", () => {
     const result = stripAnsi(
       renderStatusContent(
         [
@@ -1104,12 +1104,46 @@ describe("group wall-clock duration", () => {
       ),
     );
 
-    expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ✔ [1.2s]");
+    expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ♻︎ [1.2s]");
     expect(result).toContain("qmd-keyword ✘");
     expect(result).toContain("error: QMD keyword index unavailable");
     expect(result).toContain("qmd-hybrid ✔ [800ms]");
     expect(result).toContain("confidence: 0.92 · intent: git-commit");
     expect(result).toContain("reason: intent-examples-and-keywords");
+
+    const rawResult = renderStatusContent(
+      [
+        makeEntry({
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
+          params: {},
+          status: "completed",
+          durationMs: 1_200,
+        }),
+        makeEntry({
+          toolCallId: "qmd-keyword",
+          toolName: "skill-harness:qmd-keyword",
+          params: { error: "QMD keyword index unavailable" },
+          status: "error",
+          error: "QMD keyword index unavailable",
+        }),
+        makeEntry({
+          toolCallId: "qmd-hybrid",
+          toolName: "skill-harness:qmd-hybrid",
+          params: {
+            intent: "git-commit",
+            confidence: 0.92,
+            reason: "intent-examples-and-keywords",
+          },
+          status: "completed",
+          durationMs: 800,
+        }),
+      ],
+      false,
+    );
+    expect(rawResult).toContain(
+      `${BOLD_CYAN}💡 skill-harness${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+    );
   });
 
   it("omits the parent duration when child timing is incomplete", () => {
