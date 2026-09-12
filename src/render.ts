@@ -377,10 +377,10 @@ function renderSubagentGroup(
   const parentSuffix =
     prefix === "active-memory" && hasError && hasResult
       ? "♻︎"
-      : hasError
-        ? "✘"
-        : authoritativeParent
-          ? getSubSuffix(authoritativeParent.status)
+      : authoritativeParent
+        ? getSubSuffix(authoritativeParent.status)
+        : hasError
+          ? "✘"
           : realEntries.length
             ? getParentSuffix(realEntries)
             : getParentSuffix(group);

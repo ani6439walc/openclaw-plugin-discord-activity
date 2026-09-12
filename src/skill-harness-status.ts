@@ -5,13 +5,9 @@ const SKILL_HARNESS_EVENT_STREAM = "plugin:skill-harness";
 const SKILL_HARNESS_EVENT_KIND = "skill-harness.pipeline";
 // Keep public Discord status from accidentally exposing raw prompt/context data.
 const SKILL_HARNESS_PARAM_KEYS = new Set([
-  "domain",
-  "changed",
-  "complexity",
-  "keywords",
-  "topic",
-  "confidence",
   "intent",
+  "confidence",
+  "reason",
   "result",
 ]);
 

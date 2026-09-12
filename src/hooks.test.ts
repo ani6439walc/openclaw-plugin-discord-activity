@@ -2702,6 +2702,18 @@ describe("createHookHandlers", () => {
           (tool) =>
             tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
         )?.params,
+      ).not.toHaveProperty("keywords");
+      expect(
+        session?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
+        )?.params,
+      ).not.toHaveProperty("domain");
+      expect(
+        session?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
+        )?.params,
       ).not.toEqual(
         expect.objectContaining({
           matchedKeyword: expect.anything(),
@@ -2711,12 +2723,13 @@ describe("createHookHandlers", () => {
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
       expect(plainContent).toContain("💡 skill-harness ▾ ✔");
       expect(plainContent).toContain("exact-keyword-hint ✔");
-      expect(plainContent).toContain('keywords: ["hi","hello"]');
-      expect(plainContent).toContain("topic: User is greeting.");
+      expect(plainContent).not.toContain("keywords");
+      expect(plainContent).not.toContain("domain");
+      expect(plainContent).toContain("reason: exact keyword matched");
       expect(plainContent).toContain("result: matched greeting keyword");
+      expect(plainContent).not.toContain("topic");
       expect(plainContent).not.toContain("matchedKeyword");
       expect(plainContent).not.toContain("score:");
-      expect(plainContent).not.toContain("reason");
       expect(plainContent).toContain("prompt-prefix-injection ✔");
       expect(plainContent).not.toContain("rawContext");
       expect(plainContent).not.toMatch(/fastpath-a[12]/i);
@@ -2986,7 +2999,7 @@ describe("createHookHandlers", () => {
           kind: "skill-harness.pipeline",
           phase: "topic-triage",
           state: "completed",
-          topic: "health tracking",
+          reason: "health tracking",
         },
       });
 
@@ -2996,7 +3009,7 @@ describe("createHookHandlers", () => {
         expect.objectContaining({
           toolCallId: `skill-harness:${sessionKey}:topic-triage`,
           status: "completed",
-          params: { topic: "health tracking" },
+          params: { reason: "health tracking" },
         }),
       );
     });

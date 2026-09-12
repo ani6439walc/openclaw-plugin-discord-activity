@@ -75,7 +75,7 @@ describe("parseSkillHarnessPipelineEntry", () => {
     expect(entry?.error).toBeUndefined();
   });
 
-  it("preserves completed public fields while filtering out basis and reason", () => {
+  it("preserves completed public fields while filtering out basis, topic, and complexity", () => {
     const entry = parseSkillHarnessPipelineEntry(
       makePipelineEvent({
         state: "completed",
@@ -83,6 +83,7 @@ describe("parseSkillHarnessPipelineEntry", () => {
         basis: "explicit request",
         result: "generated hint",
         topic: "User greeting",
+        complexity: "low",
         confidence: 0.95,
         error: "stale failure",
       }),
@@ -93,14 +94,36 @@ describe("parseSkillHarnessPipelineEntry", () => {
         status: "completed",
         params: {
           result: "generated hint",
-          topic: "User greeting",
+          reason: "classification matched",
           confidence: 0.95,
         },
       }),
     );
     expect(entry?.error).toBeUndefined();
-    expect(entry?.params).not.toHaveProperty("reason");
     expect(entry?.params).not.toHaveProperty("basis");
+    expect(entry?.params).not.toHaveProperty("topic");
+    expect(entry?.params).not.toHaveProperty("complexity");
+  });
+
+  it("filters out deprecated fields (domain, changed, keywords)", () => {
+    const entry = parseSkillHarnessPipelineEntry(
+      makePipelineEvent({
+        state: "completed",
+        domain: "chat",
+        changed: true,
+        keywords: ["a", "b"],
+        confidence: 0.9,
+        intent: "general",
+      }),
+    );
+
+    expect(entry?.params).toEqual({
+      confidence: 0.9,
+      intent: "general",
+    });
+    expect(entry?.params).not.toHaveProperty("domain");
+    expect(entry?.params).not.toHaveProperty("changed");
+    expect(entry?.params).not.toHaveProperty("keywords");
   });
 
   it("maps pipeline lifecycle events to the parent entry with producer duration", () => {
