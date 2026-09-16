@@ -1925,3 +1925,156 @@ describe("isContentTooLong", () => {
     expect(isContentTooLong("short", 1)).toBe(false);
   });
 });
+
+describe("tool intent and title rendering", () => {
+  it("renders expanded tool entry with title as a blue § line and omits title from parameter tree", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "call_1",
+        toolName: "exec",
+        params: {
+          title: "Search Japantown San Jose cafes",
+          command: "curl https://example.com",
+        },
+        status: "completed",
+        durationMs: 2150,
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔ [2.15s]");
+    expect(stripAnsi(result)).toContain("§ Search Japantown San Jose cafes");
+    expect(stripAnsi(result)).toContain("└─ command: curl https://example.com");
+    expect(stripAnsi(result)).not.toContain("title:");
+    expect(result).toContain(
+      `${BLUE}§ Search Japantown San Jose cafes${RESET}`,
+    );
+  });
+
+  it("promotes title to header when tool entry is collapsed", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "call_1",
+        toolName: "exec",
+        params: {
+          title: "Search Japantown San Jose cafes",
+          command: "curl https://example.com",
+        },
+        status: "completed",
+        durationMs: 2150,
+      },
+    ];
+    const result = renderStatusContentWithState(entries, true, 2000, {
+      "tool:call_1": "collapsed",
+    });
+    expect(stripAnsi(result.content)).toContain(
+      "🚀 exec · Search Japantown San Jose cafes ▸ ✔ [2.15s]",
+    );
+    expect(stripAnsi(result.content)).not.toContain("command:");
+    expect(stripAnsi(result.content)).not.toContain("§");
+  });
+
+  it("truncates collapsed header title when exceeding 32 characters", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "call_1",
+        toolName: "exec",
+        params: {
+          title: "Search Japantown San Jose cafes and restaurants nearby",
+          command: "curl https://example.com",
+        },
+        status: "completed",
+        durationMs: 2000,
+      },
+    ];
+    const result = renderStatusContentWithState(entries, true, 2000, {
+      "tool:call_1": "collapsed",
+    });
+    expect(stripAnsi(result.content)).toContain(
+      "🚀 exec · Search Japantown San Jose cafes ... ▸ ✔ [2s]",
+    );
+  });
+
+  it("truncates expanded intent line when exceeding 120 characters", () => {
+    const longTitle = "a".repeat(130);
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "call_1",
+        toolName: "exec",
+        params: { title: longTitle },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(stripAnsi(result)).toContain(`§ ${"a".repeat(120)}...`);
+  });
+
+  it("falls back through candidate keys in priority order", () => {
+    const entryWithLabel: ToolEntry[] = [
+      {
+        toolCallId: "call_1",
+        toolName: "sessions_spawn",
+        params: { label: "Spawn subagent worker", agentId: "worker-1" },
+        status: "completed",
+      },
+    ];
+    const resultLabel = renderStatusContent(entryWithLabel, true);
+    expect(stripAnsi(resultLabel)).toContain("§ Spawn subagent worker");
+    expect(stripAnsi(resultLabel)).not.toContain("label:");
+    expect(stripAnsi(resultLabel)).toContain("agentId: worker-1");
+
+    const entryWithDesc: ToolEntry[] = [
+      {
+        toolCallId: "call_2",
+        toolName: "process",
+        params: { description: "Poll build logs", sessionId: "s1" },
+        status: "completed",
+      },
+    ];
+    const resultDesc = renderStatusContent(entryWithDesc, true);
+    expect(stripAnsi(resultDesc)).toContain("§ Poll build logs");
+    expect(stripAnsi(resultDesc)).not.toContain("description:");
+    expect(stripAnsi(resultDesc)).toContain("sessionId: s1");
+  });
+
+  it("normalizes multi-line title to a single line", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "call_1",
+        toolName: "exec",
+        params: { title: "Line 1\nLine 2\r\nLine 3" },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(stripAnsi(result)).toContain("§ Line 1 Line 2 Line 3");
+  });
+
+  it("renders tool entry with only title and no other parameters", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "call_1",
+        toolName: "exec",
+        params: { title: "Simple task" },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔");
+    expect(stripAnsi(result)).toContain("§ Simple task");
+    expect(stripAnsi(result)).not.toContain("└─");
+    expect(stripAnsi(result)).not.toContain("├─");
+  });
+
+  it("supports params.title in progress_card as fallback when no steps or ariaLabel exist", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "card_1",
+        toolName: "progress_card",
+        params: { title: "Initial Setup" },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(stripAnsi(result)).toContain("📋 progress · Initial Setup");
+  });
+});

@@ -105,7 +105,7 @@ describe("parseSkillHarnessPipelineEntry", () => {
     expect(entry?.params).not.toHaveProperty("complexity");
   });
 
-  it("filters out deprecated fields (domain, changed, keywords)", () => {
+  it("filters out deprecated fields (domain, changed, keywords, intent)", () => {
     const entry = parseSkillHarnessPipelineEntry(
       makePipelineEvent({
         state: "completed",
@@ -119,8 +119,8 @@ describe("parseSkillHarnessPipelineEntry", () => {
 
     expect(entry?.params).toEqual({
       confidence: 0.9,
-      intent: "general",
     });
+    expect(entry?.params).not.toHaveProperty("intent");
     expect(entry?.params).not.toHaveProperty("domain");
     expect(entry?.params).not.toHaveProperty("changed");
     expect(entry?.params).not.toHaveProperty("keywords");

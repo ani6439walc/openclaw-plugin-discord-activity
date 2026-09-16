@@ -7,6 +7,7 @@ import type {
 import {
   getToolIcon,
   formatDisplayFields,
+  extractToolIntent,
   type DisplayField,
 } from "./formatting.js";
 import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
@@ -198,9 +199,15 @@ function getSkillHarnessResultFields(entry: ToolEntry): DisplayField[] {
   );
 }
 
-function createEntryFieldNodes(entry: ToolEntry): StatusNode[] {
+function createEntryFieldNodes(
+  entry: ToolEntry,
+  options?: { excludeKeys?: readonly string[] },
+): StatusNode[] {
   const nodes = packMainFields(
-    formatDisplayFields(entry.params, { toolName: entry.toolName }),
+    formatDisplayFields(entry.params, {
+      toolName: entry.toolName,
+      excludeKeys: options?.excludeKeys,
+    }),
   ).map(createFieldNode);
 
   if (
@@ -274,6 +281,7 @@ type StatusHeader = {
   statusStyle: string;
   durationMs?: number;
   disclosure?: boolean;
+  collapsedName?: string;
 };
 
 type StatusNode = {
@@ -285,6 +293,7 @@ type StatusNode = {
 type StatusBlock = {
   key: string;
   header: StatusHeader;
+  summaryLine?: string;
   children: StatusNode[];
   bodyLines?: string[];
   compactBodyLines?: string[];
@@ -295,8 +304,22 @@ function sanitizeHeaderToken(value: string): string {
   return sanitizeVisibleText(value).replaceAll(/[\r\n\t]+/gu, " ");
 }
 
+function formatCollapsedTitle(title: string, maxLength = 32): string {
+  const chars = [...title];
+  if (chars.length <= maxLength) return title;
+  return `${chars.slice(0, maxLength).join("")}...`;
+}
+
+function formatExpandedTitle(title: string, maxLength = 120): string {
+  const chars = [...title];
+  if (chars.length <= maxLength) return title;
+  return `${chars.slice(0, maxLength).join("")}...`;
+}
+
 function renderStatusHeader(header: StatusHeader, collapsed = false): string {
-  const label = header.name ? `${header.icon} ${header.name}` : header.icon;
+  const name =
+    collapsed && header.collapsedName ? header.collapsedName : header.name;
+  const label = name ? `${header.icon} ${name}` : header.icon;
   const duration =
     typeof header.durationMs === "number"
       ? formatDurationBadge(header.durationMs)
@@ -504,11 +527,18 @@ function createProgressCardBlock(
     entry.params && typeof entry.params === "object" ? entry.params : {};
   const steps = getProgressCardSteps(params.plan);
   const markdown = parseProgressMarkdown(params.markdown);
-  if (steps.length === 0 && !markdown.summary && !markdown.ariaLabel) return;
+  const title =
+    typeof params.title === "string" && params.title.trim()
+      ? sanitizeHeaderToken(params.title.trim())
+      : undefined;
+  if (steps.length === 0 && !markdown.summary && !markdown.ariaLabel && !title)
+    return;
 
   const completed = steps.filter((step) => step.status === "completed").length;
   const progressDetail =
-    steps.length > 0 ? `${completed}/${steps.length}` : markdown.ariaLabel;
+    steps.length > 0
+      ? `${completed}/${steps.length}`
+      : (markdown.ariaLabel ?? title);
   const summary = markdown.summary
     ? [...markdown.summary].slice(0, 240).join("")
     : undefined;
@@ -557,6 +587,14 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
   const icon = getToolIcon(t.toolName);
   const toolName = sanitizeHeaderToken(getDisplayToolName(t.toolName));
   const suffix = getSubSuffix(t.status);
+  const intent = extractToolIntent(t.params);
+  const collapsedName = intent
+    ? `${toolName} · ${formatCollapsedTitle(intent.text)}`
+    : undefined;
+  const summaryLine = intent
+    ? `    ${ansiSpan(ANSI.blue, `§ ${formatExpandedTitle(intent.text)}`)}`
+    : undefined;
+
   return {
     key: `tool:${t.displayId ?? t.toolCallId}`,
     header: {
@@ -567,8 +605,13 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
       statusStyle: getStatusStyle(t.status),
       durationMs: t.durationMs,
       disclosure: true,
+      collapsedName,
     },
-    children: createEntryFieldNodes(t),
+    summaryLine,
+    children: createEntryFieldNodes(
+      t,
+      intent ? { excludeKeys: [intent.key] } : undefined,
+    ),
   };
 }
 
@@ -628,7 +671,10 @@ function renderBlocks(
         renderStatusHeader(block.header, collapsed),
         ...(collapsed
           ? []
-          : (block.bodyLines ?? renderStatusNodes(block.children))),
+          : [
+              ...(block.summaryLine ? [block.summaryLine] : []),
+              ...(block.bodyLines ?? renderStatusNodes(block.children)),
+            ]),
       ];
     });
   return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;

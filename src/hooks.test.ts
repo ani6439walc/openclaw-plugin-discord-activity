@@ -970,7 +970,7 @@ describe("createHookHandlers", () => {
           kind: "skill-harness.pipeline",
           phase: "intent-classification",
           state: "completed",
-          intent: "queued-followup",
+          result: "queued-followup",
         },
       });
 
@@ -978,7 +978,7 @@ describe("createHookHandlers", () => {
         expect.objectContaining({
           toolCallId: "skill-harness:run_new:intent-classification",
           status: "completed",
-          params: { intent: "queued-followup" },
+          params: { result: "queued-followup" },
         }),
       );
       expect(stripAnsi(queuedSession?.lastRenderedContent ?? "")).toContain(
@@ -2686,11 +2686,20 @@ describe("createHookHandlers", () => {
           expect.objectContaining({
             toolCallId: "skill-harness:run-1:exact-keyword-hint",
             toolName: "skill-harness:exact-keyword-hint",
-            params: expect.objectContaining({ intent: "social-casual" }),
+            params: expect.objectContaining({
+              reason: "exact keyword matched",
+              result: "matched greeting keyword",
+            }),
             status: "completed",
           }),
         ]),
       );
+      expect(
+        session?.toolHistory.find(
+          (tool) =>
+            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
+        )?.params,
+      ).not.toHaveProperty("intent");
       expect(
         session?.toolHistory.find(
           (tool) =>
@@ -3112,7 +3121,7 @@ describe("createHookHandlers", () => {
           kind: "skill-harness.pipeline",
           phase: "intent-classify",
           state: "completed",
-          intent: "implementation",
+          result: "implementation",
         },
       });
 
@@ -3121,7 +3130,7 @@ describe("createHookHandlers", () => {
         expect.objectContaining({
           toolCallId: "skill-harness:main-run-1:intent-classify",
           status: "completed",
-          params: { intent: "implementation" },
+          params: { result: "implementation" },
         }),
       );
     });

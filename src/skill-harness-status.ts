@@ -4,12 +4,7 @@ import type { AgentPipelineEvent, ToolEntry } from "./types.js";
 const SKILL_HARNESS_EVENT_STREAM = "plugin:skill-harness";
 const SKILL_HARNESS_EVENT_KIND = "skill-harness.pipeline";
 // Keep public Discord status from accidentally exposing raw prompt/context data.
-const SKILL_HARNESS_PARAM_KEYS = new Set([
-  "intent",
-  "confidence",
-  "reason",
-  "result",
-]);
+const SKILL_HARNESS_PARAM_KEYS = new Set(["confidence", "reason", "result"]);
 
 export function getSkillHarnessPipelineSessionKey(
   event: AgentPipelineEvent,

@@ -177,15 +177,50 @@ function getSortWeight(key: string): number {
   return 0;
 }
 
+export const TOOL_INTENT_KEYS = [
+  "title",
+  "label",
+  "taskName",
+  "description",
+  "summary",
+  "objective",
+] as const;
+
+export type ToolIntent = {
+  key: string;
+  text: string;
+};
+
+export function extractToolIntent(params: unknown): ToolIntent | undefined {
+  if (!params || typeof params !== "object") return;
+  const record = params as Record<string, unknown>;
+  for (const candidate of TOOL_INTENT_KEYS) {
+    const rawValue = record[candidate];
+    if (typeof rawValue === "string") {
+      const sanitized = sanitizeVisibleText(rawValue)
+        .replaceAll(/[\r\n\t]+/gu, " ")
+        .trim();
+      if (sanitized) {
+        return { key: candidate, text: sanitized };
+      }
+    }
+  }
+}
+
 export function formatDisplayFields(
   params: unknown,
-  options: { toolName?: string } = {},
+  options: { toolName?: string; excludeKeys?: readonly string[] } = {},
 ): DisplayField[] {
   if (!params || typeof params !== "object") return [];
 
+  const excludeSet = options.excludeKeys
+    ? new Set(options.excludeKeys.map((k) => k.toLowerCase()))
+    : undefined;
+
   const fields = Object.entries(params)
     .filter(
-      ([, value]) =>
+      ([rawKey, value]) =>
+        (!excludeSet || !excludeSet.has(rawKey.toLowerCase())) &&
         value !== undefined &&
         value !== null &&
         (typeof value !== "string" || value.trim() !== ""),
