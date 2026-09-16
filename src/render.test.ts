@@ -335,12 +335,12 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · 1/3\n    § Tests are running.");
+    expect(result).toContain("📋 progress · 1/3 »\n    § Tests are running.");
     expect(result).not.toContain("**");
     expect(result).not.toContain("https://example.com");
-    expect(result).toContain("    ✓ Inspect the failing route");
-    expect(result).toContain("    → Repair the session owner");
-    expect(result).toContain("    · Run focused verification");
+    expect(result).toContain("    ├─ ✓ Inspect the failing route");
+    expect(result).toContain("    ├─ → Repair the session owner");
+    expect(result).toContain("    └─ · Run focused verification");
     expect(result).not.toContain("Old note");
     expect(result).not.toContain("progress_card");
     expect(result.indexOf("📋 progress")).toBeLessThan(result.indexOf("bash"));
@@ -360,7 +360,9 @@ describe("progress card rendering", () => {
       false,
     );
 
-    expect(result).toContain(`${BOLD_BLUE}📋 progress · 0/1${RESET}`);
+    expect(result).toContain(
+      `${BOLD_BLUE}📋 progress · 0/1${RESET} ${YELLOW}»${RESET}`,
+    );
     expect(result).toContain(`    ${BLUE}§ Detailed status${RESET}`);
     expect(result).not.toContain(`${BOLD_CYAN}📋 progress`);
   });
@@ -382,7 +384,7 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · Download · 3/7\n    § Working through the archive.",
+      "📋 progress · Download · 3/7 »\n    § Working through the archive.",
     );
     expect(result).not.toContain("<progress");
   });
@@ -405,11 +407,11 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · 0/1\n    § Current state Build is green See details",
+      "📋 progress · 0/1 »\n    § Current state Build is green See details",
     );
     expect(result).not.toMatch(/\*\*|https:\/\/|\n    ##/u);
     expect(result).not.toContain("ˋgreenˋ");
-    expect(result).toContain("    → Ship safely");
+    expect(result).toContain("    └─ → Ship safely");
   });
 
   it("renders an aria-label-only progress card without a trailing separator", () => {
@@ -428,7 +430,7 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · Tests · 3/7");
+    expect(result).toContain("📋 progress · Tests · 3/7 »");
     expect(result).not.toContain("Tests · 3/7 · ");
   });
 
@@ -1927,7 +1929,7 @@ describe("isContentTooLong", () => {
 });
 
 describe("tool intent and title rendering", () => {
-  it("renders expanded tool entry with title as a blue § line and omits title from parameter tree", () => {
+  it("renders expanded tool entry with title as a yellow » line and omits title from parameter tree", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "call_1",
@@ -1942,11 +1944,11 @@ describe("tool intent and title rendering", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔ [2.15s]");
-    expect(stripAnsi(result)).toContain("§ Search Japantown San Jose cafes");
+    expect(stripAnsi(result)).toContain("» Search Japantown San Jose cafes");
     expect(stripAnsi(result)).toContain("└─ command: curl https://example.com");
     expect(stripAnsi(result)).not.toContain("title:");
     expect(result).toContain(
-      `${BLUE}§ Search Japantown San Jose cafes${RESET}`,
+      `${YELLOW}» Search Japantown San Jose cafes${RESET}`,
     );
   });
 
@@ -1970,7 +1972,7 @@ describe("tool intent and title rendering", () => {
       "🚀 exec · Search Japantown San Jose cafes ▸ ✔ [2.15s]",
     );
     expect(stripAnsi(result.content)).not.toContain("command:");
-    expect(stripAnsi(result.content)).not.toContain("§");
+    expect(stripAnsi(result.content)).not.toContain("»");
   });
 
   it("truncates collapsed header title when exceeding 32 characters", () => {
@@ -2005,7 +2007,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain(`§ ${"a".repeat(120)}...`);
+    expect(stripAnsi(result)).toContain(`» ${"a".repeat(120)}...`);
   });
 
   it("falls back through candidate keys in priority order", () => {
@@ -2018,7 +2020,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const resultLabel = renderStatusContent(entryWithLabel, true);
-    expect(stripAnsi(resultLabel)).toContain("§ Spawn subagent worker");
+    expect(stripAnsi(resultLabel)).toContain("» Spawn subagent worker");
     expect(stripAnsi(resultLabel)).not.toContain("label:");
     expect(stripAnsi(resultLabel)).toContain("agentId: worker-1");
 
@@ -2031,7 +2033,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const resultDesc = renderStatusContent(entryWithDesc, true);
-    expect(stripAnsi(resultDesc)).toContain("§ Poll build logs");
+    expect(stripAnsi(resultDesc)).toContain("» Poll build logs");
     expect(stripAnsi(resultDesc)).not.toContain("description:");
     expect(stripAnsi(resultDesc)).toContain("sessionId: s1");
   });
@@ -2046,7 +2048,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("§ Line 1 Line 2 Line 3");
+    expect(stripAnsi(result)).toContain("» Line 1 Line 2 Line 3");
   });
 
   it("renders tool entry with only title and no other parameters", () => {
@@ -2060,7 +2062,7 @@ describe("tool intent and title rendering", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔");
-    expect(stripAnsi(result)).toContain("§ Simple task");
+    expect(stripAnsi(result)).toContain("» Simple task");
     expect(stripAnsi(result)).not.toContain("└─");
     expect(stripAnsi(result)).not.toContain("├─");
   });
@@ -2075,6 +2077,69 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("📋 progress · Initial Setup");
+    expect(stripAnsi(result)).toContain("📋 progress · Initial Setup ✔");
+  });
+
+  it("renders completed progress card with checkmark and total duration", () => {
+    const entries: ToolEntry[] = [
+      makeEntry({
+        toolCallId: "card-1",
+        toolName: "progress_card",
+        startedAtMs: 1000,
+        durationMs: 500,
+        params: {
+          markdown: "Search Japantown ramen shops",
+          plan: [
+            { step: "Repair the session owner", status: "in_progress" },
+            { step: "Run focused verification", status: "pending" },
+          ],
+        },
+        status: "completed",
+      }),
+      makeEntry({
+        toolCallId: "card-2",
+        toolName: "progress_card",
+        startedAtMs: 2000,
+        durationMs: 810,
+        params: {
+          markdown: "Search Japantown ramen shops",
+          plan: [
+            { step: "Repair the session owner", status: "completed" },
+            { step: "Run focused verification", status: "completed" },
+          ],
+        },
+        status: "completed",
+      }),
+    ];
+
+    const result = renderStatusContent(entries, true);
+    expect(stripAnsi(result)).toContain("📋 progress · 2/2 ✔ [1.81s]");
+    expect(stripAnsi(result)).toContain("    § Search Japantown ramen shops");
+    expect(stripAnsi(result)).toContain("    ├─ ✓ Repair the session owner");
+    expect(stripAnsi(result)).toContain("    └─ ✓ Run focused verification");
+    expect(result).toContain(`${GREEN}✓${RESET} Repair the session owner`);
+  });
+
+  it("renders in-progress progress card step colors correctly", () => {
+    const entries: ToolEntry[] = [
+      makeEntry({
+        toolCallId: "card-1",
+        toolName: "progress_card",
+        params: {
+          plan: [
+            { step: "Completed step", status: "completed" },
+            { step: "In progress step", status: "in_progress" },
+            { step: "Pending step", status: "pending" },
+          ],
+        },
+        status: "completed",
+      }),
+    ];
+
+    const result = renderStatusContent(entries, false);
+    expect(stripAnsi(result)).toContain("📋 progress · 1/3 »");
+    expect(result).toContain(`${GREEN}✓${RESET} Completed step`);
+    expect(result).toContain(`${YELLOW}→${RESET} In progress step`);
+    expect(result).toContain(`${LIGHT_GRAY}· Pending step${RESET}`);
   });
 });

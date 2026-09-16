@@ -519,8 +519,35 @@ function parseProgressMarkdown(value: unknown): {
     summary: summary || undefined,
   };
 }
+function getProgressGroupDurationMs(
+  cards: readonly ToolEntry[],
+): number | undefined {
+  if (cards.length === 0) return;
+  const latest = cards.at(-1);
+  if (!latest || latest.status === "pending") return;
+
+  const startedAtMsList = cards
+    .map((c) => c.startedAtMs)
+    .filter((t): t is number => typeof t === "number");
+
+  if (
+    startedAtMsList.length > 0 &&
+    typeof latest.startedAtMs === "number" &&
+    typeof latest.durationMs === "number"
+  ) {
+    const firstStart = Math.min(...startedAtMsList);
+    const lastEnd = latest.startedAtMs + latest.durationMs;
+    return Math.max(0, lastEnd - firstStart);
+  }
+
+  if (typeof latest.durationMs === "number") {
+    return latest.durationMs;
+  }
+}
+
 function createProgressCardBlock(
   entry: ToolEntry | undefined,
+  history: readonly ToolEntry[] = [],
 ): StatusBlock | undefined {
   if (!entry) return;
   const params =
@@ -539,6 +566,17 @@ function createProgressCardBlock(
     steps.length > 0
       ? `${completed}/${steps.length}`
       : (markdown.ariaLabel ?? title);
+
+  const isAllCompleted =
+    steps.length > 0
+      ? completed === steps.length
+      : entry.status === "completed";
+
+  const cards = history.filter(isProgressCardEntry);
+  const totalDurationMs = isAllCompleted
+    ? getProgressGroupDurationMs(cards.length > 0 ? cards : [entry])
+    : undefined;
+
   const summary = markdown.summary
     ? [...markdown.summary].slice(0, 240).join("")
     : undefined;
@@ -556,25 +594,30 @@ function createProgressCardBlock(
         }`,
       )}`
     : undefined;
-  const planLines = steps.map(({ step, status }) => {
-    const marker =
-      status === "completed" ? "✓" : status === "in_progress" ? "→" : "·";
-    const style =
-      status === "completed"
-        ? ANSI.green
-        : status === "in_progress"
-          ? ANSI.cyan
-          : ANSI.lightGray;
-    return `    ${ansiSpan(style, `${marker} ${step}`)}`;
+  const planLines = steps.map(({ step, status }, index) => {
+    const isLast = index === steps.length - 1;
+    const connector = isLast ? "└─" : "├─";
+    if (status === "completed") {
+      return `    ${connector} ${ansiSpan(ANSI.green, "✓")} ${step}`;
+    }
+    if (status === "in_progress") {
+      return `    ${connector} ${ansiSpan(ANSI.yellow, "→")} ${step}`;
+    }
+    return `    ${connector} ${ansiSpan(ANSI.lightGray, `· ${step}`)}`;
   });
+
+  const headerStatus = isAllCompleted ? "✔" : "»";
+  const headerStatusStyle = isAllCompleted ? ANSI.green : ANSI.yellow;
+
   return {
     key: "progress",
     header: {
       icon: "📋",
       name: detail ? `progress · ${detail}` : "progress",
       nameStyle: ANSI.boldBlue,
-      status: "",
-      statusStyle: ANSI.lightGray,
+      status: headerStatus,
+      statusStyle: headerStatusStyle,
+      durationMs: totalDurationMs,
     },
     children: [],
     bodyLines: [...(summaryLine ? [summaryLine] : []), ...planLines],
@@ -592,7 +635,7 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
     ? `${toolName} · ${formatCollapsedTitle(intent.text)}`
     : undefined;
   const summaryLine = intent
-    ? `    ${ansiSpan(ANSI.blue, `§ ${formatExpandedTitle(intent.text)}`)}`
+    ? `    ${ansiSpan(ANSI.yellow, `» ${formatExpandedTitle(intent.text)}`)}`
     : undefined;
 
   return {
@@ -750,6 +793,7 @@ export function renderStatusContentWithState(
   );
   const progressBlock = createProgressCardBlock(
     toolHistory.filter(isProgressCardEntry).at(-1),
+    toolHistory,
   );
   const normalBlocks = toolHistory
     .filter(
