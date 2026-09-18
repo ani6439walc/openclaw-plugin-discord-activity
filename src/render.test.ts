@@ -335,18 +335,18 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · 1/3 »\n    § Tests are running.");
+    expect(result).toContain("📋 progress · 1/3\n    § Tests are running.");
     expect(result).not.toContain("**");
     expect(result).not.toContain("https://example.com");
-    expect(result).toContain("    ├─ ✓ Inspect the failing route");
-    expect(result).toContain("    ├─ → Repair the session owner");
-    expect(result).toContain("    └─ · Run focused verification");
+    expect(result).toContain("    ✓ Inspect the failing route");
+    expect(result).toContain("    → Repair the session owner");
+    expect(result).toContain("    · Run focused verification");
     expect(result).not.toContain("Old note");
     expect(result).not.toContain("progress_card");
     expect(result.indexOf("📋 progress")).toBeLessThan(result.indexOf("bash"));
   });
 
-  it("renders the progress header like tools and the summary in blue", () => {
+  it("renders the progress header like tools and the summary in yellow", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -360,10 +360,9 @@ describe("progress card rendering", () => {
       false,
     );
 
-    expect(result).toContain(
-      `${BOLD_BLUE}📋 progress · 0/1${RESET} ${YELLOW}»${RESET}`,
-    );
-    expect(result).toContain(`    ${BLUE}§ Detailed status${RESET}`);
+    expect(result).toContain(`${BOLD_BLUE}📋 progress · 0/1${RESET}`);
+    expect(result).not.toContain("»");
+    expect(result).toContain(`    ${YELLOW}§ Detailed status${RESET}`);
     expect(result).not.toContain(`${BOLD_CYAN}📋 progress`);
   });
 
@@ -384,7 +383,7 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · Download · 3/7 »\n    § Working through the archive.",
+      "📋 progress · Download · 3/7\n    § Working through the archive.",
     );
     expect(result).not.toContain("<progress");
   });
@@ -407,11 +406,11 @@ describe("progress card rendering", () => {
     );
 
     expect(result).toContain(
-      "📋 progress · 0/1 »\n    § Current state Build is green See details",
+      "📋 progress · 0/1\n    § Current state Build is green See details",
     );
     expect(result).not.toMatch(/\*\*|https:\/\/|\n    ##/u);
     expect(result).not.toContain("ˋgreenˋ");
-    expect(result).toContain("    └─ → Ship safely");
+    expect(result).toContain("    → Ship safely");
   });
 
   it("renders an aria-label-only progress card without a trailing separator", () => {
@@ -430,7 +429,7 @@ describe("progress card rendering", () => {
       ),
     );
 
-    expect(result).toContain("📋 progress · Tests · 3/7 »");
+    expect(result).toContain("📋 progress · Tests · 3/7");
     expect(result).not.toContain("Tests · 3/7 · ");
   });
 
@@ -2077,10 +2076,10 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("📋 progress · Initial Setup ✔");
+    expect(stripAnsi(result)).toContain("📋 progress · Initial Setup");
   });
 
-  it("renders completed progress card with checkmark and total duration", () => {
+  it("renders completed progress card with total duration", () => {
     const entries: ToolEntry[] = [
       makeEntry({
         toolCallId: "card-1",
@@ -2113,11 +2112,11 @@ describe("tool intent and title rendering", () => {
     ];
 
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("📋 progress · 2/2 ✔ [1.81s]");
+    expect(stripAnsi(result)).toContain("📋 progress · 2/2 [1.81s]");
     expect(stripAnsi(result)).toContain("    § Search Japantown ramen shops");
-    expect(stripAnsi(result)).toContain("    ├─ ✓ Repair the session owner");
-    expect(stripAnsi(result)).toContain("    └─ ✓ Run focused verification");
-    expect(result).toContain(`${GREEN}✓${RESET} Repair the session owner`);
+    expect(stripAnsi(result)).toContain("    ✓ Repair the session owner");
+    expect(stripAnsi(result)).toContain("    ✓ Run focused verification");
+    expect(result).toContain(`    ${GREEN}✓ Repair the session owner${RESET}`);
   });
 
   it("renders in-progress progress card step colors correctly", () => {
@@ -2137,9 +2136,10 @@ describe("tool intent and title rendering", () => {
     ];
 
     const result = renderStatusContent(entries, false);
-    expect(stripAnsi(result)).toContain("📋 progress · 1/3 »");
-    expect(result).toContain(`${GREEN}✓${RESET} Completed step`);
-    expect(result).toContain(`${YELLOW}→${RESET} In progress step`);
-    expect(result).toContain(`${LIGHT_GRAY}· Pending step${RESET}`);
+    expect(stripAnsi(result)).toContain("📋 progress · 1/3");
+    expect(result).toContain(`    ${GREEN}✓ Completed step${RESET}`);
+    expect(result).toContain("    → In progress step");
+    expect(result).not.toContain(`${YELLOW}→`);
+    expect(result).toContain(`    ${LIGHT_GRAY}· Pending step${RESET}`);
   });
 });

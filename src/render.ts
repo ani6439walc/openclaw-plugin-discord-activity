@@ -586,7 +586,7 @@ function createProgressCardBlock(
   const detail = progressDetail;
   const summaryLine = summary
     ? `    ${ansiSpan(
-        ANSI.blue,
+        ANSI.yellow,
         `§ ${summary}${
           omittedSummaryCharacters > 0
             ? `… (+${omittedSummaryCharacters} chars)`
@@ -594,20 +594,15 @@ function createProgressCardBlock(
         }`,
       )}`
     : undefined;
-  const planLines = steps.map(({ step, status }, index) => {
-    const isLast = index === steps.length - 1;
-    const connector = isLast ? "└─" : "├─";
+  const planLines = steps.map(({ step, status }) => {
     if (status === "completed") {
-      return `    ${connector} ${ansiSpan(ANSI.green, "✓")} ${step}`;
+      return `    ${ansiSpan(ANSI.green, `✓ ${step}`)}`;
     }
     if (status === "in_progress") {
-      return `    ${connector} ${ansiSpan(ANSI.yellow, "→")} ${step}`;
+      return `    → ${step}`;
     }
-    return `    ${connector} ${ansiSpan(ANSI.lightGray, `· ${step}`)}`;
+    return `    ${ansiSpan(ANSI.lightGray, `· ${step}`)}`;
   });
-
-  const headerStatus = isAllCompleted ? "✔" : "»";
-  const headerStatusStyle = isAllCompleted ? ANSI.green : ANSI.yellow;
 
   return {
     key: "progress",
@@ -615,8 +610,8 @@ function createProgressCardBlock(
       icon: "📋",
       name: detail ? `progress · ${detail}` : "progress",
       nameStyle: ANSI.boldBlue,
-      status: headerStatus,
-      statusStyle: headerStatusStyle,
+      status: "",
+      statusStyle: ANSI.lightGray,
       durationMs: totalDurationMs,
     },
     children: [],
