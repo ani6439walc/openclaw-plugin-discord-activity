@@ -19,6 +19,7 @@ export function getToolIcon(name: string): string {
   if (n === "ask_user") return "❓";
 
   // File Operations
+  if (n === "ls" || n.endsWith(":ls") || n.includes("list_dir")) return "📂";
   if (n.includes("read")) return "📄";
   if (n.includes("write")) return "✍️";
   if (n.includes("edit")) return "✂️";
