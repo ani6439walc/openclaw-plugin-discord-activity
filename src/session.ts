@@ -19,8 +19,24 @@ import {
   DELETE_RECOVERY_DELAY_MS,
 } from "./constants.js";
 
-export const defaultStore = createSessionStore();
-export const defaultOrphans = createOrphanManager();
+// Gateway and agent generations load separate copies of this module.
+const ACTIVITY_RUNTIME_KEY = Symbol.for("discord-activity:activity-state:v1");
+const activityGlobal = globalThis as typeof globalThis & {
+  [ACTIVITY_RUNTIME_KEY]?: {
+    readonly store: ReturnType<typeof createSessionStore>;
+    readonly orphans: ReturnType<typeof createOrphanManager>;
+    readonly activeMemoryRunIdsBySession: WeakMap<SessionEntry, Set<string>>;
+  };
+};
+export const {
+  store: defaultStore,
+  orphans: defaultOrphans,
+  activeMemoryRunIdsBySession,
+} = (activityGlobal[ACTIVITY_RUNTIME_KEY] ??= {
+  store: createSessionStore(),
+  orphans: createOrphanManager(),
+  activeMemoryRunIdsBySession: new WeakMap(),
+});
 
 function clearTimers(session: SessionEntry) {
   clearAllSessionTimers(session);

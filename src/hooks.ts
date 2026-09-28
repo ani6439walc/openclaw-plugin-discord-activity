@@ -33,6 +33,7 @@ import {
   parseActiveMemoryToolEntries,
 } from "./parser.js";
 import {
+  activeMemoryRunIdsBySession,
   retireSession,
   scheduleSessionCleanup,
   updateStatusMessage,
@@ -231,7 +232,6 @@ export function createHookHandlers(deps: HookDeps) {
 
   // Initialize the ToolHistoryManager
   const toolHistoryManager = new ToolHistoryManager(config);
-  const activeMemoryRunIdsBySession = new WeakMap<SessionEntry, Set<string>>();
 
   function registerActiveMemoryRun(session: SessionEntry, runId: string): void {
     const activeMemoryRunIds =
