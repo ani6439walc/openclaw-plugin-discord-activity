@@ -163,6 +163,9 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 
 ## Installation
 
+The pinned OpenClaw 2026.9.4 requires Node.js `>=24.16.0 <25 || >=26.1.0`.
+CI validates Node.js 24 and 26.
+
 Install the published plugin from [ClawHub](https://clawhub.ai/wei840222/plugins/discord-activity):
 
 ```bash
