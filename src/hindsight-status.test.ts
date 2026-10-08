@@ -23,6 +23,7 @@ function recallEvent(
     runId: "run-1",
     data: {
       kind: "hindsight.recall",
+      pluginId: "hindsight",
       recallId: "recall-1",
       state: "started",
       ...data,
@@ -278,10 +279,17 @@ describe("Hindsight recall status", () => {
 });
 
 describe("Hindsight event validation", () => {
+  it("accepts recall events without optional producer metadata", () => {
+    expect(
+      parseHindsightRecallEvent(recallEvent({ pluginId: undefined })),
+    ).toBeDefined();
+  });
+
   it.each([
     recallEvent({}, { stream: "other", runId: "run-1" }),
     recallEvent({}, { runId: "" }),
     recallEvent({ pluginId: "other" }),
+    recallEvent({ pluginId: "hindsight-openclaw" }),
     recallEvent({ kind: "other" }),
     recallEvent({ recallId: "" }),
     recallEvent({ recallId: "x\n" }),
