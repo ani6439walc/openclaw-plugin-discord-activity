@@ -82,7 +82,7 @@ describe("Hindsight recall status", () => {
 
   it("creates progress before tools, edits the same message, and cleans up at agent end", async () => {
     await handlers.onHindsightRecallEvent(recallEvent());
-    expect(content()).toContain("🧠 hindsight recall");
+    expect(content()).toContain("🧠 hindsight-recall");
     expect(content()).toContain("Recalling memories");
     await handlers.onHindsightRecallEvent(
       recallEvent({ state: "completed", durationMs: 1240, resultCount: 3 }),
