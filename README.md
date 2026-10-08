@@ -3,7 +3,7 @@
 [![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://clawhub.ai/wei840222/plugins/discord-activity)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Discord Activity is an OpenClaw plugin that shows live agent and tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory` and `skill-harness` status, then removes the status message after the agent finishes.
+Discord Activity is an OpenClaw plugin that shows live agent and tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory`, `skill-harness`, and Hindsight recall status, then removes the status message after the agent finishes.
 
 ## Why this exists
 
@@ -108,6 +108,36 @@ Session and race-safety behavior:
 - Discord deletes treat `404` as already deleted. Retryable `429`, `5xx`, and network failures use the normal bounded API retry policy, then schedule one detached recovery attempt after 5 seconds. Missing tokens and `401`/`403` failures do not schedule delayed retries.
 - Detached delete recovery captures the original channel, message, account, and session identifiers, so it cannot delete or mutate a replacement session's status message.
 
+### Hindsight automatic recall
+
+The [Hindsight integration fork](https://github.com/ani6439walc/openclaw-plugin-hindsight)
+emits `hindsight-openclaw.recall` events before the model receives its prompt.
+Discord Activity subscribes automatically; no extra Discord Activity configuration
+is needed. The official Hindsight OpenClaw v0.13.0 does not emit these events.
+Install the fork in place of the official integration as described in its README.
+
+A `hindsight-recall` row shows progress while the integration prepares its client
+and retrieves memories, then displays the number of memories injected (or an
+explicit empty result), elapsed time, timeout, cancellation, or failure. The
+duration includes client initialization. Queries, bank IDs, recalled text, and
+raw error messages are never copied from these events into Discord.
+
+```text
+🧠 hindsight-recall ▾ ←
+└─ status: Recalling memories
+
+🧠 hindsight-recall ▾ ✔ [1.24s]
+└─ result: 3 memories recalled
+```
+
+Each recall invocation has its own ID, including concurrent invocations that
+share an upstream request. Duplicate or late start events cannot reset a terminal
+status. Events from old runs, internal subagent sessions, and finalized turns are
+ignored. If the turn ends without a terminal recall event, the row explicitly
+reports `Recall outcome unavailable` instead of implying success. Prechecks that
+skip automatic recall produce no row. Older hosts without the optional agent
+event API continue to support the existing tool activity display.
+
 ## Architecture
 
 The repository is a small TypeScript plugin with focused runtime modules and colocated tests. The main runtime hotspot is `src/hooks.ts`; keep new behavior in smaller helpers when possible instead of growing hook orchestration unnecessarily.
@@ -132,6 +162,9 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 | `api.ts`, `index.ts`, `token.ts`    | Plugin SDK bridge, exported plugin entrypoint, and Discord token resolution.                                                                  |
 
 ## Installation
+
+The pinned OpenClaw 2026.9.4 requires Node.js `>=24.16.0 <25 || >=26.1.0`.
+CI validates Node.js 24 and 26.
 
 Install the published plugin from [ClawHub](https://clawhub.ai/wei840222/plugins/discord-activity):
 
