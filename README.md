@@ -111,7 +111,8 @@ Session and race-safety behavior:
 ### Hindsight automatic recall
 
 The [Hindsight integration fork](https://github.com/ani6439walc/openclaw-plugin-hindsight)
-emits `hindsight-openclaw.recall` events before the model receives its prompt.
+uses plugin ID `hindsight` and emits `hindsight-openclaw.recall` events before
+the model receives its prompt.
 Discord Activity subscribes automatically; no extra Discord Activity configuration
 is needed. The official Hindsight OpenClaw v0.13.0 does not emit these events.
 Install the fork in place of the official integration as described in its README.

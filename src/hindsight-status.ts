@@ -17,8 +17,7 @@ export function parseHindsightRecallEvent(
   const data = event.data;
   if (!data || typeof data !== "object" || data.kind !== "hindsight.recall")
     return;
-  if (data.pluginId !== undefined && data.pluginId !== "hindsight-openclaw")
-    return;
+  if (data.pluginId !== undefined && data.pluginId !== "hindsight") return;
   if (
     typeof data.recallId !== "string" ||
     !/^[a-zA-Z0-9_-]{1,128}$/.test(data.recallId)
