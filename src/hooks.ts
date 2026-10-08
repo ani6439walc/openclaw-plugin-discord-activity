@@ -51,6 +51,10 @@ import {
   mergeSkillHarnessPipelineEntry,
   parseSkillHarnessPipelineEntry,
 } from "./skill-harness-status.js";
+import {
+  finishPendingHindsightRecalls,
+  parseHindsightRecallEvent,
+} from "./hindsight-status.js";
 
 function isTerminalToolStatus(status: ToolEntry["status"]): boolean {
   return (
@@ -824,6 +828,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!bindSessionRun(session, ctx.runId)) return undefined;
     if (session.finalized) return undefined;
     completeUnobservedActiveMemoryPlaceholder(session);
+    finishPendingHindsightRecalls(session.toolHistory);
     session.finalized = true;
     await updateSessionStatus(session, true);
     return undefined;
@@ -1042,6 +1047,7 @@ export function createHookHandlers(deps: HookDeps) {
 
       const session = await store.resolveSession(contextKey, ctx.sessionKey);
       if (!session || !bindSessionRun(session, ctx.runId)) return;
+      finishPendingHindsightRecalls(session.toolHistory);
       if (event.success !== false && !event.error) {
         completeUnobservedActiveMemoryPlaceholder(session);
       }
@@ -1137,6 +1143,53 @@ export function createHookHandlers(deps: HookDeps) {
     await updateSessionStatus(session, false);
   }
 
+  async function onHindsightRecallEvent(event: AgentPipelineEvent) {
+    const parsed = parseHindsightRecallEvent(event);
+    if (!parsed || shouldSkipSession(parsed, "hindsight_recall")) return;
+    const { sessionKey, entry } = parsed;
+    const contextKey = getDiscordContextKey(sessionKey);
+    if (!contextKey) return;
+
+    try {
+      const session = await store.resolveSession(contextKey, sessionKey);
+      if (
+        !session ||
+        !store.isCurrentSession(session) ||
+        session.ownerSessionKey !== sessionKey ||
+        session.finalized ||
+        (session.runId !== undefined && session.runId !== event.runId) ||
+        !bindSessionRun(session, event.runId)
+      )
+        return;
+      const existing = session.toolHistory.find(
+        (candidate) => candidate.toolCallId === entry.toolCallId,
+      );
+      // Terminal events are authoritative, even when observed before a start.
+      if (
+        existing &&
+        (isTerminalToolStatus(existing.status) || entry.status === "pending")
+      )
+        return;
+      entry.startedAtMs = existing?.startedAtMs ?? Date.now();
+      if (existing) {
+        toolHistoryManager.updateEntry(
+          session.toolHistory,
+          entry.toolCallId,
+          entry,
+        );
+      } else {
+        toolHistoryManager.addEntry(session.toolHistory, entry);
+      }
+      clearSessionTimer(session);
+      await updateSessionStatus(session, false);
+    } catch (err) {
+      logger.warn("hindsight_recall: failed to update activity status.", {
+        sessionKey,
+        error: String(err),
+      });
+    }
+  }
+
   async function onSkillHarnessPipelineEvent(event: AgentPipelineEvent) {
     const observedAtMs = Date.now();
     const sessionKey = getSkillHarnessPipelineSessionKey(event);
@@ -1190,6 +1243,7 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   return Object.freeze({
+    onHindsightRecallEvent,
     onMessageReceived,
     onBeforeToolCall,
     onAfterToolCall,

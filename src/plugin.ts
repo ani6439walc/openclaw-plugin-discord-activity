@@ -7,6 +7,7 @@ import { resolveDiscordToken } from "../token.js";
 import { defaultStore, defaultOrphans } from "./session.js";
 import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
+import { HINDSIGHT_RECALL_STREAM } from "./hindsight-status.js";
 
 export function buildIsPluginEnabledForAgent(
   openClawConfig: OpenClawConfig,
@@ -101,6 +102,11 @@ export function createPlugin(
         id: "discord-activity:skill-harness-pipeline",
         streams: ["plugin:skill-harness"],
         handle: handlers.onSkillHarnessPipelineEvent,
+      });
+      registerAgentEventSubscription?.({
+        id: "discord-activity:hindsight-recall",
+        streams: [HINDSIGHT_RECALL_STREAM],
+        handle: handlers.onHindsightRecallEvent,
       });
     },
   });

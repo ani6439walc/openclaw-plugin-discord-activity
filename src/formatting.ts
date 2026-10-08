@@ -39,7 +39,7 @@ export function getToolIcon(name: string): string {
   if (n === "openclaw" || n === "lobster") return "🦞";
 
   // Knowledge, Memory & Wiki
-  if (n.includes("memory")) return "🧠";
+  if (n.includes("memory") || n === "hindsight recall") return "🧠";
   if (n.includes("wiki")) {
     if (n.includes("search")) return "📖";
     if (n.includes("apply")) return "📋";

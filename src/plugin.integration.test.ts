@@ -98,6 +98,15 @@ describe("plugin", () => {
         handle: expect.any(Function),
       }),
     );
+    expect(
+      mockApi.agent.events.registerAgentEventSubscription,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "discord-activity:hindsight-recall",
+        streams: ["hindsight-openclaw.recall"],
+        handle: expect.any(Function),
+      }),
+    );
   });
 
   it("registers core handlers without agent event subscriptions", () => {
