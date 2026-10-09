@@ -1502,9 +1502,9 @@ describe("renderStatusContent", () => {
       [...subagentEntries, ...normalEntries.slice(0, 5)],
       true,
     );
-    expect(withFiveNormalTools).not.toContain("💡 skill-harness");
-    expect(stripAnsi(withFiveNormalTools)).toContain("🧩 active-memory ▾ ✔");
-    expect(withFiveNormalTools).toContain("memory_search");
+    expect(withFiveNormalTools).not.toContain("🧩 active-memory");
+    expect(stripAnsi(withFiveNormalTools)).toContain("💡 skill-harness ▾ ✔");
+    expect(withFiveNormalTools).toContain("topic-triage");
     expect(withFiveNormalTools).toContain("normal_tool_4");
 
     const withSixNormalTools = renderStatusContent(
@@ -1854,7 +1854,7 @@ describe("renderStatusContent", () => {
     expect(result).toContain("read");
   });
 
-  it("renders skill-harness before active-memory and normal tools", () => {
+  it("renders subagent groups in first-appearance order before normal tools", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "read", status: "pending" }),
       {
@@ -1875,43 +1875,115 @@ describe("renderStatusContent", () => {
         params: { text: "INTENT:RESEARCH" },
         status: "completed",
       },
+      {
+        toolCallId: "hindsight:1",
+        toolName: "hindsight",
+        params: { result: "3 memories recalled" },
+        status: "completed",
+        durationMs: 1570,
+      },
     ];
     const result = renderStatusContent(entries, true);
     const amPos = result.indexOf("active-memory");
     const ihPos = result.indexOf("skill-harness");
+    const hsPos = result.indexOf("hindsight");
     const readPos = result.indexOf("read");
-    expect(ihPos).toBeLessThan(amPos);
-    expect(ihPos).toBeLessThan(readPos);
+    expect(amPos).toBeLessThan(ihPos);
+    expect(ihPos).toBeLessThan(hsPos);
+    expect(hsPos).toBeLessThan(readPos);
     expect(amPos).toBeGreaterThanOrEqual(0);
     expect(ihPos).toBeGreaterThanOrEqual(0);
+    expect(hsPos).toBeGreaterThanOrEqual(0);
     expect(readPos).toBeGreaterThanOrEqual(0);
   });
 
-  it("keeps skill-harness first regardless of input order", () => {
+  it("orders subagent groups by whichever appeared first in history", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "bash", status: "completed" }),
-      {
-        toolCallId: "active-memory:mem1",
-        toolName: "active-memory:memory_search",
-        params: { query: "test" },
-        status: "completed",
-      },
       {
         toolCallId: "skill-harness:result",
         toolName: "skill-harness:result",
         params: { text: "INTENT:RESEARCH" },
         status: "completed",
       },
+      {
+        toolCallId: "hindsight:1",
+        toolName: "hindsight",
+        params: { result: "8 memories recalled" },
+        status: "completed",
+      },
+      {
+        toolCallId: "active-memory:mem1",
+        toolName: "active-memory:memory_search",
+        params: { query: "test" },
+        status: "completed",
+      },
     ];
     const result = renderStatusContent(entries, true);
-    const amPos = result.indexOf("active-memory");
     const ihPos = result.indexOf("skill-harness");
+    const hsPos = result.indexOf("hindsight");
+    const amPos = result.indexOf("active-memory");
     const bashPos = result.indexOf("bash");
+    expect(ihPos).toBeLessThan(hsPos);
+    expect(hsPos).toBeLessThan(amPos);
+    expect(amPos).toBeLessThan(bashPos);
+  });
+
+  it("renders hindsight first when hindsight appears before skill-harness and active-memory", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "hindsight:1",
+        toolName: "hindsight",
+        params: { result: "8 memories recalled" },
+        status: "completed",
+        durationMs: 1570,
+      },
+      {
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        params: { result: "no relevant skills" },
+        status: "completed",
+        durationMs: 2920,
+      },
+      {
+        toolCallId: "active-memory:result",
+        toolName: "active-memory:result",
+        params: { text: "cached profile" },
+        status: "completed",
+      },
+      makeEntry({ toolName: "bash", status: "completed" }),
+    ];
+    const result = renderStatusContent(entries, true);
+    const plain = stripAnsi(result);
+    const hsPos = result.indexOf("hindsight");
+    const ihPos = result.indexOf("skill-harness");
+    const amPos = result.indexOf("active-memory");
+    const bashPos = result.indexOf("bash");
+    expect(hsPos).toBeLessThan(ihPos);
     expect(ihPos).toBeLessThan(amPos);
-    expect(ihPos).toBeLessThan(bashPos);
-    expect(amPos).toBeGreaterThanOrEqual(0);
-    expect(ihPos).toBeGreaterThanOrEqual(0);
-    expect(bashPos).toBeGreaterThanOrEqual(0);
+    expect(amPos).toBeLessThan(bashPos);
+    expect(plain).toContain("🧠 hindsight ▾ ✔ [1.57s]");
+    expect(plain).toContain("result: 8 memories recalled");
+    expect(plain).toContain("💡 skill-harness ▾ ✔ [2.92s]");
+    expect(plain).toContain("result: no relevant skills");
+  });
+
+  it("supports collapsing hindsight as a subagent group via group:hindsight", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "hindsight:1",
+        toolName: "hindsight",
+        params: { result: "8 memories recalled" },
+        status: "completed",
+        durationMs: 1570,
+      },
+    ];
+    const result = renderStatusContentWithState(entries, true, 2000, {
+      "group:hindsight": "collapsed",
+    });
+    const plain = stripAnsi(result.content);
+    expect(plain).toContain("🧠 hindsight ▸ ✔ [1.57s]");
+    expect(plain).not.toContain("result: 8 memories recalled");
   });
 });
 

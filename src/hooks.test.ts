@@ -3446,9 +3446,9 @@ describe("createHookHandlers", () => {
       expect(activeMemoryContent).toContain("🧩 active-memory ▾ ✔");
       expect(activeMemoryContent).toContain("💡 skill-harness ▾ ←");
       expect(
-        afterActiveMemory!.lastRenderedContent!.indexOf("skill-harness"),
-      ).toBeLessThan(
         afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      ).toBeLessThan(
+        afterActiveMemory!.lastRenderedContent!.indexOf("skill-harness"),
       );
 
       await handlers.onSkillHarnessPipelineEvent({
@@ -3482,9 +3482,9 @@ describe("createHookHandlers", () => {
       expect(skillHarnessContent).toContain("🧩 active-memory ▾ ✔");
       expect(skillHarnessContent).toContain("💡 skill-harness ▾ ✔");
       expect(
-        afterSkillHarness!.lastRenderedContent!.indexOf("💡 skill-harness"),
-      ).toBeLessThan(
         afterSkillHarness!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      ).toBeLessThan(
+        afterSkillHarness!.lastRenderedContent!.indexOf("💡 skill-harness"),
       );
 
       await handlers.onAgentEnd(
@@ -3498,8 +3498,8 @@ describe("createHookHandlers", () => {
       );
       expect(final?.lastRenderedContent).toContain("skill-harness");
       expect(
-        final!.lastRenderedContent!.indexOf("💡 skill-harness"),
-      ).toBeLessThan(final!.lastRenderedContent!.indexOf("🧩 active-memory"));
+        final!.lastRenderedContent!.indexOf("🧩 active-memory"),
+      ).toBeLessThan(final!.lastRenderedContent!.indexOf("💡 skill-harness"));
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
   });

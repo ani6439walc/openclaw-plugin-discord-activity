@@ -67,10 +67,10 @@ describe("main agent failure rendering", () => {
     expect(plain).toContain("error: provider timeout");
     expect(plain).toContain("bash ▾ ✘");
     expect(plain).toContain("error: permission denied");
-    expect(result.indexOf("skill-harness")).toBeLessThan(
-      result.indexOf("active-memory"),
-    );
     expect(result.indexOf("active-memory")).toBeLessThan(
+      result.indexOf("skill-harness"),
+    );
+    expect(result.indexOf("skill-harness")).toBeLessThan(
       result.indexOf("bash"),
     );
     expect(result.indexOf("bash")).toBeLessThan(result.indexOf("💥 agent"));

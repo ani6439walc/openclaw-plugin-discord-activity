@@ -51,7 +51,7 @@ function getAuthoritativeGroupParent(
   parentEntry: ToolEntry | undefined,
 ): ToolEntry | undefined {
   if (!parentEntry) return;
-  if (prefix === "active-memory") return parentEntry;
+  if (prefix === "active-memory" || prefix === "hindsight") return parentEntry;
   if (
     prefix === "skill-harness" &&
     (parentEntry.status !== "pending" ||
@@ -234,7 +234,20 @@ function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
   };
 }
 
-type InternalGroupName = "active-memory" | "skill-harness";
+export const SUBAGENT_GROUP_NAMES = [
+  "active-memory",
+  "skill-harness",
+  "hindsight",
+] as const;
+
+export type InternalGroupName = (typeof SUBAGENT_GROUP_NAMES)[number];
+
+function getSubagentGroupIcon(prefix: InternalGroupName): string {
+  if (prefix === "active-memory") return "🧩";
+  if (prefix === "skill-harness") return "💡";
+  if (prefix === "hindsight") return "🧠";
+  return getToolIcon(prefix);
+}
 
 const DISPLAY_LEVEL_RANK: Record<StatusBlockDisplayLevel, number> = {
   expanded: 0,
@@ -379,6 +392,15 @@ function renderStatusNodes(
   });
 }
 
+function findLastEntry(
+  entries: readonly ToolEntry[],
+  predicate: (entry: ToolEntry) => boolean,
+): ToolEntry | undefined {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (predicate(entries[i])) return entries[i];
+  }
+}
+
 function renderSubagentGroup(
   icon: string,
   prefix: InternalGroupName,
@@ -391,7 +413,10 @@ function renderSubagentGroup(
   const resultEntries = realEntries.filter((entry) =>
     isSubagentResultEntry(entry, prefix),
   );
-  const parentEntry = group.find((entry) => entry.toolName === prefix);
+  const parentEntry = findLastEntry(
+    group,
+    (entry) => entry.toolName === prefix,
+  );
   const authoritativeParent = getAuthoritativeGroupParent(prefix, parentEntry);
   const hasError = group.some((entry) => entry.status === "error");
   const hasResult = realEntries.some((entry) =>
@@ -425,12 +450,17 @@ function renderSubagentGroup(
       nodes.push(createFieldNode(row));
     }
   }
-  if (prefix === "skill-harness" && realEntries.length === 0 && parentEntry) {
-    const parentFields = formatDisplayFields(parentEntry.params, {
-      toolName: parentEntry.toolName,
-    });
-    for (const row of packMainFields(parentFields)) {
-      nodes.push(createFieldNode(row));
+  if (
+    (prefix === "skill-harness" || prefix === "hindsight") &&
+    realEntries.length === 0
+  ) {
+    for (const entry of group) {
+      const parentFields = formatDisplayFields(entry.params, {
+        toolName: entry.toolName,
+      });
+      for (const row of packMainFields(parentFields)) {
+        nodes.push(createFieldNode(row));
+      }
     }
   }
   if (
@@ -680,27 +710,29 @@ function createMainAgentFailureBlock(entry: ToolEntry): StatusBlock {
 
 function getSubagentGroupEntries(
   toolHistory: readonly ToolEntry[],
-): Array<{ name: "active-memory" | "skill-harness"; entries: ToolEntry[] }> {
-  const groups: Array<{
-    name: "active-memory" | "skill-harness";
-    entries: ToolEntry[];
-  }> = [];
+): Array<{ name: InternalGroupName; entries: ToolEntry[] }> {
+  const seenGroups: InternalGroupName[] = [];
+  const entriesByGroup = new Map<InternalGroupName, ToolEntry[]>();
 
-  const skillHarnessEntries = toolHistory.filter((t) =>
-    isSubagentToolEntry(t, "skill-harness"),
-  );
-  if (skillHarnessEntries.length > 0) {
-    groups.push({ name: "skill-harness", entries: skillHarnessEntries });
+  for (const entry of toolHistory) {
+    for (const name of SUBAGENT_GROUP_NAMES) {
+      if (isSubagentToolEntry(entry, name)) {
+        let entries = entriesByGroup.get(name);
+        if (!entries) {
+          entries = [];
+          entriesByGroup.set(name, entries);
+          seenGroups.push(name);
+        }
+        entries.push(entry);
+        break;
+      }
+    }
   }
 
-  const activeMemoryEntries = toolHistory.filter((t) =>
-    isSubagentToolEntry(t, "active-memory"),
-  );
-  if (activeMemoryEntries.length > 0) {
-    groups.push({ name: "active-memory", entries: activeMemoryEntries });
-  }
-
-  return groups;
+  return seenGroups.map((name) => ({
+    name,
+    entries: entriesByGroup.get(name)!,
+  }));
 }
 
 const OPENING_FENCE = "```ansi\n";
@@ -790,7 +822,7 @@ export function renderStatusContentWithState(
   const displayState = mergeStatusDisplayStates(priorState);
   const subagentBlocks = getSubagentGroupEntries(toolHistory).map((group) =>
     renderSubagentGroup(
-      group.name === "active-memory" ? "🧩" : "💡",
+      getSubagentGroupIcon(group.name),
       group.name,
       group.entries,
     ),
@@ -803,8 +835,9 @@ export function renderStatusContentWithState(
     .filter(
       (entry) =>
         !isProgressCardEntry(entry) &&
-        !isSubagentToolEntry(entry, "active-memory") &&
-        !isSubagentToolEntry(entry, "skill-harness") &&
+        !SUBAGENT_GROUP_NAMES.some((prefix) =>
+          isSubagentToolEntry(entry, prefix),
+        ) &&
         !isMainAgentEntry(entry),
     )
     .map(createEntryBlock);

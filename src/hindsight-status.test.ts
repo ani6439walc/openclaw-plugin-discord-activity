@@ -108,6 +108,40 @@ describe("Hindsight recall status", () => {
     ).toBe(true);
   });
 
+  it("renders hindsight before skill-harness when hindsight is first in history", async () => {
+    await handlers.onHindsightRecallEvent(
+      recallEvent({ state: "completed", durationMs: 1570, resultCount: 8 }),
+    );
+    session().toolHistory.push({
+      toolCallId: "skill-harness",
+      toolName: "skill-harness",
+      params: { result: "no relevant skills" },
+      status: "completed",
+      durationMs: 2920,
+    });
+    session().toolHistory.push({
+      toolCallId: "call_bash",
+      toolName: "bash",
+      params: { command: "ls" },
+      status: "completed",
+    });
+    await handlers.onAgentEnd({ success: true }, ctx);
+    const rendered = session().lastRenderedContent?.replaceAll(
+      /\u001b\[[0-9;]*m/g,
+      "",
+    );
+    expect(rendered).toBeDefined();
+    const hsPos = rendered!.indexOf("🧠 hindsight");
+    const shPos = rendered!.indexOf("💡 skill-harness");
+    const bashPos = rendered!.indexOf("bash");
+    expect(hsPos).toBeLessThan(shPos);
+    expect(shPos).toBeLessThan(bashPos);
+    expect(rendered).toContain("🧠 hindsight ▾ ✔ [1.57s]");
+    expect(rendered).toContain("result: 8 memories recalled");
+    expect(rendered).toContain("💡 skill-harness ▾ ✔ [2.92s]");
+    expect(rendered).toContain("result: no relevant skills");
+  });
+
   it.each([
     [
       { state: "completed", resultCount: 0 },
