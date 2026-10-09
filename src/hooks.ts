@@ -217,14 +217,7 @@ function buildPendingSubagentEntries(
 }
 
 export function createHookHandlers(deps: HookDeps) {
-  const {
-    store,
-    orphans,
-    getToken,
-    config,
-    isActiveMemoryEnabled,
-    isSkillHarnessEnabled,
-  } = deps;
+  const { store, orphans, getToken, config, isActiveMemoryEnabled } = deps;
 
   // Initialize the ToolHistoryManager
   const toolHistoryManager = new ToolHistoryManager(config);
@@ -1192,20 +1185,12 @@ export function createHookHandlers(deps: HookDeps) {
     )
       return;
 
-    const agentId = extractAgentIdFromSessionKey(sessionKey);
-    if (agentId !== undefined && !isSkillHarnessEnabled(agentId)) return;
-
     const contextKey = getDiscordContextKey(sessionKey);
     if (!contextKey) return;
 
     try {
       const session = await store.resolveSession(contextKey, sessionKey);
       if (!session || !store.isCurrentSession(session) || session.finalized)
-        return;
-      const ownerAgentId = extractAgentIdFromSessionKey(
-        session.ownerSessionKey,
-      );
-      if (ownerAgentId !== undefined && !isSkillHarnessEnabled(ownerAgentId))
         return;
 
       const provenanceRunId =

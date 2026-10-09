@@ -114,7 +114,7 @@ export type HookDeps = {
   getToken: GetTokenFn;
   config: PluginConfig;
   isActiveMemoryEnabled: (agentId: string) => boolean;
-  isSkillHarnessEnabled: (agentId: string) => boolean;
+  isSkillHarnessEnabled?: (agentId: string) => boolean;
 };
 
 export type StatusRenderResult = {

@@ -23,6 +23,18 @@ export function buildIsPluginEnabledForAgent(
     if (!entry?.enabled) return false;
 
     const config = entry.config as Record<string, unknown> | undefined;
+    const routing =
+      config?.routing &&
+      typeof config.routing === "object" &&
+      !Array.isArray(config.routing)
+        ? (config.routing as Record<string, unknown>)
+        : undefined;
+    const routingScope =
+      routing?.scope &&
+      typeof routing.scope === "object" &&
+      !Array.isArray(routing.scope)
+        ? (routing.scope as Record<string, unknown>)
+        : undefined;
     const scope =
       config?.scope &&
       typeof config.scope === "object" &&
@@ -31,6 +43,9 @@ export function buildIsPluginEnabledForAgent(
         : undefined;
 
     const agents =
+      (Array.isArray(routingScope?.agents)
+        ? (routingScope.agents as unknown[])
+        : undefined) ??
       (Array.isArray(scope?.agents)
         ? (scope.agents as unknown[])
         : undefined) ??
@@ -56,10 +71,6 @@ export function createPlugin(
     api.config,
     "active-memory",
   );
-  const isSkillHarnessEnabled = buildIsPluginEnabledForAgent(
-    api.config,
-    "skill-harness",
-  );
 
   const store = defaultStore;
   const orphans = defaultOrphans;
@@ -69,7 +80,6 @@ export function createPlugin(
     getToken,
     config,
     isActiveMemoryEnabled,
-    isSkillHarnessEnabled,
   });
 
   return definePluginEntry({

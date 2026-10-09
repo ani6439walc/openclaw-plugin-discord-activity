@@ -242,6 +242,47 @@ describe("createHookHandlers", () => {
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
+    it("renders skill-harness pipeline events for non-main agents (e.g. restricted in lobby) in an event-driven manner", async () => {
+      const fetchMock = createDiscordFetchMock();
+      isActiveMemoryEnabled.mockReturnValue(false);
+
+      await handlers.onMessageReceived(
+        { messageId: "msg_lobby_1", metadata: { to: "channel:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:restricted:discord:channel:123",
+          accountId: "default",
+        },
+      );
+
+      const session = store.sessions.get("discord:channel:123");
+      expect(session?.toolHistory).toEqual([]);
+      expect(countChannelMessagePosts(fetchMock)).toBe(0);
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-lobby-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:restricted:discord:channel:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "started",
+        },
+      });
+
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
+          status: "pending",
+        }),
+      ]);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "💡 skill-harness ▾ ←",
+      );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("maintains stable order between active-memory placeholder and skill-harness events", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);

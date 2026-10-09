@@ -74,6 +74,26 @@ describe("buildIsPluginEnabledForAgent", () => {
     expect(isEnabled("other")).toBe(false);
   });
 
+  it("resolves agents from routing.scope.agents when configured", () => {
+    const isEnabled = buildIsPluginEnabledForAgent(
+      createConfig({
+        entries: {
+          "skill-harness": {
+            enabled: true,
+            config: {
+              routing: { scope: { agents: ["main", "restricted"] } },
+            },
+          },
+        },
+      }),
+      "skill-harness",
+    );
+
+    expect(isEnabled("main")).toBe(true);
+    expect(isEnabled("restricted")).toBe(true);
+    expect(isEnabled("other")).toBe(false);
+  });
+
   it("defaults to main agent for skill-harness when agent scope is omitted", () => {
     const isEnabled = buildIsPluginEnabledForAgent(
       createConfig({
