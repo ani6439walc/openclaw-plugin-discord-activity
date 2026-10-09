@@ -88,7 +88,7 @@ describe("Hindsight recall status", () => {
     await handlers.onHindsightPipelineEvent(recallEvent());
     expect(content()).toContain("🧠 hindsight");
     expect(content()).not.toContain("🧠 hindsight-recall");
-    expect(content()).toContain("Recalling memories");
+    expect(content()).toContain("recalling memories");
     await handlers.onHindsightRecallEvent(
       recallEvent({ state: "completed", durationMs: 1240, resultCount: 3 }),
     );
@@ -111,19 +111,19 @@ describe("Hindsight recall status", () => {
   it.each([
     [
       { state: "completed", resultCount: 0 },
-      "No relevant memories",
+      "no relevant memories",
       "completed",
     ],
-    [{ state: "failed", reason: "timeout" }, "Recall timed out", "error"],
-    [{ state: "failed", reason: "error" }, "Recall failed", "error"],
+    [{ state: "failed", reason: "timeout" }, "recall timed out", "error"],
+    [{ state: "failed", reason: "error" }, "recall failed", "error"],
     [
       { state: "cancelled", reason: "service_stopped" },
-      "Recall cancelled",
+      "recall cancelled",
       "error",
     ],
     [
       { state: "skipped", reason: "client_unavailable" },
-      "Recall skipped",
+      "recall skipped",
       "completed",
     ],
   ])(
@@ -189,7 +189,7 @@ describe("Hindsight recall status", () => {
         result: "secret-result",
       }),
     );
-    expect(content()).toContain("Recall failed");
+    expect(content()).toContain("recall failed");
     expect(content()).not.toMatch(/secret-|private bank/);
   });
 
@@ -197,7 +197,7 @@ describe("Hindsight recall status", () => {
     await handlers.onHindsightRecallEvent(
       recallEvent({ sessionKey }, { sessionKey: undefined }),
     );
-    expect(content()).toContain("Recalling memories");
+    expect(content()).toContain("recalling memories");
   });
 
   it("ignores stale runs, internal sessions, and inconsistent routing", async () => {
@@ -229,7 +229,7 @@ describe("Hindsight recall status", () => {
           ctx,
         );
       }
-      expect(content()).toContain("Recall outcome unavailable");
+      expect(content()).toContain("recall outcome unavailable");
       const before = structuredClone(session().toolHistory);
       const calls = fetchMock.mock.calls.length;
       await handlers.onHindsightRecallEvent(

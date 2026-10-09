@@ -125,7 +125,7 @@ raw error messages are never copied from these events into Discord.
 
 ```text
 🧠 hindsight ▾ ←
-└─ status: Recalling memories
+└─ status: recalling memories
 
 🧠 hindsight ▾ ✔ [1.24s]
 └─ result: 3 memories recalled
@@ -135,7 +135,7 @@ Each recall invocation has its own ID, including concurrent invocations that
 share an upstream request. Duplicate or late start events cannot reset a terminal
 status. Events from old runs, internal subagent sessions, and finalized turns are
 ignored. If the turn ends without a terminal recall event, the row explicitly
-reports `Recall outcome unavailable` instead of implying success. Prechecks that
+reports `recall outcome unavailable` instead of implying success. Prechecks that
 skip automatic recall produce no row. Older hosts without the optional agent
 event API continue to support the existing tool activity display.
 

@@ -36,7 +36,7 @@ export function parseHindsightRecallEvent(
     status: "pending",
   };
   if (data.state === "started") {
-    entry.params = { status: "Recalling memories" };
+    entry.params = { status: "recalling memories" };
     return { sessionKey, entry };
   }
   if (
@@ -59,22 +59,22 @@ export function parseHindsightRecallEvent(
       entry.params = {
         result:
           data.resultCount === 0
-            ? "No relevant memories"
+            ? "no relevant memories"
             : `${data.resultCount} ${data.resultCount === 1 ? "memory" : "memories"} recalled`,
       };
       break;
     case "failed":
       entry.status = "error";
       entry.error =
-        data.reason === "timeout" ? "Recall timed out" : "Recall failed";
+        data.reason === "timeout" ? "recall timed out" : "recall failed";
       break;
     case "cancelled":
       entry.status = "error";
-      entry.error = "Recall cancelled";
+      entry.error = "recall cancelled";
       break;
     case "skipped":
       entry.status = "completed";
-      entry.params = { result: "Recall skipped: client unavailable" };
+      entry.params = { result: "recall skipped: client unavailable" };
       break;
     default:
       return;
@@ -88,6 +88,6 @@ export function finishPendingHindsightRecalls(history: ToolEntry[]): void {
       continue;
     entry.status = "error";
     entry.params = {};
-    entry.error = "Recall outcome unavailable";
+    entry.error = "recall outcome unavailable";
   }
 }
