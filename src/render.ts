@@ -425,9 +425,18 @@ function renderSubagentGroup(
       nodes.push(createFieldNode(row));
     }
   }
+  if (prefix === "skill-harness" && realEntries.length === 0 && parentEntry) {
+    const parentFields = formatDisplayFields(parentEntry.params, {
+      toolName: parentEntry.toolName,
+    });
+    for (const row of packMainFields(parentFields)) {
+      nodes.push(createFieldNode(row));
+    }
+  }
   if (
     parentErrorEntry?.error &&
-    !displayedTools.some((entry) => entry.error === parentErrorEntry.error)
+    !displayedTools.some((entry) => entry.error === parentErrorEntry.error) &&
+    !nodes.some((node) => node.text?.includes(parentErrorEntry.error!))
   ) {
     for (const row of packMainFields(
       formatDisplayFields({ error: parentErrorEntry.error }),

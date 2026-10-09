@@ -37,10 +37,8 @@ This example shows `active-memory` and `skill-harness` groups, nested tool param
     │   └─ query: project notes
     └─ result: Relevant memory found
 
-💡 skill-harness ▾ ✔
-    └─ intent ✔
-        ├─ reason: User asked for a review
-        └─ confidence: 0.92
+💡 skill-harness ▾ ✔ [450ms]
+    └─ result: 2 skills selected [0.92]: handoff, hindsight-docs
 
 🔍 web_search ▾ ✔ [450ms]
     └─ query: OpenClaw plugin SDK
@@ -62,10 +60,8 @@ Rendering rules to preserve:
 - `active-memory` and `skill-harness` group order is stable.
 - Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.
 - A failed main agent renders once as `💥 agent ✘` at the bottom. It occupies one slot in the shared 6-entry budget, has no detail row, and is protected from normal block removal.
-- `skill-harness` JSON object results flatten to key-value fields.
-- `skill-harness` plain text results render as `result: <text>`.
-- Failed `skill-harness` phases render their concrete `error` beneath the failed phase exactly once. During rolling upgrades, legacy failed-event `reason` and `result` fields are normalized to the same phase-local error.
-- The `skill-harness` group status follows its explicit parent lifecycle: it remains `←` while phases run and changes to `✔` only when the producer declares `pipeline:completed`, after no further phase can run. `pipeline:failed` or any failed child renders `✘`.
+- `skill-harness` renders as a single-row status entry with fixed format (`status` / `result` / `error`). During pipeline execution it renders current phase status and confidence badge (`[0.xx]`), on completion it renders selected skills with confidence, and on failure/interruption it renders error.
+- The `skill-harness` status follows its explicit lifecycle: it remains `←` with live phase status while running and changes to `✔` with selected skills and confidence when `pipeline:completed` arrives. `pipeline:failed` or unobserved completion renders `✘` with error text.
 - `active-memory` result text renders as `result: <text>`. Fastpath context observed through `llm_input` renders as `fastpath`: a memory hit uses `status: observed`, while the explicit no-recall and unavailable outcomes use `status: skipped` and `status: unavailable`. Direct-message sessions also show sanitized, bounded memory text; shared or unknown session types retain status only. If no observable Active Memory child or prompt context appears before finalization, the group falls back to `status: inferred` without claiming a memory hit.
 - Failed `active-memory` child tools keep their own phase-local errors and durations. A distinct parent failure is also shown; identical parent/child error text is rendered once.
 - The `active-memory` group remains `←` while its parent awaits terminal `agent_end`, even when all child tools have completed; a failed child may still render the group as `✘`. A successful terminal parent changes the group to `✔`. Group duration is shown only from that terminal parent, so a pending parent or one without `durationMs` leaves the group duration blank while individual child durations remain visible.
@@ -154,7 +150,7 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 | `src/render.ts`                     | Pure state-aware rendering from tool history to bounded, monotonic semantic ANSI status content.                                              |
 | `src/formatting.ts`                 | Icons, display-field formatting, and local Unicode-safe value truncation.                                                                     |
 | `src/tool-name.ts`                  | Shared OpenClaw/Codex tool-name canonicalization for hook dedupe and first-render display.                                                    |
-| `src/skill-harness-status.ts`       | Skill-harness pipeline parsing, visible-field filtering, child duration calculation, and duplicate phase merging.                             |
+| `src/skill-harness-status.ts`       | Skill-harness pipeline single-row status tracking, confidence formatting, and turn finalization.                                              |
 | `src/discord-api.ts`                | Discord REST calls, mutation outcome classification, idempotent create nonce, bounded retries, and DM channel resolution.                     |
 | `src/discord-message-operations.ts` | Token-gated send/edit/delete outcomes around the Discord API layer, compatibility wrappers, and DM fallback.                                  |
 | `src/tool-history-manager.ts`       | Tool-history add/update/replace/trim helpers and subagent group operations.                                                                   |

@@ -61,6 +61,7 @@ export function getToolIcon(name: string): string {
   if (n.includes("agent")) return "👥";
 
   // Skill management
+  if (n === "skill-harness") return "💡";
   if (n.includes("skill_")) {
     if (n.includes("search")) return "🪃";
     if (n.includes("view")) return "🔧";
@@ -221,6 +222,7 @@ export function formatDisplayFields(
   const fields = Object.entries(params)
     .filter(
       ([rawKey, value]) =>
+        !rawKey.startsWith("_") &&
         (!excludeSet || !excludeSet.has(rawKey.toLowerCase())) &&
         value !== undefined &&
         value !== null &&

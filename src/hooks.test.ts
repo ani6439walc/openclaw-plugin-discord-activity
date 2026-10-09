@@ -993,21 +993,21 @@ describe("createHookHandlers", () => {
         sessionKey,
         data: {
           kind: "skill-harness.pipeline",
-          phase: "intent-classification",
+          phase: "pipeline",
           state: "completed",
-          result: "queued-followup",
+          result: ["queued-followup"],
         },
       });
 
       expect(queuedSession?.toolHistory).toContainEqual(
         expect.objectContaining({
-          toolCallId: "skill-harness:run_new:intent-classification",
+          toolCallId: "skill-harness",
           status: "completed",
-          params: { result: "queued-followup" },
+          params: { result: "1 skill selected: queued-followup" },
         }),
       );
       expect(stripAnsi(queuedSession?.lastRenderedContent ?? "")).toContain(
-        "intent-classification ✔",
+        "1 skill selected: queued-followup",
       );
     });
 
@@ -2657,7 +2657,7 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
-    it("renders skill-harness pipeline events as grouped status entries", async () => {
+    it("renders skill-harness pipeline events as a single status entry with status/result format", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
@@ -2677,7 +2677,7 @@ describe("createHookHandlers", () => {
         sessionKey: "agent:main:discord:direct:123",
         data: {
           kind: "skill-harness.pipeline",
-          phase: "exact-keyword-hint",
+          phase: "name-match",
           state: "completed",
           intent: "social-casual",
           domain: "chat",
@@ -2686,8 +2686,10 @@ describe("createHookHandlers", () => {
           keyword: "hi",
           matchedKeyword: "hello",
           score: 1,
+          candidateCount: 1,
+          confidence: 0.95,
           reason: "exact keyword matched",
-          result: "matched greeting keyword",
+          result: ["weather"],
           rawContext: "do not persist this",
         },
       });
@@ -2698,73 +2700,49 @@ describe("createHookHandlers", () => {
         sessionKey: "agent:main:discord:direct:123",
         data: {
           kind: "skill-harness.pipeline",
-          phase: "prompt-prefix-injection",
+          phase: "pipeline",
           state: "completed",
-          intent: "social-casual",
-          domain: "chat",
+          durationMs: 400,
         },
       });
 
       const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            toolCallId: "skill-harness:run-1:exact-keyword-hint",
-            toolName: "skill-harness:exact-keyword-hint",
-            params: expect.objectContaining({
-              reason: "exact keyword matched",
-              result: "matched greeting keyword",
-            }),
-            status: "completed",
-          }),
-        ]),
-      );
+      expect(session?.toolHistory).toEqual([
+        expect.objectContaining({
+          toolCallId: "skill-harness",
+          toolName: "skill-harness",
+          params: {
+            result: "1 skill selected [0.95]: weather",
+          },
+          status: "completed",
+        }),
+      ]);
       expect(
-        session?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
-        )?.params,
+        session?.toolHistory.find((tool) => tool.toolCallId === "skill-harness")
+          ?.params,
       ).not.toHaveProperty("intent");
       expect(
-        session?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
-        )?.params,
+        session?.toolHistory.find((tool) => tool.toolCallId === "skill-harness")
+          ?.params,
       ).not.toHaveProperty("rawContext");
       expect(
-        session?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
-        )?.params,
+        session?.toolHistory.find((tool) => tool.toolCallId === "skill-harness")
+          ?.params,
       ).not.toHaveProperty("keywords");
       expect(
-        session?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
-        )?.params,
+        session?.toolHistory.find((tool) => tool.toolCallId === "skill-harness")
+          ?.params,
       ).not.toHaveProperty("domain");
-      expect(
-        session?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:exact-keyword-hint",
-        )?.params,
-      ).not.toEqual(
-        expect.objectContaining({
-          matchedKeyword: expect.anything(),
-          score: expect.anything(),
-        }),
-      );
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
       expect(plainContent).toContain("💡 skill-harness ▾ ✔");
-      expect(plainContent).toContain("exact-keyword-hint ✔");
+      expect(plainContent).toContain(
+        "result: 1 skill selected [0.95]: weather",
+      );
       expect(plainContent).not.toContain("keywords");
       expect(plainContent).not.toContain("domain");
-      expect(plainContent).toContain("reason: exact keyword matched");
-      expect(plainContent).toContain("result: matched greeting keyword");
       expect(plainContent).not.toContain("topic");
       expect(plainContent).not.toContain("matchedKeyword");
       expect(plainContent).not.toContain("score:");
-      expect(plainContent).toContain("prompt-prefix-injection ✔");
       expect(plainContent).not.toContain("rawContext");
       expect(plainContent).not.toMatch(/fastpath-a[12]/i);
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
@@ -2797,7 +2775,7 @@ describe("createHookHandlers", () => {
         sessionKey: "agent:main:discord:direct:123",
         data: {
           kind: "skill-harness.pipeline",
-          phase: "intent-classification",
+          phase: "pipeline",
           state: "failed",
           error: "classifier crashed",
         },
@@ -2805,15 +2783,12 @@ describe("createHookHandlers", () => {
 
       const entry = store.sessions
         .get("discord:direct:123")
-        ?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:intent-classification",
-        );
+        ?.toolHistory.find((tool) => tool.toolCallId === "skill-harness");
       expect(entry).toEqual(
         expect.objectContaining({
           status: "error",
           error: "classifier crashed",
-          params: { error: "classifier crashed" },
+          params: {},
         }),
       );
       expect(entry?.params).not.toHaveProperty("reason");
@@ -2821,7 +2796,7 @@ describe("createHookHandlers", () => {
 
       const rendered =
         store.sessions.get("discord:direct:123")?.lastRenderedContent;
-      expect(stripAnsi(rendered ?? "")).toContain("intent-classification ✘");
+      expect(stripAnsi(rendered ?? "")).toContain("💡 skill-harness ▾ ✘");
       expect(stripAnsi(rendered ?? "")).toContain("error: classifier crashed");
       expect(rendered?.match(/classifier crashed/g)).toHaveLength(1);
     });
@@ -2860,59 +2835,34 @@ describe("createHookHandlers", () => {
         sessionKey: "agent:main:discord:direct:123",
         data: {
           kind: "skill-harness.pipeline",
-          phase: "topic-triage",
-          state: "started",
-          domain: "openclaw-platform",
-        },
-      });
-
-      nowSpy.mockReturnValueOnce(2_100);
-      await handlers.onSkillHarnessPipelineEvent({
-        runId: "run-1",
-        stream: "plugin:skill-harness",
-        sessionKey: "agent:main:discord:direct:123",
-        data: {
-          kind: "skill-harness.pipeline",
-          phase: "topic-triage",
+          phase: "search",
           state: "completed",
-          domain: "openclaw-platform",
-          topic: "User approves deletion of workspace-doc-maintenance.",
+          candidateCount: 1,
+          confidence: 0.43,
+          reason: "#1 travel-day",
+          result: ["travel-day"],
         },
       });
 
       const session = store.sessions.get("discord:direct:123");
       const entry = session?.toolHistory.find(
-        (tool) => tool.toolCallId === "skill-harness:run-1:topic-triage",
+        (tool) => tool.toolCallId === "skill-harness",
       );
       expect(entry).toEqual(
         expect.objectContaining({
-          status: "completed",
-          startedAtMs: 1_000,
-          durationMs: 1_100,
+          status: "pending",
+          startedAtMs: 900,
+          params: expect.objectContaining({
+            status: "search · 1 candidate [0.43] (#1 travel-day)",
+          }),
         }),
       );
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
       expect(plainContent).toContain("💡 skill-harness ▾ ←");
-      expect(plainContent).not.toContain("💡 skill-harness ▾ ← [");
-      expect(plainContent).toContain("topic-triage ✔ [1.1s]");
+      expect(plainContent).toContain(
+        "search · 1 candidate [0.43] (#1 travel-day)",
+      );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
-
-      nowSpy.mockReturnValueOnce(2_200);
-      await handlers.onSkillHarnessPipelineEvent({
-        runId: "run-1",
-        stream: "plugin:skill-harness",
-        sessionKey: "agent:main:discord:direct:123",
-        data: {
-          kind: "skill-harness.pipeline",
-          phase: "intent-classification",
-          state: "started",
-          intent: "implementation",
-        },
-      });
-
-      const pendingContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(pendingContent).toContain("💡 skill-harness ▾ ←");
-      expect(pendingContent).toContain("intent-classification ←");
 
       nowSpy.mockReturnValueOnce(2_400);
       await handlers.onSkillHarnessPipelineEvent({
@@ -2951,8 +2901,8 @@ describe("createHookHandlers", () => {
         sessionKey: "agent:main:discord:direct:123",
         data: {
           kind: "skill-harness.pipeline",
-          phase: "session-record",
-          state: "completed",
+          phase: "pipeline",
+          state: "started",
         },
       };
 
@@ -2962,9 +2912,7 @@ describe("createHookHandlers", () => {
       expect(
         store.sessions
           .get("discord:direct:123")
-          ?.toolHistory.filter(
-            (tool) => tool.toolCallId === "skill-harness:run-1:session-record",
-          ),
+          ?.toolHistory.filter((tool) => tool.toolCallId === "skill-harness"),
       ).toHaveLength(1);
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
@@ -2995,18 +2943,15 @@ describe("createHookHandlers", () => {
         stream: "plugin:skill-harness",
         data: {
           kind: "skill-harness.pipeline",
-          phase: "prompt-prefix-injection",
-          state: "skipped",
+          phase: "pipeline",
+          state: "completed",
           sessionKey: "agent:main:discord:direct:123",
         },
       });
 
       const entry = store.sessions
         .get("discord:direct:123")
-        ?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:prompt-prefix-injection",
-        );
+        ?.toolHistory.find((tool) => tool.toolCallId === "skill-harness");
       expect(entry).toEqual(expect.objectContaining({ status: "completed" }));
     });
 
@@ -3032,9 +2977,9 @@ describe("createHookHandlers", () => {
         sessionKey,
         data: {
           kind: "skill-harness.pipeline",
-          phase: "topic-triage",
+          phase: "pipeline",
           state: "completed",
-          reason: "health tracking",
+          result: ["health-tracking"],
         },
       });
 
@@ -3042,9 +2987,9 @@ describe("createHookHandlers", () => {
       expect(session?.runId).toBe("main-run-1");
       expect(session?.toolHistory).toContainEqual(
         expect.objectContaining({
-          toolCallId: `skill-harness:${sessionKey}:topic-triage`,
+          toolCallId: "skill-harness",
           status: "completed",
-          params: { reason: "health tracking" },
+          params: { result: "1 skill selected: health-tracking" },
         }),
       );
     });
@@ -3145,23 +3090,23 @@ describe("createHookHandlers", () => {
         sessionKey,
         data: {
           kind: "skill-harness.pipeline",
-          phase: "intent-classify",
+          phase: "pipeline",
           state: "completed",
-          result: "implementation",
+          result: ["implementation"],
         },
       });
 
       expect(session?.runId).toBe("main-run-1");
       expect(session?.toolHistory).toContainEqual(
         expect.objectContaining({
-          toolCallId: "skill-harness:main-run-1:intent-classify",
+          toolCallId: "skill-harness",
           status: "completed",
-          params: { result: "implementation" },
+          params: { result: "1 skill selected: implementation" },
         }),
       );
     });
 
-    it("does not downgrade completed skill-harness phases to pending", async () => {
+    it("does not downgrade completed skill-harness to pending", async () => {
       createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
@@ -3184,7 +3129,7 @@ describe("createHookHandlers", () => {
         ...eventBase,
         data: {
           kind: "skill-harness.pipeline",
-          phase: "intent-classification",
+          phase: "pipeline",
           state: "completed",
         },
       });
@@ -3192,17 +3137,14 @@ describe("createHookHandlers", () => {
         ...eventBase,
         data: {
           kind: "skill-harness.pipeline",
-          phase: "intent-classification",
+          phase: "pipeline",
           state: "started",
         },
       });
 
       const entry = store.sessions
         .get("discord:direct:123")
-        ?.toolHistory.find(
-          (tool) =>
-            tool.toolCallId === "skill-harness:run-1:intent-classification",
-        );
+        ?.toolHistory.find((tool) => tool.toolCallId === "skill-harness");
       expect(entry?.status).toBe("completed");
     });
 

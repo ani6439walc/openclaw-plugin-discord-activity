@@ -48,9 +48,11 @@ import {
   type ToolDedupeIdentity,
 } from "./tool-name.js";
 import {
+  finishPendingSkillHarness,
   getSkillHarnessPipelineSessionKey,
   mergeSkillHarnessPipelineEntry,
   parseSkillHarnessPipelineEntry,
+  updateSkillHarnessEntry,
 } from "./skill-harness-status.js";
 import {
   finishPendingHindsightRecalls,
@@ -818,6 +820,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (session.finalized) return undefined;
     completeUnobservedActiveMemoryPlaceholder(session);
     finishPendingHindsightRecalls(session.toolHistory);
+    finishPendingSkillHarness(session.toolHistory);
     session.finalized = true;
     await updateSessionStatus(session, true);
     return undefined;
@@ -1037,6 +1040,7 @@ export function createHookHandlers(deps: HookDeps) {
       const session = await store.resolveSession(contextKey, ctx.sessionKey);
       if (!session || !bindSessionRun(session, ctx.runId)) return;
       finishPendingHindsightRecalls(session.toolHistory);
+      finishPendingSkillHarness(session.toolHistory);
       if (event.success !== false && !event.error) {
         completeUnobservedActiveMemoryPlaceholder(session);
       }
@@ -1191,9 +1195,6 @@ export function createHookHandlers(deps: HookDeps) {
     const agentId = extractAgentIdFromSessionKey(sessionKey);
     if (agentId !== undefined && !isSkillHarnessEnabled(agentId)) return;
 
-    const entry = parseSkillHarnessPipelineEntry(event);
-    if (!entry) return;
-
     const contextKey = getDiscordContextKey(sessionKey);
     if (!contextKey) return;
 
@@ -1212,33 +1213,18 @@ export function createHookHandlers(deps: HookDeps) {
       if (!isSessionRunCurrent(session, provenanceRunId)) return;
 
       clearSessionTimer(session);
-      const existingChildEntries = toolHistoryManager.findSubagentChildEntries(
-        session.toolHistory,
-        "skill-harness",
+      const existing = session.toolHistory.find(
+        (tool) =>
+          tool.toolCallId === "skill-harness" ||
+          tool.toolName === "skill-harness",
       );
-      const existingParentEntry = session.toolHistory.find(
-        (tool) => tool.toolName === "skill-harness",
-      );
-      const shouldPreserveParent =
-        entry.toolName === "skill-harness" ||
-        existingParentEntry?.status !== "pending" ||
-        typeof existingParentEntry.startedAtMs === "number";
-      const existingEntries =
-        existingParentEntry && shouldPreserveParent
-          ? [existingParentEntry, ...existingChildEntries]
-          : existingChildEntries;
-      const merged = mergeSkillHarnessPipelineEntry(
-        existingEntries,
-        entry,
-        observedAtMs,
-      );
-      if (!merged.changed) {
-        return;
-      }
+      const updated = updateSkillHarnessEntry(existing, event, observedAtMs);
+      if (!updated) return;
+
       toolHistoryManager.replaceSubagentGroup(
         session.toolHistory,
         "skill-harness",
-        merged.entries,
+        [updated],
       );
       toolHistoryManager.trim(session.toolHistory);
       await updateSessionStatus(session, false);

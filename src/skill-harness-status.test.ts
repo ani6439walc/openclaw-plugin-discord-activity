@@ -1,256 +1,433 @@
 import { describe, expect, it } from "vitest";
 import {
+  finishPendingSkillHarness,
+  getSkillHarnessPipelineSessionKey,
   mergeSkillHarnessPipelineEntry,
   parseSkillHarnessPipelineEntry,
+  updateSkillHarnessEntry,
 } from "./skill-harness-status.js";
-import type { AgentPipelineEvent } from "./types.js";
+import type { AgentPipelineEvent, ToolEntry } from "./types.js";
 
-function makePipelineEvent(data: Record<string, unknown>): AgentPipelineEvent {
+function makePipelineEvent(
+  phase: string,
+  state: string,
+  data: Record<string, unknown> = {},
+): AgentPipelineEvent {
   return {
     runId: "run-1",
     stream: "plugin:skill-harness",
     sessionKey: "agent:main:discord:direct:123",
     data: {
       kind: "skill-harness.pipeline",
-      phase: "intent-classify",
-      state: "failed",
+      phase,
+      state,
       ...data,
     },
   };
 }
 
-describe("parseSkillHarnessPipelineEntry", () => {
-  it.each([
-    ["reason", { reason: "legacy reason" }, "legacy reason"],
-    ["result", { result: "legacy result" }, "legacy result"],
-  ])("normalizes legacy failed-event %s as error", (_field, data, error) => {
-    const entry = parseSkillHarnessPipelineEntry(makePipelineEvent(data));
+describe("skill-harness status lifecycle", () => {
+  it("initializes to pending selecting skills on pipeline started", () => {
+    const event = makePipelineEvent("pipeline", "started");
+    const entry = updateSkillHarnessEntry(undefined, event, 1_000);
 
-    expect(entry).toEqual(
-      expect.objectContaining({
-        status: "error",
-        error,
-        params: { error },
-      }),
-    );
-    expect(entry?.params).not.toHaveProperty("reason");
-    expect(entry?.params).not.toHaveProperty("result");
-  });
-
-  it("prefers error over legacy failure fields", () => {
-    const entry = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({
-        error: "canonical error",
-        reason: "legacy reason",
-        result: "legacy result",
-      }),
-    );
-
-    expect(entry?.error).toBe("canonical error");
-    expect(entry?.params).toEqual({ error: "canonical error" });
-  });
-
-  it("uses the next non-empty legacy failure field", () => {
-    const entry = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({
-        error: "   ",
-        reason: "  legacy reason  ",
-        result: "legacy result",
-      }),
-    );
-
-    expect(entry?.error).toBe("legacy reason");
-    expect(entry?.params).toEqual({ error: "legacy reason" });
-  });
-
-  it("does not invent an error for failed events without detail", () => {
-    const entry = parseSkillHarnessPipelineEntry(makePipelineEvent({}));
-
-    expect(entry).toEqual(
-      expect.objectContaining({
-        status: "error",
-        params: {},
-      }),
-    );
-    expect(entry?.error).toBeUndefined();
-  });
-
-  it("preserves completed public fields while filtering out basis, topic, and complexity", () => {
-    const entry = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({
-        state: "completed",
-        reason: "classification matched",
-        basis: "explicit request",
-        result: "generated hint",
-        topic: "User greeting",
-        complexity: "low",
-        confidence: 0.95,
-        error: "stale failure",
-      }),
-    );
-
-    expect(entry).toEqual(
-      expect.objectContaining({
-        status: "completed",
-        params: {
-          result: "generated hint",
-          reason: "classification matched",
-          confidence: 0.95,
-        },
-      }),
-    );
-    expect(entry?.error).toBeUndefined();
-    expect(entry?.params).not.toHaveProperty("basis");
-    expect(entry?.params).not.toHaveProperty("topic");
-    expect(entry?.params).not.toHaveProperty("complexity");
-  });
-
-  it("filters out deprecated fields (domain, changed, keywords, intent)", () => {
-    const entry = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({
-        state: "completed",
-        domain: "chat",
-        changed: true,
-        keywords: ["a", "b"],
-        confidence: 0.9,
-        intent: "general",
-      }),
-    );
-
-    expect(entry?.params).toEqual({
-      confidence: 0.9,
+    expect(entry).toEqual({
+      toolCallId: "skill-harness",
+      toolName: "skill-harness",
+      status: "pending",
+      startedAtMs: 1_000,
+      params: {
+        status: "selecting skills",
+      },
     });
-    expect(entry?.params).not.toHaveProperty("intent");
-    expect(entry?.params).not.toHaveProperty("domain");
-    expect(entry?.params).not.toHaveProperty("changed");
-    expect(entry?.params).not.toHaveProperty("keywords");
   });
 
-  it("maps pipeline lifecycle events to the parent entry with producer duration", () => {
-    const entry = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({
-        phase: "pipeline",
-        state: "completed",
-        durationMs: 1_250,
-      }),
-    );
+  describe("intermediate phase status (Option A: [0.xx] badges)", () => {
+    it("formats name-match with matches, confidence, and skill name", () => {
+      const initial = updateSkillHarnessEntry(
+        undefined,
+        makePipelineEvent("pipeline", "started"),
+        1_000,
+      );
+      const event = makePipelineEvent("name-match", "completed", {
+        candidateCount: 1,
+        confidence: 0.95,
+        result: ["weather"],
+      });
+      const updated = updateSkillHarnessEntry(initial, event, 1_100);
 
-    expect(entry).toEqual(
-      expect.objectContaining({
+      expect(updated?.status).toBe("pending");
+      expect(updated?.params.status).toBe(
+        "name-match · 1 matched [0.95] (weather)",
+      );
+    });
+
+    it("formats name-match with 0 matches", () => {
+      const event = makePipelineEvent("name-match", "completed", {
+        candidateCount: 0,
+        result: [],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_100);
+
+      expect(updated?.params.status).toBe("name-match · 0 matched");
+    });
+
+    it("formats search with candidates, confidence, and clue", () => {
+      const event = makePipelineEvent("search", "completed", {
+        candidateCount: 5,
+        confidence: 0.43,
+        reason: ["#1 travel-day"],
+        result: ["travel-day", "flight-tracker"],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_200);
+
+      expect(updated?.params.status).toBe(
+        "search · 5 candidates [0.43] (#1 travel-day)",
+      );
+    });
+
+    it("formats search with single candidate", () => {
+      const event = makePipelineEvent("search", "completed", {
+        candidateCount: 1,
+        confidence: 0.43,
+        reason: "#1 travel-day",
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_200);
+
+      expect(updated?.params.status).toBe(
+        "search · 1 candidate [0.43] (#1 travel-day)",
+      );
+    });
+
+    it("formats search with 0 candidates", () => {
+      const event = makePipelineEvent("search", "completed", {
+        candidateCount: 0,
+        result: [],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_200);
+
+      expect(updated?.params.status).toBe("search · 0 candidates");
+    });
+
+    it("formats search with RRF score normalized to uppercase RRF: format", () => {
+      const event = makePipelineEvent("search", "completed", {
+        candidateCount: 6,
+        confidence: 0.69,
+        reason: "#1 openclaw · RRF 0.0492",
+        result: ["openclaw", "setup"],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_200);
+
+      expect(updated?.params.status).toBe(
+        "search · 6 candidates [0.69] (#1 openclaw, RRF: 0.0492)",
+      );
+    });
+
+    it("normalizes lowercase rrf input to uppercase RRF: format", () => {
+      const event = makePipelineEvent("search", "completed", {
+        candidateCount: 3,
+        confidence: 0.45,
+        reason: "#1 travel-day · rrf 0.0367",
+        result: ["travel-day"],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_200);
+
+      expect(updated?.params.status).toBe(
+        "search · 3 candidates [0.45] (#1 travel-day, RRF: 0.0367)",
+      );
+    });
+
+    it("formats experience-search with candidate, confidence, and clue", () => {
+      const event = makePipelineEvent("experience-search", "completed", {
+        candidateCount: 1,
+        confidence: 0.57,
+        reason: ["#1 hindsight-docs"],
+        result: ["hindsight-docs"],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_300);
+
+      expect(updated?.params.status).toBe(
+        "experience · 1 candidate [0.57] (#1 hindsight-docs)",
+      );
+    });
+
+    it("formats experience-search with RRF score normalized to uppercase RRF: format", () => {
+      const event = makePipelineEvent("experience-search", "completed", {
+        candidateCount: 1,
+        confidence: 0.55,
+        reason: "#1 openclaw-runtime-config-introspection · RRF 0.0367",
+        result: [],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_300);
+
+      expect(updated?.params.status).toBe(
+        "experience · 1 candidate [0.55] (#1 openclaw-runtime-config-introspection, RRF: 0.0367)",
+      );
+    });
+
+    it("formats rerank with candidates, confidence, and sources", () => {
+      const event = makePipelineEvent("rerank", "completed", {
+        candidateCount: 2,
+        confidence: 0.92,
+        reason: ["search", "experience"],
+        result: ["handoff", "hindsight-docs"],
+        selectedSkills: ["handoff", "hindsight-docs"],
+      });
+      const updated = updateSkillHarnessEntry(undefined, event, 1_400);
+
+      expect(updated?.params.status).toBe(
+        "rerank · 2 candidates [0.92] (search, experience)",
+      );
+    });
+  });
+
+  describe("pipeline completed result (with confidence)", () => {
+    it("formats completed result with multiple selected skills and confidence", () => {
+      let entry = updateSkillHarnessEntry(
+        undefined,
+        makePipelineEvent("pipeline", "started"),
+        1_000,
+      );
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("rerank", "completed", {
+          confidence: 0.92,
+          selectedSkills: ["handoff", "hindsight-docs"],
+        }),
+        1_400,
+      );
+      const completed = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("pipeline", "completed", {
+          durationMs: 450,
+        }),
+        1_450,
+      );
+
+      expect(completed).toEqual({
         toolCallId: "skill-harness",
         toolName: "skill-harness",
         status: "completed",
-        durationMs: 1_250,
-      }),
-    );
-    expect(entry?.params).toEqual({});
-  });
+        startedAtMs: 1_000,
+        durationMs: 450,
+        params: {
+          result: "2 skills selected [0.92]: handoff, hindsight-docs",
+        },
+      });
+    });
 
-  it.each([-1, Number.POSITIVE_INFINITY, Number.NaN])(
-    "ignores invalid producer duration %s",
-    (durationMs) => {
-      const entry = parseSkillHarnessPipelineEntry(
-        makePipelineEvent({
-          phase: "pipeline",
-          state: "completed",
-          durationMs,
+    it("formats completed result with 1 skill and confidence", () => {
+      let entry = updateSkillHarnessEntry(
+        undefined,
+        makePipelineEvent("pipeline", "started"),
+        1_000,
+      );
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("name-match", "completed", {
+          confidence: 0.95,
+          result: ["weather"],
         }),
+        1_100,
+      );
+      const completed = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("pipeline", "completed", {
+          durationMs: 150,
+        }),
+        1_150,
       );
 
-      expect(entry?.durationMs).toBeUndefined();
-    },
-  );
+      expect(completed?.status).toBe("completed");
+      expect(completed?.params).toEqual({
+        result: "1 skill selected [0.95]: weather",
+      });
+    });
+
+    it("formats completed result without confidence when omitted", () => {
+      let entry = updateSkillHarnessEntry(
+        undefined,
+        makePipelineEvent("pipeline", "started"),
+        1_000,
+      );
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("rerank", "completed", {
+          result: ["weather"],
+        }),
+        1_100,
+      );
+      const completed = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("pipeline", "completed"),
+        1_200,
+      );
+
+      expect(completed?.status).toBe("completed");
+      expect(completed?.params).toEqual({
+        result: "1 skill selected: weather",
+      });
+    });
+
+    it("formats completed result as no relevant skills when empty", () => {
+      let entry = updateSkillHarnessEntry(
+        undefined,
+        makePipelineEvent("pipeline", "started"),
+        1_000,
+      );
+      const completed = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("pipeline", "completed", {
+          durationMs: 300,
+        }),
+        1_300,
+      );
+
+      expect(completed?.status).toBe("completed");
+      expect(completed?.params).toEqual({
+        result: "no relevant skills",
+      });
+    });
+
+    it("formats completed result as skipped when skipped", () => {
+      const event = makePipelineEvent("pipeline", "skipped", {
+        durationMs: 50,
+      });
+      const completed = updateSkillHarnessEntry(undefined, event, 1_050);
+
+      expect(completed?.status).toBe("completed");
+      expect(completed?.params).toEqual({
+        result: "skill selection skipped",
+      });
+    });
+  });
+
+  describe("pipeline failure and errors", () => {
+    it("handles failed pipeline event with error message", () => {
+      const event = makePipelineEvent("pipeline", "failed", {
+        error: "pipeline timeout",
+        durationMs: 5_000,
+      });
+      const entry = updateSkillHarnessEntry(undefined, event, 6_000);
+
+      expect(entry).toEqual({
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        status: "error",
+        startedAtMs: 6_000,
+        durationMs: 5_000,
+        error: "pipeline timeout",
+        params: {},
+      });
+    });
+
+    it("falls back to default failure message when error is omitted", () => {
+      const event = makePipelineEvent("pipeline", "failed");
+      const entry = updateSkillHarnessEntry(undefined, event, 1_000);
+
+      expect(entry?.status).toBe("error");
+      expect(entry?.error).toBe("skill selection failed");
+      expect(entry?.params).toEqual({});
+    });
+
+    it("ignores late events once terminal completed", () => {
+      const completed = updateSkillHarnessEntry(
+        undefined,
+        makePipelineEvent("pipeline", "completed", { result: ["weather"] }),
+        1_000,
+      );
+      const lateEvent = makePipelineEvent("search", "completed", {
+        result: ["foo"],
+      });
+      const afterLate = updateSkillHarnessEntry(completed, lateEvent, 1_100);
+
+      expect(afterLate).toBe(completed);
+    });
+  });
 });
 
-describe("mergeSkillHarnessPipelineEntry timing", () => {
-  it("derives child duration from observed start and completion", () => {
-    const started = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({ state: "started" }),
-    )!;
-    const afterStarted = mergeSkillHarnessPipelineEntry([], started, 1_000);
-    const completed = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({ state: "completed" }),
-    )!;
-    const afterCompleted = mergeSkillHarnessPipelineEntry(
-      afterStarted.entries,
-      completed,
-      2_100,
-    );
-
-    expect(afterCompleted.entries[0]).toEqual(
-      expect.objectContaining({
-        startedAtMs: 1_000,
-        durationMs: 1_100,
-      }),
-    );
-  });
-
-  it("does not invent timing for completion-only child events", () => {
-    const completed = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({ state: "completed" }),
-    )!;
-    const merged = mergeSkillHarnessPipelineEntry([], completed, 2_100);
-
-    expect(merged.entries[0].startedAtMs).toBeUndefined();
-    expect(merged.entries[0].durationMs).toBeUndefined();
-  });
-
-  it("prefers producer duration for the pipeline parent", () => {
-    const started = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({ phase: "pipeline", state: "started" }),
-    )!;
-    const afterStarted = mergeSkillHarnessPipelineEntry([], started, 1_000);
-    const completed = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({
-        phase: "pipeline",
-        state: "completed",
-        durationMs: 900,
-      }),
-    )!;
-    const afterCompleted = mergeSkillHarnessPipelineEntry(
-      afterStarted.entries,
-      completed,
-      2_100,
-    );
-
-    expect(afterCompleted.entries[0]).toEqual(
-      expect.objectContaining({
+describe("finishPendingSkillHarness", () => {
+  it("marks pending skill-harness as unavailable error and clears params", () => {
+    const history: ToolEntry[] = [
+      {
         toolCallId: "skill-harness",
-        status: "completed",
-        startedAtMs: 1_000,
-        durationMs: 900,
-      }),
-    );
+        toolName: "skill-harness",
+        status: "pending",
+        params: { status: "selecting skills" },
+      },
+      {
+        toolCallId: "bash_1",
+        toolName: "bash",
+        status: "pending",
+        params: { command: "ls" },
+      },
+    ];
+
+    finishPendingSkillHarness(history);
+
+    expect(history[0]).toEqual({
+      toolCallId: "skill-harness",
+      toolName: "skill-harness",
+      status: "error",
+      error: "skill selection unavailable",
+      params: {},
+    });
+    expect(history[1].status).toBe("pending");
   });
 
-  it("preserves the lifecycle parent while bounding child phases", () => {
-    const parent = parseSkillHarnessPipelineEntry(
-      makePipelineEvent({ phase: "pipeline", state: "started" }),
-    )!;
-    let entries = mergeSkillHarnessPipelineEntry([], parent, 1_000).entries;
+  it("leaves completed or errored skill-harness entries untouched", () => {
+    const history: ToolEntry[] = [
+      {
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        status: "completed",
+        params: { result: "1 skill selected: weather" },
+      },
+    ];
 
-    for (let index = 0; index < 7; index += 1) {
-      const child = parseSkillHarnessPipelineEntry(
-        makePipelineEvent({
-          phase: `phase-${index}`,
-          state: "completed",
-        }),
-      )!;
-      entries = mergeSkillHarnessPipelineEntry(
-        entries,
-        child,
-        1_100 + index,
-      ).entries;
-    }
+    finishPendingSkillHarness(history);
 
-    expect(entries).toHaveLength(6);
-    expect(entries[0].toolCallId).toBe("skill-harness");
-    expect(entries.slice(1).map((entry) => entry.toolName)).toEqual([
-      "skill-harness:phase-2",
-      "skill-harness:phase-3",
-      "skill-harness:phase-4",
-      "skill-harness:phase-5",
-      "skill-harness:phase-6",
-    ]);
+    expect(history[0].status).toBe("completed");
+    expect(history[0].params).toEqual({
+      result: "1 skill selected: weather",
+    });
+  });
+});
+
+describe("backward compatibility helpers", () => {
+  it("parses single pipeline entry via parseSkillHarnessPipelineEntry", () => {
+    const entry = parseSkillHarnessPipelineEntry(
+      makePipelineEvent("pipeline", "started"),
+    );
+
+    expect(entry?.toolCallId).toBe("skill-harness");
+    expect(entry?.status).toBe("pending");
+  });
+
+  it("merges entries via mergeSkillHarnessPipelineEntry", () => {
+    const entry1: ToolEntry = {
+      toolCallId: "skill-harness",
+      toolName: "skill-harness",
+      status: "pending",
+      params: { status: "selecting skills" },
+    };
+    const entry2: ToolEntry = {
+      toolCallId: "skill-harness",
+      toolName: "skill-harness",
+      status: "completed",
+      params: { result: "no relevant skills" },
+    };
+
+    const res = mergeSkillHarnessPipelineEntry([entry1], entry2, 2_000);
+    expect(res.changed).toBe(true);
+    expect(res.entries[0]).toBe(entry2);
+  });
+
+  it("extracts sessionKey via getSkillHarnessPipelineSessionKey", () => {
+    expect(
+      getSkillHarnessPipelineSessionKey(
+        makePipelineEvent("pipeline", "started"),
+      ),
+    ).toBe("agent:main:discord:direct:123");
   });
 });
