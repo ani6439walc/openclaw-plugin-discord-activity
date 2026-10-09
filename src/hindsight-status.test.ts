@@ -18,7 +18,7 @@ function recallEvent(
   envelope: Partial<AgentPipelineEvent> = {},
 ): AgentPipelineEvent {
   return {
-    stream: "hindsight-openclaw.recall",
+    stream: "plugin:hindsight",
     sessionKey,
     runId: "run-1",
     data: {
@@ -82,8 +82,12 @@ describe("Hindsight recall status", () => {
   }
 
   it("creates progress before tools, edits the same message, and cleans up at agent end", async () => {
-    await handlers.onHindsightRecallEvent(recallEvent());
-    expect(content()).toContain("🧠 hindsight-recall");
+    expect(handlers.onHindsightPipelineEvent).toBe(
+      handlers.onHindsightRecallEvent,
+    );
+    await handlers.onHindsightPipelineEvent(recallEvent());
+    expect(content()).toContain("🧠 hindsight");
+    expect(content()).not.toContain("🧠 hindsight-recall");
     expect(content()).toContain("Recalling memories");
     await handlers.onHindsightRecallEvent(
       recallEvent({ state: "completed", durationMs: 1240, resultCount: 3 }),
@@ -287,6 +291,7 @@ describe("Hindsight event validation", () => {
 
   it.each([
     recallEvent({}, { stream: "other", runId: "run-1" }),
+    recallEvent({}, { stream: "hindsight-openclaw.recall", runId: "run-1" }),
     recallEvent({}, { runId: "" }),
     recallEvent({ pluginId: "other" }),
     recallEvent({ pluginId: "hindsight-openclaw" }),

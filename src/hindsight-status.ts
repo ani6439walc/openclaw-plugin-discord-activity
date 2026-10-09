@@ -1,7 +1,9 @@
 import type { AgentPipelineEvent, ToolEntry } from "./types.js";
 
-export const HINDSIGHT_RECALL_STREAM = "hindsight-openclaw.recall";
-export const HINDSIGHT_RECALL_TOOL = "hindsight-recall";
+export const HINDSIGHT_EVENT_STREAM = "plugin:hindsight";
+export const HINDSIGHT_RECALL_STREAM = HINDSIGHT_EVENT_STREAM;
+export const HINDSIGHT_TOOL = "hindsight";
+export const HINDSIGHT_RECALL_TOOL = HINDSIGHT_TOOL;
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -12,7 +14,7 @@ function nonEmptyString(value: unknown): value is string {
 export function parseHindsightRecallEvent(
   event: AgentPipelineEvent,
 ): { sessionKey: string; entry: ToolEntry } | undefined {
-  if (event.stream !== HINDSIGHT_RECALL_STREAM || !nonEmptyString(event.runId))
+  if (event.stream !== HINDSIGHT_EVENT_STREAM || !nonEmptyString(event.runId))
     return;
   const data = event.data;
   if (!data || typeof data !== "object" || data.kind !== "hindsight.recall")
@@ -29,7 +31,7 @@ export function parseHindsightRecallEvent(
 
   const entry: ToolEntry = {
     toolCallId: `hindsight:${event.runId}:${data.recallId}`,
-    toolName: HINDSIGHT_RECALL_TOOL,
+    toolName: HINDSIGHT_TOOL,
     params: {},
     status: "pending",
   };
@@ -82,7 +84,7 @@ export function parseHindsightRecallEvent(
 
 export function finishPendingHindsightRecalls(history: ToolEntry[]): void {
   for (const entry of history) {
-    if (entry.toolName !== HINDSIGHT_RECALL_TOOL || entry.status !== "pending")
+    if (entry.toolName !== HINDSIGHT_TOOL || entry.status !== "pending")
       continue;
     entry.status = "error";
     entry.params = {};

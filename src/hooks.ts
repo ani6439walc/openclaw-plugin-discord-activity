@@ -199,7 +199,6 @@ function upsertToolEntry(
 function buildPendingSubagentEntries(
   agentId: string | undefined,
   isActiveMemoryEnabled: (agentId: string) => boolean,
-  isSkillHarnessEnabled: (agentId: string) => boolean,
 ): ToolEntry[] {
   const entries: ToolEntry[] = [];
 
@@ -207,15 +206,6 @@ function buildPendingSubagentEntries(
     entries.push({
       toolCallId: "active-memory",
       toolName: "active-memory",
-      params: {},
-      status: "pending",
-    });
-  }
-
-  if (agentId === undefined || isSkillHarnessEnabled(agentId)) {
-    entries.push({
-      toolCallId: "skill-harness",
-      toolName: "skill-harness",
       params: {},
       status: "pending",
     });
@@ -328,7 +318,6 @@ export function createHookHandlers(deps: HookDeps) {
     const pendingEntries = buildPendingSubagentEntries(
       agentId,
       isActiveMemoryEnabled,
-      isSkillHarnessEnabled,
     );
     if (pendingEntries.length === 0) return;
 
@@ -1143,9 +1132,9 @@ export function createHookHandlers(deps: HookDeps) {
     await updateSessionStatus(session, false);
   }
 
-  async function onHindsightRecallEvent(event: AgentPipelineEvent) {
+  async function onHindsightPipelineEvent(event: AgentPipelineEvent) {
     const parsed = parseHindsightRecallEvent(event);
-    if (!parsed || shouldSkipSession(parsed, "hindsight_recall")) return;
+    if (!parsed || shouldSkipSession(parsed, "hindsight_pipeline")) return;
     const { sessionKey, entry } = parsed;
     const contextKey = getDiscordContextKey(sessionKey);
     if (!contextKey) return;
@@ -1183,7 +1172,7 @@ export function createHookHandlers(deps: HookDeps) {
       clearSessionTimer(session);
       await updateSessionStatus(session, false);
     } catch (err) {
-      logger.warn("hindsight_recall: failed to update activity status.", {
+      logger.warn("hindsight_pipeline: failed to update activity status.", {
         sessionKey,
         error: String(err),
       });
@@ -1193,7 +1182,14 @@ export function createHookHandlers(deps: HookDeps) {
   async function onSkillHarnessPipelineEvent(event: AgentPipelineEvent) {
     const observedAtMs = Date.now();
     const sessionKey = getSkillHarnessPipelineSessionKey(event);
-    if (!sessionKey) return;
+    if (
+      !sessionKey ||
+      shouldSkipSession({ sessionKey }, "skill_harness_pipeline")
+    )
+      return;
+
+    const agentId = extractAgentIdFromSessionKey(sessionKey);
+    if (agentId !== undefined && !isSkillHarnessEnabled(agentId)) return;
 
     const entry = parseSkillHarnessPipelineEntry(event);
     if (!entry) return;
@@ -1201,49 +1197,62 @@ export function createHookHandlers(deps: HookDeps) {
     const contextKey = getDiscordContextKey(sessionKey);
     if (!contextKey) return;
 
-    const session = contextKey
-      ? await store.resolveSession(contextKey, sessionKey)
-      : undefined;
-    if (!session) return;
-    const provenanceRunId =
-      event.runId === sessionKey ? undefined : event.runId;
-    if (!isSessionRunCurrent(session, provenanceRunId)) return;
+    try {
+      const session = await store.resolveSession(contextKey, sessionKey);
+      if (!session || !store.isCurrentSession(session) || session.finalized)
+        return;
+      const ownerAgentId = extractAgentIdFromSessionKey(
+        session.ownerSessionKey,
+      );
+      if (ownerAgentId !== undefined && !isSkillHarnessEnabled(ownerAgentId))
+        return;
 
-    clearSessionTimer(session);
-    const existingChildEntries = toolHistoryManager.findSubagentChildEntries(
-      session.toolHistory,
-      "skill-harness",
-    );
-    const existingParentEntry = session.toolHistory.find(
-      (tool) => tool.toolName === "skill-harness",
-    );
-    const shouldPreserveParent =
-      entry.toolName === "skill-harness" ||
-      existingParentEntry?.status !== "pending" ||
-      typeof existingParentEntry.startedAtMs === "number";
-    const existingEntries =
-      existingParentEntry && shouldPreserveParent
-        ? [existingParentEntry, ...existingChildEntries]
-        : existingChildEntries;
-    const merged = mergeSkillHarnessPipelineEntry(
-      existingEntries,
-      entry,
-      observedAtMs,
-    );
-    if (!merged.changed) {
-      return;
+      const provenanceRunId =
+        event.runId === sessionKey ? undefined : event.runId;
+      if (!isSessionRunCurrent(session, provenanceRunId)) return;
+
+      clearSessionTimer(session);
+      const existingChildEntries = toolHistoryManager.findSubagentChildEntries(
+        session.toolHistory,
+        "skill-harness",
+      );
+      const existingParentEntry = session.toolHistory.find(
+        (tool) => tool.toolName === "skill-harness",
+      );
+      const shouldPreserveParent =
+        entry.toolName === "skill-harness" ||
+        existingParentEntry?.status !== "pending" ||
+        typeof existingParentEntry.startedAtMs === "number";
+      const existingEntries =
+        existingParentEntry && shouldPreserveParent
+          ? [existingParentEntry, ...existingChildEntries]
+          : existingChildEntries;
+      const merged = mergeSkillHarnessPipelineEntry(
+        existingEntries,
+        entry,
+        observedAtMs,
+      );
+      if (!merged.changed) {
+        return;
+      }
+      toolHistoryManager.replaceSubagentGroup(
+        session.toolHistory,
+        "skill-harness",
+        merged.entries,
+      );
+      toolHistoryManager.trim(session.toolHistory);
+      await updateSessionStatus(session, false);
+    } catch (err) {
+      logger.warn("skill_harness_pipeline: failed to update activity status.", {
+        sessionKey,
+        error: String(err),
+      });
     }
-    toolHistoryManager.replaceSubagentGroup(
-      session.toolHistory,
-      "skill-harness",
-      merged.entries,
-    );
-    toolHistoryManager.trim(session.toolHistory);
-    await updateSessionStatus(session, false);
   }
 
   return Object.freeze({
-    onHindsightRecallEvent,
+    onHindsightPipelineEvent,
+    onHindsightRecallEvent: onHindsightPipelineEvent,
     onMessageReceived,
     onBeforeToolCall,
     onAfterToolCall,

@@ -102,8 +102,8 @@ describe("plugin", () => {
       mockApi.agent.events.registerAgentEventSubscription,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "discord-activity:hindsight-recall",
-        streams: ["hindsight-openclaw.recall"],
+        id: "discord-activity:hindsight-pipeline",
+        streams: ["plugin:hindsight"],
         handle: expect.any(Function),
       }),
     );

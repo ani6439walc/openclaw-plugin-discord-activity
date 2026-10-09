@@ -200,7 +200,7 @@ describe("createHookHandlers", () => {
       expect(replacement?.monotonicSafetyFloor).toBeUndefined();
     });
 
-    it("shows pending skill-harness status when enabled", async () => {
+    it("does not show skill-harness before pipeline events arrive and renders pending when started", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
@@ -215,6 +215,20 @@ describe("createHookHandlers", () => {
       );
 
       const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory).toEqual([]);
+      expect(countChannelMessagePosts(fetchMock)).toBe(0);
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "started",
+        },
+      });
+
       expect(session?.toolHistory).toEqual([
         expect.objectContaining({
           toolCallId: "skill-harness",
@@ -228,7 +242,7 @@ describe("createHookHandlers", () => {
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
-    it("inserts active-memory and skill-harness placeholders together in stable order", async () => {
+    it("maintains stable order between active-memory placeholder and skill-harness events", async () => {
       const fetchMock = createDiscordFetchMock();
       isActiveMemoryEnabled.mockReturnValue(true);
       isSkillHarnessEnabled.mockReturnValue(true);
@@ -243,6 +257,21 @@ describe("createHookHandlers", () => {
       );
 
       const session = store.sessions.get("discord:direct:123");
+      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
+        "active-memory",
+      ]);
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "started",
+        },
+      });
+
       expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
         "active-memory",
         "skill-harness",
@@ -946,10 +975,6 @@ describe("createHookHandlers", () => {
       expect(queuedSession?.toolHistory).toEqual([
         expect.objectContaining({
           toolCallId: "active-memory",
-          status: "pending",
-        }),
-        expect.objectContaining({
-          toolCallId: "skill-harness",
           status: "pending",
         }),
       ]);
@@ -2294,7 +2319,7 @@ describe("createHookHandlers", () => {
       expect(session?.finalized).toBeFalsy();
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
       expect(plainContent).toContain("🧩 active-memory ▾ ←");
-      expect(plainContent).toContain("💡 skill-harness ▾ ←");
+      expect(plainContent).not.toContain("💡 skill-harness");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
@@ -2749,7 +2774,7 @@ describe("createHookHandlers", () => {
           "PATCH",
           /\/channels\/dm_channel_123\/messages\/status_1$/,
         ),
-      ).toBe(2);
+      ).toBe(1);
     });
 
     it("renders canonical skill-harness failures as phase-local errors", async () => {
@@ -2941,13 +2966,14 @@ describe("createHookHandlers", () => {
             (tool) => tool.toolCallId === "skill-harness:run-1:session-record",
           ),
       ).toHaveLength(1);
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
         countCalls(
           fetchMock,
           "PATCH",
           /\/channels\/dm_channel_123\/messages\/status_1$/,
         ),
-      ).toBe(1);
+      ).toBe(0);
     });
 
     it("uses skill-harness data sessionKey when the event wrapper omits it", async () => {
@@ -3194,6 +3220,17 @@ describe("createHookHandlers", () => {
         },
       );
 
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "started",
+        },
+      });
+
       await handlers.onAgentEnd(
         {
           messages: [
@@ -3257,10 +3294,8 @@ describe("createHookHandlers", () => {
       });
 
       const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toEqual([
-        expect.objectContaining({ toolName: "skill-harness" }),
-      ]);
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      expect(session?.toolHistory).toEqual([]);
+      expect(countChannelMessagePosts(fetchMock)).toBe(0);
     });
 
     it("does not reuse earlier assistant text when the final assistant message has only tool calls", async () => {
@@ -3411,6 +3446,17 @@ describe("createHookHandlers", () => {
         { sessionKey: "agent:main:discord:direct:123" },
       );
 
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "started",
+        },
+      });
+
       const initial = store.sessions.get("discord:direct:123");
       expect(initial?.toolHistory.map((t) => t.toolCallId)).toEqual([
         "active-memory",
@@ -3475,6 +3521,17 @@ describe("createHookHandlers", () => {
           state: "completed",
           intent: "social-casual",
           domain: "chat",
+        },
+      });
+
+      await handlers.onSkillHarnessPipelineEvent({
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        sessionKey: "agent:main:discord:direct:123",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "completed",
         },
       });
 
