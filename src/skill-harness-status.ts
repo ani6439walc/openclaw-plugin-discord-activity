@@ -26,7 +26,7 @@ function formatConfidence(confidence: unknown): string | undefined {
     return undefined;
   }
   const rounded = Math.round(confidence * 100) / 100;
-  return rounded.toFixed(2);
+  return rounded.toFixed(2).replace(/^0\./, ".");
 }
 
 function extractSkillNames(value: unknown): string[] {
@@ -109,7 +109,7 @@ function getCandidateCount(data: Record<string, unknown>): number {
 function formatPhaseStatus(data: Record<string, unknown>): string {
   const phase = typeof data.phase === "string" ? data.phase.trim() : "";
   const confidenceStr = formatConfidence(data.confidence);
-  const confBadge = confidenceStr ? ` [${confidenceStr}]` : "";
+  const confBadge = confidenceStr ? ` (${confidenceStr})` : "";
   const count = getCandidateCount(data);
 
   if (phase === "name-match") {
@@ -171,8 +171,8 @@ function formatPipelineCompletedResult(
   const unit = count === 1 ? "skill" : "skills";
   const names = skills.join(", ");
   const confidenceStr = formatConfidence(confidence);
-  const confBadge = confidenceStr ? ` [${confidenceStr}]` : "";
-  return `${count} ${unit} selected${confBadge}: ${names}`;
+  const confBadge = confidenceStr ? ` (${confidenceStr})` : "";
+  return `${count} ${unit} selected: ${names}${confBadge}`;
 }
 
 export function updateSkillHarnessEntry(

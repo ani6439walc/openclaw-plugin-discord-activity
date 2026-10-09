@@ -38,7 +38,7 @@ This example shows `active-memory` and `skill-harness` groups, nested tool param
     └─ result: Relevant memory found
 
 💡 skill-harness ▾ ✔ [450ms]
-    └─ result: 2 skills selected [0.92]: handoff, hindsight-docs
+    └─ result: 2 skills selected: handoff, hindsight-docs (.92)
 
 🔍 web_search ▾ ✔ [450ms]
     └─ query: OpenClaw plugin SDK
@@ -60,7 +60,7 @@ Rendering rules to preserve:
 - `active-memory` and `skill-harness` group order is stable.
 - Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.
 - A failed main agent renders once as `💥 agent ✘` at the bottom. It occupies one slot in the shared 6-entry budget, has no detail row, and is protected from normal block removal.
-- `skill-harness` renders as a single-row status entry with fixed format (`status` / `result` / `error`). During pipeline execution it renders current phase status and confidence badge (`[0.xx]`), on completion it renders selected skills with confidence, and on failure/interruption it renders error.
+- `skill-harness` renders as a single-row status entry with fixed format (`status` / `result` / `error`). During pipeline execution it renders current phase status and confidence (`(.xx)`), on completion it renders selected skills with confidence, and on failure/interruption it renders error.
 - The `skill-harness` status follows its explicit lifecycle: it remains `←` with live phase status while running and changes to `✔` with selected skills and confidence when `pipeline:completed` arrives. `pipeline:failed` or unobserved completion renders `✘` with error text.
 - `active-memory` result text renders as `result: <text>`. Fastpath context observed through `llm_input` renders as `fastpath`: a memory hit uses `status: observed`, while the explicit no-recall and unavailable outcomes use `status: skipped` and `status: unavailable`. Direct-message sessions also show sanitized, bounded memory text; shared or unknown session types retain status only. If no observable Active Memory child or prompt context appears before finalization, the group falls back to `status: inferred` without claiming a memory hit.
 - Failed `active-memory` child tools keep their own phase-local errors and durations. A distinct parent failure is also shown; identical parent/child error text is rendered once.

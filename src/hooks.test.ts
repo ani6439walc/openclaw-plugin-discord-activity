@@ -2712,7 +2712,7 @@ describe("createHookHandlers", () => {
           toolCallId: "skill-harness",
           toolName: "skill-harness",
           params: {
-            result: "1 skill selected [0.95]: weather",
+            result: "1 skill selected: weather (.95)",
           },
           status: "completed",
         }),
@@ -2735,9 +2735,7 @@ describe("createHookHandlers", () => {
       ).not.toHaveProperty("domain");
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
       expect(plainContent).toContain("💡 skill-harness ▾ ✔");
-      expect(plainContent).toContain(
-        "result: 1 skill selected [0.95]: weather",
-      );
+      expect(plainContent).toContain("result: 1 skill selected: weather (.95)");
       expect(plainContent).not.toContain("keywords");
       expect(plainContent).not.toContain("domain");
       expect(plainContent).not.toContain("topic");
@@ -2853,14 +2851,14 @@ describe("createHookHandlers", () => {
           status: "pending",
           startedAtMs: 900,
           params: expect.objectContaining({
-            status: "search · 1 candidate [0.43] (#1 travel-day)",
+            status: "search · 1 candidate (.43) (#1 travel-day)",
           }),
         }),
       );
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
       expect(plainContent).toContain("💡 skill-harness ▾ ←");
       expect(plainContent).toContain(
-        "search · 1 candidate [0.43] (#1 travel-day)",
+        "search · 1 candidate (.43) (#1 travel-day)",
       );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
 

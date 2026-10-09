@@ -58,7 +58,7 @@ describe("skill-harness status lifecycle", () => {
 
       expect(updated?.status).toBe("pending");
       expect(updated?.params.status).toBe(
-        "name-match · 1 matched [0.95] (weather)",
+        "name-match · 1 matched (.95) (weather)",
       );
     });
 
@@ -82,7 +82,7 @@ describe("skill-harness status lifecycle", () => {
       const updated = updateSkillHarnessEntry(undefined, event, 1_200);
 
       expect(updated?.params.status).toBe(
-        "search · 5 candidates [0.43] (#1 travel-day)",
+        "search · 5 candidates (.43) (#1 travel-day)",
       );
     });
 
@@ -95,7 +95,7 @@ describe("skill-harness status lifecycle", () => {
       const updated = updateSkillHarnessEntry(undefined, event, 1_200);
 
       expect(updated?.params.status).toBe(
-        "search · 1 candidate [0.43] (#1 travel-day)",
+        "search · 1 candidate (.43) (#1 travel-day)",
       );
     });
 
@@ -119,7 +119,7 @@ describe("skill-harness status lifecycle", () => {
       const updated = updateSkillHarnessEntry(undefined, event, 1_200);
 
       expect(updated?.params.status).toBe(
-        "search · 6 candidates [0.69] (#1 openclaw, RRF: 0.0492)",
+        "search · 6 candidates (.69) (#1 openclaw, RRF: 0.0492)",
       );
     });
 
@@ -133,7 +133,7 @@ describe("skill-harness status lifecycle", () => {
       const updated = updateSkillHarnessEntry(undefined, event, 1_200);
 
       expect(updated?.params.status).toBe(
-        "search · 3 candidates [0.45] (#1 travel-day, RRF: 0.0367)",
+        "search · 3 candidates (.45) (#1 travel-day, RRF: 0.0367)",
       );
     });
 
@@ -147,7 +147,7 @@ describe("skill-harness status lifecycle", () => {
       const updated = updateSkillHarnessEntry(undefined, event, 1_300);
 
       expect(updated?.params.status).toBe(
-        "experience · 1 candidate [0.57] (#1 hindsight-docs)",
+        "experience · 1 candidate (.57) (#1 hindsight-docs)",
       );
     });
 
@@ -161,7 +161,7 @@ describe("skill-harness status lifecycle", () => {
       const updated = updateSkillHarnessEntry(undefined, event, 1_300);
 
       expect(updated?.params.status).toBe(
-        "experience · 1 candidate [0.55] (#1 openclaw-runtime-config-introspection, RRF: 0.0367)",
+        "experience · 1 candidate (.55) (#1 openclaw-runtime-config-introspection, RRF: 0.0367)",
       );
     });
 
@@ -176,7 +176,7 @@ describe("skill-harness status lifecycle", () => {
       const updated = updateSkillHarnessEntry(undefined, event, 1_400);
 
       expect(updated?.params.status).toBe(
-        "rerank · 2 candidates [0.92] (search, experience)",
+        "rerank · 2 candidates (.92) (search, experience)",
       );
     });
   });
@@ -211,7 +211,7 @@ describe("skill-harness status lifecycle", () => {
         startedAtMs: 1_000,
         durationMs: 450,
         params: {
-          result: "2 skills selected [0.92]: handoff, hindsight-docs",
+          result: "2 skills selected: handoff, hindsight-docs (.92)",
         },
       });
     });
@@ -240,7 +240,7 @@ describe("skill-harness status lifecycle", () => {
 
       expect(completed?.status).toBe("completed");
       expect(completed?.params).toEqual({
-        result: "1 skill selected [0.95]: weather",
+        result: "1 skill selected: weather (.95)",
       });
     });
 
