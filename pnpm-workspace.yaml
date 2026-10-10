@@ -6,6 +6,10 @@ allowBuilds:
   protobufjs: true
   sharp: true
   tree-sitter-bash: true
+packageExtensions:
+  openclaw:
+    dependencies:
+      "@openclaw/proxyline": "0.3.12"
 minimumReleaseAgeExclude:
   - openclaw@2026.9.9
-  - '@openclaw/ai@2026.9.9'
+  - "@openclaw/ai@2026.9.9"

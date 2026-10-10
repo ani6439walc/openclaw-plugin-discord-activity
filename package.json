@@ -57,8 +57,9 @@
     "openclaw": "2026.9.9"
   },
   "devDependencies": {
+    "@openclaw/proxyline": "0.3.12",
+    "prettier": "3.9.6",
     "typescript": "6.0.3",
-    "vitest": "5.0.0",
-    "prettier": "3.9.6"
+    "vitest": "5.0.0"
   }
 }

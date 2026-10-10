@@ -4,6 +4,8 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+packageExtensionsChecksum: sha256-hKJr/q1zWB/NbOUrBaPOQ9mHB+4ijSrYIT2aMlzjp14=
+
 importers:
 
   .:
@@ -15,6 +17,9 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@openclaw/proxyline':
+        specifier: 0.3.12
+        version: 0.3.12(undici@8.10.2)
       prettier:
         specifier: 3.9.6
         version: 3.9.6
@@ -533,6 +538,12 @@ packages:
   '@openclaw/fs-safe@0.21.1':
     resolution: {integrity: sha512-jkowVEniLZBi203tncmZTvh0Cbby0rhKaPIaWFo7F+qiABOsE/6lsPATVyyqzrcj/t+FqFADhwXKsrlw5UJL1Q==}
     engines: {node: '>=22'}
+
+  '@openclaw/proxyline@0.3.12':
+    resolution: {integrity: sha512-KPUvtLgORF0NWxiuUPwHBuxYhUsFgxnOm8+XkDR0on236lnfMF44A5BnOvBkeDV8wrBaGHs/rQ8kt1tB4WNhmw==}
+    engines: {node: '>=22.19.0'}
+    peerDependencies:
+      undici: '>=8.5.0 <9'
 
   '@opentelemetry/semantic-conventions@1.43.0':
     resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
@@ -2680,6 +2691,10 @@ snapshots:
       '@openclaw/fs-safe-win32-x64-msvc': 0.21.1
       jszip: 3.10.2
 
+  '@openclaw/proxyline@0.3.12(undici@8.10.2)':
+    dependencies:
+      undici: 8.10.2
+
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
   '@oxc-project/types@0.133.0': {}
@@ -4085,8 +4100,7 @@ snapshots:
 
   undici-types@7.24.6: {}
 
-  undici@8.10.2:
-    optional: true
+  undici@8.10.2: {}
 
   unicorn-magic@0.3.0: {}
 
