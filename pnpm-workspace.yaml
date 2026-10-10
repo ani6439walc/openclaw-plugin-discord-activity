@@ -1,10 +1,11 @@
 allowBuilds:
   "@google/genai": true
+  esbuild: true
   koffi: true
   openclaw: true
   protobufjs: true
   sharp: true
   tree-sitter-bash: true
 minimumReleaseAgeExclude:
-  - '@openclaw/ai@2026.9.1'
-  - openclaw@2026.9.1
+  - openclaw@2026.9.9
+  - '@openclaw/ai@2026.9.9'
