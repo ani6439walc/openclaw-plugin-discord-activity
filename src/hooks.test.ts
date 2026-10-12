@@ -1208,6 +1208,20 @@ describe("createHookHandlers", () => {
           runId: "run_old",
         },
       );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "old_call",
+          toolName: "bash",
+          params: { command: "pwd" },
+          runId: "run_old",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "old_call",
+          runId: "run_old",
+        },
+      );
       await handlers.onMessageSending(
         { to: "user:123", content: "done" },
         { channelId: "discord", sessionKey, runId: "run_old" },

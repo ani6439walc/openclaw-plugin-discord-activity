@@ -13,6 +13,7 @@ import type {
   SendMessageResult,
 } from "./discord-api.js";
 import { extractUserIdFromDirectSessionKey } from "./parser.js";
+import { isEmptyStatusContent } from "./helpers.js";
 
 export async function editDiscordStatusMessageWithResult(
   getToken: GetTokenFn,
@@ -21,6 +22,16 @@ export async function editDiscordStatusMessageWithResult(
   content: string,
   accountId?: string,
 ): Promise<DiscordMutationResult> {
+  if (isEmptyStatusContent(content)) {
+    logger.debug("editDiscordStatusMessage: empty content skipped", {
+      channelId,
+      messageId,
+    });
+    return {
+      outcome: "rejected",
+      reason: "empty-content",
+    };
+  }
   let token: string;
   try {
     token = getToken(accountId);
@@ -135,6 +146,16 @@ export async function sendDiscordStatusWithDmFallbackWithResult(
   replyToId?: string,
   nonce?: string,
 ): Promise<SendMessageResult> {
+  if (isEmptyStatusContent(content)) {
+    logger.debug("sendDiscordStatusWithDmFallback: empty content skipped", {
+      contextKey: session.contextKey,
+      channelId: session.channelId,
+    });
+    return {
+      outcome: "rejected",
+      reason: "empty-content",
+    };
+  }
   let token: string;
   try {
     token = getToken(session.accountId);

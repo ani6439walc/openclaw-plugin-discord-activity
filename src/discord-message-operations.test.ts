@@ -79,6 +79,38 @@ describe("editDiscordStatusMessage", () => {
       reason: "token-resolution-error",
     });
   });
+
+  it.each(["", "   ", "```ansi\n\n```", "```\nansi\n```", "```ansi```"])(
+    "rejects empty content %j early without calling fetch or resolving token",
+    async (emptyContent) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const tokenGetter = vi.fn(() => "token");
+
+      await expect(
+        editDiscordStatusMessageWithResult(
+          tokenGetter,
+          "channel_1",
+          "status_1",
+          emptyContent,
+        ),
+      ).resolves.toEqual({
+        outcome: "rejected",
+        reason: "empty-content",
+      });
+      expect(tokenGetter).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      await expect(
+        editDiscordStatusMessage(
+          tokenGetter,
+          "channel_1",
+          "status_1",
+          emptyContent,
+        ),
+      ).resolves.toBe(false);
+    },
+  );
 });
 
 describe("sendDiscordStatusWithDmFallbackWithResult", () => {
@@ -102,6 +134,28 @@ describe("sendDiscordStatusWithDmFallbackWithResult", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it.each(["", "   ", "```ansi\n\n```", "```\nansi\n```", "```ansi```"])(
+    "rejects empty content %j early without calling fetch or resolving token",
+    async (emptyContent) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const tokenGetter = vi.fn(() => "token");
+
+      await expect(
+        sendDiscordStatusWithDmFallbackWithResult(
+          tokenGetter,
+          createMockSessionEntry(),
+          emptyContent,
+        ),
+      ).resolves.toEqual({
+        outcome: "rejected",
+        reason: "empty-content",
+      });
+      expect(tokenGetter).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("deleteDiscordStatusMessageWithResult", () => {

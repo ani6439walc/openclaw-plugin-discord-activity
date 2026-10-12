@@ -13,7 +13,11 @@ import {
   mergeStatusDisplayStates,
   renderStatusContentWithState,
 } from "./render.js";
-import { clearSessionTimer, clearAllSessionTimers } from "./helpers.js";
+import {
+  clearSessionTimer,
+  clearAllSessionTimers,
+  isEmptyStatusContent,
+} from "./helpers.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   DELETE_RECOVERY_DELAY_MS,
@@ -371,7 +375,7 @@ export async function updateStatusMessage(
       getSessionDisplayFloor(session),
     );
 
-    if (!content) return;
+    if (isEmptyStatusContent(content)) return;
 
     const isNewMessage = !session.statusMessageId;
 

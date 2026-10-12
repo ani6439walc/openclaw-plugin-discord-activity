@@ -99,6 +99,34 @@ describe("updateStatusMessage", () => {
     expect(getStatusPostBody(fetchMock).message_reference).toBeUndefined();
   });
 
+  it("skips status message creation when rendered content is empty or only an empty ANSI code block", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const emptySession = createMockSessionEntry({
+      toolHistory: [],
+    });
+    defaultStore.sessions.set(emptySession.contextKey, emptySession);
+
+    await updateStatusMessage(emptySession, () => "token");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(emptySession.statusMessageId).toBeUndefined();
+  });
+
+  it("skips status message edit when rendered content is empty or only an empty ANSI code block", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const sessionWithId = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: [],
+    });
+    defaultStore.sessions.set(sessionWithId.contextKey, sessionWithId);
+
+    await updateStatusMessage(sessionWithId, () => "token");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["all", "discord:channel:123456", true],
     ["all", "discord:group:123456", true],
@@ -495,7 +523,10 @@ describe("updateStatusMessage", () => {
     );
     expect(session.lastRenderedContent).toBe("old-content");
 
-    session.toolHistory = createBoundedHistory().slice(0, 2);
+    session.toolHistory = [
+      createBoundedHistory()[0]!,
+      createBoundedHistory()[2]!,
+    ];
     await updateStatusMessage(session, () => "token", true);
 
     const retryBody = JSON.parse(
@@ -619,7 +650,10 @@ describe("updateStatusMessage", () => {
     await updateStatusMessage(session, () => "", true, undefined, 100);
     expect(session.statusCreateNonce).toBe(uncertainNonce);
 
-    session.toolHistory = createBoundedHistory().slice(0, 2);
+    session.toolHistory = [
+      createBoundedHistory()[0]!,
+      createBoundedHistory()[2]!,
+    ];
     await updateStatusMessage(session, () => "token", true, undefined, 100);
 
     const postCalls = fetchMock.mock.calls.filter(
