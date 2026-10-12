@@ -1470,10 +1470,8 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain("👥 subagents ▾ ✘");
-    expect(result).toContain("⚑ [librarian] keymoment-geopolitical-news ✔");
-    expect(result).toContain(
-      "⚑ [librarian] blocktempo-crypto-news ✘ (timeout)",
-    );
+    expect(result).toContain("[librarian] keymoment-geopolitical-news ✔");
+    expect(result).toContain("[librarian] blocktempo-crypto-news ✘ (timeout)");
     expect(result).not.toContain("↳ 任務:");
   });
 
@@ -1516,8 +1514,8 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, false));
     expect(result).toContain("👥 subagents ▾ ←");
-    expect(result).toContain("    ⚑ [main] 4x4 計算 ←");
-    expect(result).toContain("    ⚑ [main] 3x3 計算 ←");
+    expect(result).toContain("    [main] 4x4 計算 ←");
+    expect(result).toContain("    [main] 3x3 計算 ←");
     expect(result).not.toContain("├─");
     expect(result).not.toContain("└─");
     // Other subgroups should be removed

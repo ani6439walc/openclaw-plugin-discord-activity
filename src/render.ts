@@ -237,7 +237,6 @@ function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
       typeof entry.params?.agentId === "string" && entry.params.agentId.trim()
         ? entry.params.agentId.trim()
         : undefined;
-    const marker = ansiSpan(ANSI.cyan, "⚑ ");
     const agentBadge = rawAgentId
       ? `${ansiSpan(ANSI.gray, "[")}${ansiSpan(ANSI.blue, rawAgentId)}${ansiSpan(ANSI.gray, "] ")}`
       : "";
@@ -246,7 +245,7 @@ function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
       getStatusStyle(entry.status),
       getSubSuffix(entry.status),
     );
-    const text = `${marker}${agentBadge}${namePart} ${statusPart}${errorSuffix}${formatHeaderDuration(entry)}`;
+    const text = `${agentBadge}${namePart} ${statusPart}${errorSuffix}${formatHeaderDuration(entry)}`;
 
     return {
       text,

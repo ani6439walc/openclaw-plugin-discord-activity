@@ -3679,11 +3679,9 @@ describe("createHookHandlers", () => {
       const renderedOnYield = stripAnsi(session?.lastRenderedContent ?? "");
       expect(renderedOnYield).toContain("👥 subagents ▾");
       expect(renderedOnYield).toContain(
-        "⚑ [librarian] keymoment-geopolitical-news ←",
+        "[librarian] keymoment-geopolitical-news ←",
       );
-      expect(renderedOnYield).toContain(
-        "⚑ [librarian] blocktempo-crypto-news ←",
-      );
+      expect(renderedOnYield).toContain("[librarian] blocktempo-crypto-news ←");
       expect(renderedOnYield).not.toContain("↳ 任務:");
 
       // Wake coordinator with settle message in prompt (new runId)
@@ -3720,10 +3718,10 @@ Verified signals
       const renderedAfterSettle = stripAnsi(session?.lastRenderedContent ?? "");
       expect(renderedAfterSettle).toContain("👥 subagents ▾ ✘");
       expect(renderedAfterSettle).toContain(
-        "⚑ [librarian] keymoment-geopolitical-news ✔",
+        "[librarian] keymoment-geopolitical-news ✔",
       );
       expect(renderedAfterSettle).toContain(
-        "⚑ [librarian] blocktempo-crypto-news ✘ (timeout)",
+        "[librarian] blocktempo-crypto-news ✘ (timeout)",
       );
       expect(renderedAfterSettle).not.toContain("↳ 任務:");
 
