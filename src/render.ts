@@ -223,13 +223,6 @@ function createEntryFieldNodes(
   return nodes;
 }
 
-function formatSubagentTaskSnippet(task: string, maxLength = 36): string {
-  const singleLine = task.replace(/\s+/g, " ").trim();
-  const chars = [...singleLine];
-  if (chars.length <= maxLength) return singleLine;
-  return `${chars.slice(0, maxLength).join("")}...`;
-}
-
 function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
   const strippedName = sanitizeHeaderToken(
     getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
@@ -244,7 +237,7 @@ function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
       typeof entry.params?.agentId === "string" && entry.params.agentId.trim()
         ? entry.params.agentId.trim()
         : undefined;
-    const marker = ansiSpan(ANSI.cyan, "◈ ");
+    const marker = ansiSpan(ANSI.cyan, "⚑ ");
     const agentBadge = rawAgentId
       ? `${ansiSpan(ANSI.gray, "[")}${ansiSpan(ANSI.blue, rawAgentId)}${ansiSpan(ANSI.gray, "] ")}`
       : "";
@@ -255,22 +248,9 @@ function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
     );
     const text = `${marker}${agentBadge}${namePart} ${statusPart}${errorSuffix}${formatHeaderDuration(entry)}`;
 
-    const continuationLines: string[] = [];
-    const rawTask =
-      typeof entry.params?.task === "string" ? entry.params.task.trim() : "";
-    if (rawTask && rawTask !== strippedName && rawTask !== entry.toolName) {
-      const arrow = ansiSpan(ANSI.lightGray, "↳");
-      const taskLabel = ansiSpan(ANSI.cyan, "任務:");
-      const taskSnippet = ansiSpan(
-        ANSI.lightGray,
-        formatSubagentTaskSnippet(rawTask),
-      );
-      continuationLines.push(`${arrow} ${taskLabel} ${taskSnippet}`);
-    }
-
     return {
       text,
-      continuationLines,
+      continuationLines: [],
       children: [],
     };
   }
@@ -534,6 +514,14 @@ function renderSubagentGroup(
           ? "completed"
           : "pending";
   const groupDurationMs = getGroupDurationMs(group, prefix);
+  const bodyLines =
+    prefix === "subagents"
+      ? nodes.flatMap((node) => [
+          `    ${node.text}`,
+          ...node.continuationLines.map((line) => `        ${line}`),
+        ])
+      : undefined;
+
   return {
     key: `group:${prefix}`,
     header: {
@@ -545,6 +533,7 @@ function renderSubagentGroup(
       durationMs: groupDurationMs,
       disclosure: true,
     },
+    bodyLines,
     children: nodes,
   };
 }
@@ -870,7 +859,22 @@ export function renderStatusContentWithState(
   priorState = createDefaultStatusDisplayState(),
 ): StatefulStatusRenderResult {
   const displayState = mergeStatusDisplayStates(priorState);
-  const subagentBlocks = getSubagentGroupEntries(toolHistory).map((group) =>
+  const allSubagentGroups = getSubagentGroupEntries(toolHistory);
+  const hasSubagentsGroup = allSubagentGroups.some(
+    (group) => group.name === "subagents",
+  );
+  if (hasSubagentsGroup) {
+    for (const group of allSubagentGroups) {
+      if (group.name !== "subagents") {
+        advanceDisplayState(displayState, `group:${group.name}`, "removed");
+      }
+    }
+  }
+  const activeSubagentGroups = hasSubagentsGroup
+    ? allSubagentGroups.filter((group) => group.name === "subagents")
+    : allSubagentGroups;
+
+  const subagentBlocks = activeSubagentGroups.map((group) =>
     renderSubagentGroup(
       getSubagentGroupIcon(group.name),
       group.name,
@@ -881,6 +885,21 @@ export function renderStatusContentWithState(
     toolHistory.filter(isProgressCardEntry).at(-1),
     toolHistory,
   );
+  const isSpawnOrYieldTool = (entry: ToolEntry) => {
+    const canonical = canonicalToolNameForDedupe(entry.toolName);
+    return canonical === "sessions_spawn" || canonical === "sessions_yield";
+  };
+  if (hasSubagentsGroup) {
+    for (const entry of toolHistory) {
+      if (isSpawnOrYieldTool(entry)) {
+        advanceDisplayState(
+          displayState,
+          `tool:${entry.displayId ?? entry.toolCallId}`,
+          "removed",
+        );
+      }
+    }
+  }
   const normalBlocks = toolHistory
     .filter(
       (entry) =>
@@ -888,7 +907,8 @@ export function renderStatusContentWithState(
         !SUBAGENT_GROUP_NAMES.some((prefix) =>
           isSubagentToolEntry(entry, prefix),
         ) &&
-        !isMainAgentEntry(entry),
+        !isMainAgentEntry(entry) &&
+        (!hasSubagentsGroup || !isSpawnOrYieldTool(entry)),
     )
     .map(createEntryBlock);
   const mainAgentFailure = toolHistory.filter(isMainAgentEntry).at(-1);

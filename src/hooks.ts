@@ -794,6 +794,8 @@ export function createHookHandlers(deps: HookDeps) {
       if (!event.error) {
         if (event.toolName === "sessions_spawn") {
           session.hasPendingSubagents = true;
+          session.spawnedSubagentsInTurn = true;
+          session.mainAgentEnded = false;
           session.confirmedDisplayState = {
             ...(session.confirmedDisplayState ?? {}),
             "group:subagents": "expanded",
@@ -891,6 +893,13 @@ export function createHookHandlers(deps: HookDeps) {
                 };
               });
               upsertSubagentToolGroup(session, childEntries);
+              const hasPending = session.toolHistory.some(
+                (e) =>
+                  (e.toolName === "subagents" ||
+                    e.toolName.startsWith("subagents:")) &&
+                  e.status === "pending",
+              );
+              session.hasPendingSubagents = hasPending;
               await updateSessionStatus(session, session.finalized === true);
             }
           }
@@ -989,6 +998,15 @@ export function createHookHandlers(deps: HookDeps) {
     completeUnobservedActiveMemoryPlaceholder(session);
     finishPendingHindsightRecalls(session.toolHistory);
     finishPendingSkillHarness(session.toolHistory);
+    for (const entry of session.toolHistory) {
+      if (
+        (entry.toolName === "subagents" ||
+          entry.toolName.startsWith("subagents:")) &&
+        entry.status === "pending"
+      ) {
+        entry.status = "completed";
+      }
+    }
     session.hasPendingSubagents = false;
     for (const [key, val] of subagentSessionMap.entries()) {
       if (val.contextKey === contextKey) {
@@ -1004,6 +1022,18 @@ export function createHookHandlers(deps: HookDeps) {
     _event: BeforeAgentRunEvent,
     ctx: AgentContext,
   ) {
+    const mainContextKey = getDiscordContextKey(ctx.sessionKey);
+    if (mainContextKey && !isActiveMemorySessionKey(ctx.sessionKey)) {
+      try {
+        const mainSession = await store.resolveSession(
+          mainContextKey,
+          ctx.sessionKey,
+        );
+        if (mainSession && store.isCurrentSession(mainSession)) {
+          mainSession.spawnedSubagentsInTurn = false;
+        }
+      } catch {}
+    }
     if (!isActiveMemorySessionKey(ctx.sessionKey) || !ctx.runId) return;
     const sourceSessionKey = getActiveMemorySourceSessionKey(ctx.sessionKey);
     const contextKey = getDiscordContextKey(sourceSessionKey);
@@ -1243,35 +1273,61 @@ export function createHookHandlers(deps: HookDeps) {
         }
       }
 
-      if (session.hasPendingSubagents) {
-        const subagentEntries = session.toolHistory.filter(
-          (entry) =>
-            entry.toolName === "subagents" ||
-            entry.toolName.startsWith("subagents:"),
-        );
-        if (subagentEntries.length === 0) {
-          subagentEntries.push({
-            toolCallId: "subagents",
-            toolName: "subagents",
-            params: {},
-            status: "pending",
-          });
+      if (session.mainAgentEnded && !session.spawnedSubagentsInTurn) {
+        for (const entry of session.toolHistory) {
+          if (
+            (entry.toolName === "subagents" ||
+              entry.toolName.startsWith("subagents:")) &&
+            entry.status === "pending"
+          ) {
+            entry.status = "completed";
+          }
         }
-        session.toolHistory.splice(
-          0,
-          session.toolHistory.length,
-          ...subagentEntries,
+        session.hasPendingSubagents = false;
+      }
+
+      if (session.hasPendingSubagents) {
+        const hasPendingEntries = session.toolHistory.some(
+          (entry) =>
+            (entry.toolName === "subagents" ||
+              entry.toolName.startsWith("subagents:")) &&
+            entry.status === "pending",
         );
-        session.confirmedDisplayState = {
-          ...(session.confirmedDisplayState ?? {}),
-          "group:subagents": "expanded",
-        };
-        session.monotonicSafetyFloor = {
-          ...(session.monotonicSafetyFloor ?? {}),
-          "group:subagents": "expanded",
-        };
-        await updateSessionStatus(session, false);
-        return;
+
+        if (!hasPendingEntries) {
+          session.hasPendingSubagents = false;
+        } else {
+          session.mainAgentEnded = true;
+          session.spawnedSubagentsInTurn = false;
+          const subagentEntries = session.toolHistory.filter(
+            (entry) =>
+              entry.toolName === "subagents" ||
+              entry.toolName.startsWith("subagents:"),
+          );
+          if (subagentEntries.length === 0) {
+            subagentEntries.push({
+              toolCallId: "subagents",
+              toolName: "subagents",
+              params: {},
+              status: "pending",
+            });
+          }
+          session.toolHistory.splice(
+            0,
+            session.toolHistory.length,
+            ...subagentEntries,
+          );
+          session.confirmedDisplayState = {
+            ...(session.confirmedDisplayState ?? {}),
+            "group:subagents": "expanded",
+          };
+          session.monotonicSafetyFloor = {
+            ...(session.monotonicSafetyFloor ?? {}),
+            "group:subagents": "expanded",
+          };
+          await updateSessionStatus(session, false);
+          return;
+        }
       }
 
       await resolveAndFinalize(
@@ -1577,6 +1633,28 @@ export function createHookHandlers(deps: HookDeps) {
       }
 
       if (matched) {
+        const hasPending = session.toolHistory.some(
+          (entry) =>
+            (entry.toolName === "subagents" ||
+              entry.toolName.startsWith("subagents:")) &&
+            entry.status === "pending",
+        );
+        if (!hasPending) {
+          session.hasPendingSubagents = false;
+          if (session.mainAgentEnded) {
+            session.finalized = true;
+            await updateSessionStatus(session, true);
+            scheduleSessionCleanup(
+              contextKey,
+              session,
+              requesterSessionKey ?? session.ownerSessionKey,
+              AGENT_END_DELAY_MS,
+              "subagent_settled_delayed",
+              getToken,
+            );
+            return;
+          }
+        }
         await updateSessionStatus(session, false);
       }
     } catch (err) {

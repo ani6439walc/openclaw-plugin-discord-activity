@@ -69,6 +69,8 @@ export type SessionEntry = {
   monotonicSafetyFloor?: StatusDisplayState;
   finalized?: boolean;
   hasPendingSubagents?: boolean;
+  mainAgentEnded?: boolean;
+  spawnedSubagentsInTurn?: boolean;
   compactionActive?: boolean;
   compactionEpoch?: number;
   toolHistory: ToolEntry[];

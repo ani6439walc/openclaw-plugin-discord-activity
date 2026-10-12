@@ -3679,13 +3679,12 @@ describe("createHookHandlers", () => {
       const renderedOnYield = stripAnsi(session?.lastRenderedContent ?? "");
       expect(renderedOnYield).toContain("👥 subagents ▾");
       expect(renderedOnYield).toContain(
-        "◈ [librarian] keymoment-geopolitical-news ←",
+        "⚑ [librarian] keymoment-geopolitical-news ←",
       );
-      expect(renderedOnYield).toContain("↳ 任務: 檢索以伊地緣政治衝突新聞");
       expect(renderedOnYield).toContain(
-        "◈ [librarian] blocktempo-crypto-news ←",
+        "⚑ [librarian] blocktempo-crypto-news ←",
       );
-      expect(renderedOnYield).toContain("↳ 任務: 監控加密貨幣市場清算數據");
+      expect(renderedOnYield).not.toContain("↳ 任務:");
 
       // Wake coordinator with settle message in prompt (new runId)
       const continuationRunId = "run-2";
@@ -3721,13 +3720,12 @@ Verified signals
       const renderedAfterSettle = stripAnsi(session?.lastRenderedContent ?? "");
       expect(renderedAfterSettle).toContain("👥 subagents ▾ ✘");
       expect(renderedAfterSettle).toContain(
-        "◈ [librarian] keymoment-geopolitical-news ✔",
+        "⚑ [librarian] keymoment-geopolitical-news ✔",
       );
-      expect(renderedAfterSettle).toContain("↳ 任務: 檢索以伊地緣政治衝突新聞");
       expect(renderedAfterSettle).toContain(
-        "◈ [librarian] blocktempo-crypto-news ✘ (timeout)",
+        "⚑ [librarian] blocktempo-crypto-news ✘ (timeout)",
       );
-      expect(renderedAfterSettle).toContain("↳ 任務: 監控加密貨幣市場清算數據");
+      expect(renderedAfterSettle).not.toContain("↳ 任務:");
 
       // Coordinator delivers final reply to user
       await handlers.onMessageSending(
@@ -3827,6 +3825,126 @@ Verified signals
       const afterChild2 = stripAnsi(session?.lastRenderedContent ?? "");
       expect(afterChild2).toContain("worker-geo-news ✔");
       expect(afterChild2).toContain("worker-crypto-news ✘ (timeout)");
+      expect(session?.hasPendingSubagents).toBe(false);
+      expect(session?.clearTimer).toBeDefined();
+    });
+
+    it("reconciles and finalizes status message when coordinator resumes and ends without subagent_ended hooks", async () => {
+      createDiscordFetchMock();
+      const channelId = "123456789";
+      const sessionKey = "agent:main:discord:channel:123456789";
+      const runId = "run-1";
+
+      await handlers.onMessageReceived(
+        {
+          messageId: "msg-user-1",
+          content: "Calculate 4x4 and 3x3",
+          metadata: { to: "channel:123456789" },
+        },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      // Main agent calls sessions_spawn for 4x4
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call-spawn-1",
+          toolName: "sessions_spawn",
+          params: {
+            label: "4x4 計算",
+            task: "計算 4*4 並回傳結果",
+            agentId: "main",
+          },
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call-spawn-1",
+          toolName: "sessions_spawn",
+          params: {
+            label: "4x4 計算",
+            task: "計算 4*4 並回傳結果",
+            agentId: "main",
+          },
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      // Main agent calls sessions_spawn for 3x3
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call-spawn-2",
+          toolName: "sessions_spawn",
+          params: {
+            label: "3x3 計算",
+            task: "計算 3*3 並回傳結果",
+            agentId: "main",
+          },
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call-spawn-2",
+          toolName: "sessions_spawn",
+          params: {
+            label: "3x3 計算",
+            task: "計算 3*3 並回傳結果",
+            agentId: "main",
+          },
+        },
+        { channelId: "discord", sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:channel:123456789");
+      expect(session?.hasPendingSubagents).toBe(true);
+
+      // Main agent yields turn to wait
+      await handlers.onAgentEnd(
+        { messages: [], success: true },
+        { sessionKey, runId },
+      );
+
+      // Card is preserved during subagents execution
+      expect(session?.clearTimer).toBeUndefined();
+      expect(session?.mainAgentEnded).toBe(true);
+
+      // Subagents complete in background, but subagent_ended hook was NOT emitted
+      // Coordinator resumes in run-2
+      const resumeRunId = "run-2";
+      await handlers.onBeforeAgentRun(
+        { runId: resumeRunId },
+        { sessionKey, runId: resumeRunId },
+      );
+
+      // Coordinator runs sessions_history to inspect results
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call-hist-1", toolName: "sessions_history", params: {} },
+        { channelId: "discord", sessionKey, runId: resumeRunId },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call-hist-1", toolName: "sessions_history", params: {} },
+        { channelId: "discord", sessionKey, runId: resumeRunId },
+      );
+
+      // Coordinator delivers final answer
+      await handlers.onMessageSending(
+        { to: "channel:123456789", content: "Result is 7" },
+        { channelId: "discord", sessionKey, runId: resumeRunId },
+      );
+
+      // Coordinator turn ends
+      await handlers.onAgentEnd(
+        { messages: [], success: true },
+        { sessionKey, runId: resumeRunId },
+      );
+
+      // Session should have reconciled remaining subagents to completed and scheduled cleanup
+      expect(session?.hasPendingSubagents).toBe(false);
+      expect(session?.toolHistory.every((t) => t.status === "completed")).toBe(
+        true,
+      );
+      expect(session?.clearTimer).toBeDefined();
     });
   });
 });

@@ -1470,12 +1470,61 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain("👥 subagents ▾ ✘");
-    expect(result).toContain("◈ [librarian] keymoment-geopolitical-news ✔");
-    expect(result).toContain("↳ 任務: 檢索以伊地緣衝突與原油市場最新局勢");
+    expect(result).toContain("⚑ [librarian] keymoment-geopolitical-news ✔");
     expect(result).toContain(
-      "◈ [librarian] blocktempo-crypto-news ✘ (timeout)",
+      "⚑ [librarian] blocktempo-crypto-news ✘ (timeout)",
     );
-    expect(result).toContain("↳ 任務: 監控全網合約持倉與主流交易所清算數據");
+    expect(result).not.toContain("↳ 任務:");
+  });
+
+  it("suppresses other subgroups and deduplicates sessions_spawn when subagents group is present", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "hindsight",
+        toolName: "hindsight",
+        params: { result: "5 memories recalled" },
+        status: "completed",
+        durationMs: 1410,
+      },
+      {
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        params: { result: "2 skills selected" },
+        status: "completed",
+        durationMs: 3250,
+      },
+      {
+        toolCallId: "sessions_spawn_1",
+        toolName: "sessions_spawn",
+        params: { label: "4x4 計算", task: "計算 4*4 並回傳結果" },
+        status: "completed",
+        durationMs: 1560,
+      },
+      {
+        toolCallId: "subagents:4x4 計算",
+        toolName: "subagents:4x4 計算",
+        params: { label: "4x4 計算", agentId: "main" },
+        status: "pending",
+      },
+      {
+        toolCallId: "subagents:3x3 計算",
+        toolName: "subagents:3x3 計算",
+        params: { label: "3x3 計算", agentId: "main" },
+        status: "pending",
+      },
+    ];
+
+    const result = stripAnsi(renderStatusContent(entries, false));
+    expect(result).toContain("👥 subagents ▾ ←");
+    expect(result).toContain("    ⚑ [main] 4x4 計算 ←");
+    expect(result).toContain("    ⚑ [main] 3x3 計算 ←");
+    expect(result).not.toContain("├─");
+    expect(result).not.toContain("└─");
+    // Other subgroups should be removed
+    expect(result).not.toContain("hindsight");
+    expect(result).not.toContain("skill-harness");
+    // Duplicate sessions_spawn tool cards should be omitted
+    expect(result).not.toContain("sessions_spawn");
   });
 
   it("shows up to three entries per subagent group before the main agent starts", () => {
