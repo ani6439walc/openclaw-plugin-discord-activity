@@ -223,12 +223,60 @@ function createEntryFieldNodes(
   return nodes;
 }
 
+function formatSubagentTaskSnippet(task: string, maxLength = 36): string {
+  const singleLine = task.replace(/\s+/g, " ").trim();
+  const chars = [...singleLine];
+  if (chars.length <= maxLength) return singleLine;
+  return `${chars.slice(0, maxLength).join("")}...`;
+}
+
 function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
   const strippedName = sanitizeHeaderToken(
     getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
   );
+  const errorSuffix =
+    prefix === "subagents" && entry.status === "error" && entry.error
+      ? ` ${ansiSpan(ANSI.gray, `(${entry.error})`)}`
+      : "";
+
+  if (prefix === "subagents") {
+    const rawAgentId =
+      typeof entry.params?.agentId === "string" && entry.params.agentId.trim()
+        ? entry.params.agentId.trim()
+        : undefined;
+    const marker = ansiSpan(ANSI.cyan, "◈ ");
+    const agentBadge = rawAgentId
+      ? `${ansiSpan(ANSI.gray, "[")}${ansiSpan(ANSI.blue, rawAgentId)}${ansiSpan(ANSI.gray, "] ")}`
+      : "";
+    const namePart = ansiSpan(ANSI.cyan, strippedName);
+    const statusPart = ansiSpan(
+      getStatusStyle(entry.status),
+      getSubSuffix(entry.status),
+    );
+    const text = `${marker}${agentBadge}${namePart} ${statusPart}${errorSuffix}${formatHeaderDuration(entry)}`;
+
+    const continuationLines: string[] = [];
+    const rawTask =
+      typeof entry.params?.task === "string" ? entry.params.task.trim() : "";
+    if (rawTask && rawTask !== strippedName && rawTask !== entry.toolName) {
+      const arrow = ansiSpan(ANSI.lightGray, "↳");
+      const taskLabel = ansiSpan(ANSI.cyan, "任務:");
+      const taskSnippet = ansiSpan(
+        ANSI.lightGray,
+        formatSubagentTaskSnippet(rawTask),
+      );
+      continuationLines.push(`${arrow} ${taskLabel} ${taskSnippet}`);
+    }
+
+    return {
+      text,
+      continuationLines,
+      children: [],
+    };
+  }
+
   return {
-    text: `${ansiSpan(ANSI.cyan, strippedName)} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${formatHeaderDuration(entry)}`,
+    text: `${ansiSpan(ANSI.cyan, strippedName)} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${errorSuffix}${formatHeaderDuration(entry)}`,
     continuationLines: [],
     children: createEntryFieldNodes(entry),
   };
@@ -238,6 +286,7 @@ export const SUBAGENT_GROUP_NAMES = [
   "active-memory",
   "skill-harness",
   "hindsight",
+  "subagents",
 ] as const;
 
 export type InternalGroupName = (typeof SUBAGENT_GROUP_NAMES)[number];
@@ -246,6 +295,7 @@ function getSubagentGroupIcon(prefix: InternalGroupName): string {
   if (prefix === "active-memory") return "🧩";
   if (prefix === "skill-harness") return "💡";
   if (prefix === "hindsight") return "🧠";
+  if (prefix === "subagents") return "👥";
   return getToolIcon(prefix);
 }
 
@@ -425,7 +475,7 @@ function renderSubagentGroup(
   const isOverallCompleted =
     hasResult || authoritativeParent?.status === "completed";
   const parentSuffix =
-    hasError && isOverallCompleted
+    prefix !== "subagents" && hasError && isOverallCompleted
       ? "♻︎"
       : authoritativeParent
         ? getSubSuffix(authoritativeParent.status)

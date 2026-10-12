@@ -18,7 +18,8 @@ export type ToolEntry = {
   error?: string;
 };
 
-export type SubagentToolName = "active-memory" | "skill-harness" | "hindsight";
+export type SubagentToolName =
+  "active-memory" | "skill-harness" | "hindsight" | "subagents";
 
 export type StatusBlockDisplayLevel = "expanded" | "collapsed" | "removed";
 
@@ -67,6 +68,7 @@ export type SessionEntry = {
   confirmedDisplayState?: StatusDisplayState;
   monotonicSafetyFloor?: StatusDisplayState;
   finalized?: boolean;
+  hasPendingSubagents?: boolean;
   compactionActive?: boolean;
   compactionEpoch?: number;
   toolHistory: ToolEntry[];
@@ -224,4 +226,68 @@ export type AgentPipelineEvent = {
   stream: string;
   sessionKey?: string;
   data: Record<string, unknown>;
+};
+
+export type SubagentContext = {
+  runId?: string;
+  childSessionKey?: string;
+  requesterSessionKey?: string;
+};
+
+export type SubagentSpawnedEvent = {
+  childSessionKey: string;
+  agentId: string;
+  label?: string;
+  mode?: "run" | "session";
+  threadRequested?: boolean;
+  runId?: string;
+  requester?: {
+    channel?: string;
+    accountId?: string;
+    to?: string;
+    threadId?: string | number;
+    channelId?: string | number;
+    messageId?: string | number;
+  };
+};
+
+export type SubagentProgressEvent =
+  | {
+      phase: "started";
+      runId: string;
+      childSessionKey: string;
+      requester?: {
+        channel?: string;
+        accountId?: string;
+        to?: string;
+        threadId?: string | number;
+        channelId?: string | number;
+        messageId?: string | number;
+      };
+    }
+  | {
+      phase: "ended";
+      runId: string;
+      childSessionKey: string;
+      outcome: "ok" | "error" | "timeout" | "killed" | "unknown";
+      requester?: {
+        channel?: string;
+        accountId?: string;
+        to?: string;
+        threadId?: string | number;
+        channelId?: string | number;
+        messageId?: string | number;
+      };
+    };
+
+export type SubagentEndedEvent = {
+  targetSessionKey: string;
+  targetKind?: "subagent" | "acp";
+  reason?: string;
+  sendFarewell?: boolean;
+  accountId?: string;
+  runId?: string;
+  endedAt?: number;
+  outcome?: "ok" | "error" | "timeout" | "killed" | "reset" | "deleted";
+  error?: string;
 };

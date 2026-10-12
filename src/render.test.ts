@@ -1408,6 +1408,76 @@ describe("renderStatusContent", () => {
     );
   });
 
+  it("renders subagents group with completed and error (timeout) child entries", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "subagents",
+        toolName: "subagents",
+        params: {},
+        status: "completed",
+      },
+      {
+        toolCallId: "subagents:keymoment-geopolitical-news",
+        toolName: "subagents:keymoment-geopolitical-news",
+        params: {},
+        status: "completed",
+      },
+      {
+        toolCallId: "subagents:blocktempo-crypto-news",
+        toolName: "subagents:blocktempo-crypto-news",
+        params: { error: "timeout" },
+        status: "error",
+        error: "timeout",
+      },
+    ];
+
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain("👥 subagents ▾ ✘");
+    expect(result).toContain("keymoment-geopolitical-news ✔");
+    expect(result).toContain("blocktempo-crypto-news ✘ (timeout)");
+  });
+
+  it("renders subagents in Option A style with agent badge and task continuation line", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "subagents",
+        toolName: "subagents",
+        params: {},
+        status: "completed",
+      },
+      {
+        toolCallId: "subagents:keymoment-geopolitical-news",
+        toolName: "subagents:keymoment-geopolitical-news",
+        params: {
+          label: "keymoment-geopolitical-news",
+          agentId: "librarian",
+          task: "檢索以伊地緣衝突與原油市場最新局勢",
+        },
+        status: "completed",
+      },
+      {
+        toolCallId: "subagents:blocktempo-crypto-news",
+        toolName: "subagents:blocktempo-crypto-news",
+        params: {
+          label: "blocktempo-crypto-news",
+          agentId: "librarian",
+          task: "監控全網合約持倉與主流交易所清算數據",
+        },
+        status: "error",
+        error: "timeout",
+      },
+    ];
+
+    const result = stripAnsi(renderStatusContent(entries, true));
+    expect(result).toContain("👥 subagents ▾ ✘");
+    expect(result).toContain("◈ [librarian] keymoment-geopolitical-news ✔");
+    expect(result).toContain("↳ 任務: 檢索以伊地緣衝突與原油市場最新局勢");
+    expect(result).toContain(
+      "◈ [librarian] blocktempo-crypto-news ✘ (timeout)",
+    );
+    expect(result).toContain("↳ 任務: 監控全網合約持倉與主流交易所清算數據");
+  });
+
   it("shows up to three entries per subagent group before the main agent starts", () => {
     const activeMemoryEntries: ToolEntry[] = Array.from(
       { length: 7 },

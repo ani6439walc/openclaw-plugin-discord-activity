@@ -130,6 +130,91 @@ export function parseActiveMemoryPromptContext(
   return { kind: "memory", text };
 }
 
+export type ParsedSubagentSettleItem = {
+  label: string;
+  status: "completed" | "error";
+  error?: string;
+};
+
+export function parseSubagentSettleContext(
+  prompt: unknown,
+): ParsedSubagentSettleItem[] | undefined {
+  if (typeof prompt !== "string") return undefined;
+  if (
+    !prompt.includes("[Subagent Context]") &&
+    !prompt.includes("sourceTool=subagent_settle") &&
+    !prompt.includes("Child completion results:") &&
+    !prompt.includes("Child results awaiting delivery")
+  ) {
+    return undefined;
+  }
+
+  const items: ParsedSubagentSettleItem[] = [];
+  const parts = prompt.split(/\n(?=\d+\.\s+Child task)/);
+  for (const part of parts) {
+    if (!/^\d+\.\s+Child task/m.test(part)) continue;
+    let label: string | undefined;
+    const promptDataMatch = part.match(
+      /<prompt-data>\s*([^\n<]+)\s*<\/prompt-data>/,
+    );
+    if (promptDataMatch) {
+      label = promptDataMatch[1].trim();
+    } else {
+      const lineMatch = part.match(/^\d+\.\s+Child task[^:\n]*:\s*([^\n]+)/m);
+      if (
+        lineMatch &&
+        lineMatch[1].trim() &&
+        !lineMatch[1].includes("<prompt-data>")
+      ) {
+        label = lineMatch[1].trim();
+      }
+    }
+    if (!label) continue;
+
+    const statusMatch = part.match(/\bstatus:\s*([a-zA-Z0-9_-]+)/i);
+    const rawStatus = statusMatch ? statusMatch[1].toLowerCase() : "ok";
+    const isOk =
+      rawStatus === "ok" ||
+      rawStatus === "completed" ||
+      rawStatus === "success";
+
+    items.push({
+      label,
+      status: isOk ? "completed" : "error",
+      error: isOk ? undefined : rawStatus,
+    });
+  }
+
+  if (
+    items.length === 0 &&
+    prompt.includes("Child results awaiting delivery")
+  ) {
+    const lines = prompt.split("\n");
+    for (const line of lines) {
+      const outcomeMatch = line.match(/outcome=([a-zA-Z0-9_-]+)/);
+      const taskMatch = line.match(/task_json="([^"]+)"/);
+      if (outcomeMatch && taskMatch) {
+        const rawStatus = outcomeMatch[1].toLowerCase();
+        const isOk =
+          rawStatus === "ok" ||
+          rawStatus === "completed" ||
+          rawStatus === "success";
+        let taskLabel = taskMatch[1].trim();
+        if (taskLabel.startsWith("TASK")) {
+          taskLabel = taskLabel.slice(4).trim();
+        }
+        items.push({
+          label: taskLabel,
+          status: isOk ? "completed" : "error",
+          error: isOk ? undefined : rawStatus,
+        });
+      }
+    }
+  }
+
+  return items.length > 0 ? items : undefined;
+}
+
 export function getDiscordContextKey(
   sessionKey: string | undefined,
 ): string | undefined {

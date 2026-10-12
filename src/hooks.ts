@@ -17,6 +17,10 @@ import type {
   AgentPipelineEvent,
   BeforeCompactionEvent,
   AfterCompactionEvent,
+  SubagentContext,
+  SubagentSpawnedEvent,
+  SubagentProgressEvent,
+  SubagentEndedEvent,
 } from "./types.js";
 import { clearMaxDisplayTimer, clearSessionTimer } from "./helpers.js";
 import {
@@ -31,6 +35,7 @@ import {
   extractAgentIdFromSessionKey,
   parseActiveMemoryPromptContext,
   parseActiveMemoryToolEntries,
+  parseSubagentSettleContext,
 } from "./parser.js";
 import {
   activeMemoryRunIdsBySession,
@@ -222,6 +227,17 @@ export function createHookHandlers(deps: HookDeps) {
   // Initialize the ToolHistoryManager
   const toolHistoryManager = new ToolHistoryManager(config);
 
+  const subagentSessionMap = new Map<
+    string,
+    {
+      contextKey?: string;
+      requesterSessionKey?: string;
+      label: string;
+      agentId?: string;
+      task?: string;
+    }
+  >();
+
   function registerActiveMemoryRun(session: SessionEntry, runId: string): void {
     const activeMemoryRunIds =
       activeMemoryRunIdsBySession.get(session) ?? new Set<string>();
@@ -249,6 +265,54 @@ export function createHookHandlers(deps: HookDeps) {
       status,
       ...(durationMs === undefined ? {} : { durationMs }),
     });
+  }
+
+  function upsertSubagentToolGroup(
+    session: SessionEntry,
+    childEntries: ToolEntry[],
+  ): void {
+    const existingParent = session.toolHistory.find(
+      (entry) =>
+        entry.toolCallId === "subagents" || entry.toolName === "subagents",
+    );
+    const parentEntry: ToolEntry = existingParent ?? {
+      toolCallId: "subagents",
+      toolName: "subagents",
+      params: {},
+      status: "completed",
+    };
+
+    const existingChildren = toolHistoryManager.findSubagentChildEntries(
+      session.toolHistory,
+      "subagents",
+    );
+
+    const mergedChildren = [...existingChildren];
+    for (const child of childEntries) {
+      const idx = mergedChildren.findIndex(
+        (c) =>
+          c.toolCallId === child.toolCallId || c.toolName === child.toolName,
+      );
+      if (idx >= 0) {
+        const mergedParams = {
+          ...(mergedChildren[idx].params ?? {}),
+          ...(child.params ?? {}),
+        };
+        mergedChildren[idx] = {
+          ...mergedChildren[idx],
+          ...child,
+          params: mergedParams,
+        };
+      } else {
+        mergedChildren.push(child);
+      }
+    }
+
+    toolHistoryManager.replaceSubagentGroup(session.toolHistory, "subagents", [
+      parentEntry,
+      ...mergedChildren,
+    ]);
+    toolHistoryManager.trim(session.toolHistory);
   }
 
   function logHookEvent(
@@ -416,6 +480,14 @@ export function createHookHandlers(deps: HookDeps) {
       session.runId !== runId &&
       !activeMemoryRunIdsBySession.get(session)?.has(runId)
     ) {
+      if (session.hasPendingSubagents) {
+        session.supersededRunIds = new Set([
+          ...(session.supersededRunIds ?? []),
+          session.runId,
+        ]);
+        session.runId = runId;
+        return true;
+      }
       logger.debug("skip hook for stale run.", {
         contextKey: session.contextKey,
         expectedRunId: session.runId,
@@ -719,6 +791,55 @@ export function createHookHandlers(deps: HookDeps) {
           durationMs: nextDurationMs,
         });
       }
+      if (!event.error) {
+        if (event.toolName === "sessions_spawn") {
+          session.hasPendingSubagents = true;
+          session.confirmedDisplayState = {
+            ...(session.confirmedDisplayState ?? {}),
+            "group:subagents": "expanded",
+          };
+          session.monotonicSafetyFloor = {
+            ...(session.monotonicSafetyFloor ?? {}),
+            "group:subagents": "expanded",
+          };
+          const rawParams = event.params as Record<string, unknown> | undefined;
+          const label =
+            typeof rawParams?.label === "string" && rawParams.label.trim()
+              ? rawParams.label.trim()
+              : typeof rawParams?.taskName === "string" &&
+                  rawParams.taskName.trim()
+                ? rawParams.taskName.trim()
+                : typeof rawParams?.task === "string" && rawParams.task.trim()
+                  ? rawParams.task.trim()
+                  : event.toolCallId || "worker";
+          const agentId =
+            typeof rawParams?.agentId === "string" && rawParams.agentId.trim()
+              ? rawParams.agentId.trim()
+              : undefined;
+          const task =
+            typeof rawParams?.task === "string" && rawParams.task.trim()
+              ? rawParams.task.trim()
+              : undefined;
+
+          const subagentEntry: ToolEntry = {
+            toolCallId: `subagents:${label}`,
+            toolName: `subagents:${label}`,
+            params: { label, agentId, task },
+            status: "pending",
+          };
+          upsertSubagentToolGroup(session, [subagentEntry]);
+        } else if (event.toolName === "sessions_yield") {
+          session.hasPendingSubagents = true;
+          session.confirmedDisplayState = {
+            ...(session.confirmedDisplayState ?? {}),
+            "group:subagents": "expanded",
+          };
+          session.monotonicSafetyFloor = {
+            ...(session.monotonicSafetyFloor ?? {}),
+            "group:subagents": "expanded",
+          };
+        }
+      }
       await updateSessionStatus(session, false);
     }
   }
@@ -728,6 +849,60 @@ export function createHookHandlers(deps: HookDeps) {
     ctx: AgentContext,
   ): Promise<void> {
     if (shouldSkipSession(ctx, "llm_input")) return;
+
+    const settleItems = parseSubagentSettleContext(event.prompt);
+    if (settleItems && settleItems.length > 0) {
+      const contextKey = getDiscordContextKey(ctx.sessionKey);
+      if (contextKey) {
+        try {
+          const session = await store.resolveSession(
+            contextKey,
+            ctx.sessionKey,
+          );
+          if (session) {
+            const runId = event.runId ?? ctx.runId;
+            if (isSessionRunCurrent(session, runId)) {
+              session.hasPendingSubagents = true;
+              session.confirmedDisplayState = {
+                ...(session.confirmedDisplayState ?? {}),
+                "group:subagents": "expanded",
+              };
+              session.monotonicSafetyFloor = {
+                ...(session.monotonicSafetyFloor ?? {}),
+                "group:subagents": "expanded",
+              };
+              const childEntries: ToolEntry[] = settleItems.map((item) => {
+                const existing = session.toolHistory.find(
+                  (e) =>
+                    e.toolCallId === `subagents:${item.label}` ||
+                    e.toolName === `subagents:${item.label}`,
+                );
+                return {
+                  toolCallId: `subagents:${item.label}`,
+                  toolName: `subagents:${item.label}`,
+                  params: {
+                    label: item.label,
+                    agentId: existing?.params?.agentId,
+                    task: existing?.params?.task,
+                    ...(item.error ? { error: item.error } : {}),
+                  },
+                  status: item.status,
+                  error: item.error,
+                };
+              });
+              upsertSubagentToolGroup(session, childEntries);
+              await updateSessionStatus(session, session.finalized === true);
+            }
+          }
+        } catch (err) {
+          logger.warn("llm_input: failed to update subagent settle status.", {
+            sessionKey: ctx.sessionKey,
+            error: String(err),
+          });
+        }
+      }
+    }
+
     const parsed = parseActiveMemoryPromptContext(event.prompt);
     if (!parsed) return;
 
@@ -814,6 +989,12 @@ export function createHookHandlers(deps: HookDeps) {
     completeUnobservedActiveMemoryPlaceholder(session);
     finishPendingHindsightRecalls(session.toolHistory);
     finishPendingSkillHarness(session.toolHistory);
+    session.hasPendingSubagents = false;
+    for (const [key, val] of subagentSessionMap.entries()) {
+      if (val.contextKey === contextKey) {
+        subagentSessionMap.delete(key);
+      }
+    }
     session.finalized = true;
     await updateSessionStatus(session, true);
     return undefined;
@@ -1062,6 +1243,37 @@ export function createHookHandlers(deps: HookDeps) {
         }
       }
 
+      if (session.hasPendingSubagents) {
+        const subagentEntries = session.toolHistory.filter(
+          (entry) =>
+            entry.toolName === "subagents" ||
+            entry.toolName.startsWith("subagents:"),
+        );
+        if (subagentEntries.length === 0) {
+          subagentEntries.push({
+            toolCallId: "subagents",
+            toolName: "subagents",
+            params: {},
+            status: "pending",
+          });
+        }
+        session.toolHistory.splice(
+          0,
+          session.toolHistory.length,
+          ...subagentEntries,
+        );
+        session.confirmedDisplayState = {
+          ...(session.confirmedDisplayState ?? {}),
+          "group:subagents": "expanded",
+        };
+        session.monotonicSafetyFloor = {
+          ...(session.monotonicSafetyFloor ?? {}),
+          "group:subagents": "expanded",
+        };
+        await updateSessionStatus(session, false);
+        return;
+      }
+
       await resolveAndFinalize(
         ctx,
         AGENT_END_DELAY_MS,
@@ -1221,6 +1433,185 @@ export function createHookHandlers(deps: HookDeps) {
     }
   }
 
+  async function onSubagentSpawned(
+    event: SubagentSpawnedEvent,
+    ctx: SubagentContext,
+  ): Promise<void> {
+    const childSessionKey = event.childSessionKey;
+    const requesterSessionKey = ctx.requesterSessionKey;
+    const contextKey =
+      getDiscordContextKey(requesterSessionKey) ??
+      (event.requester?.channelId
+        ? `discord:channel:${event.requester.channelId}`
+        : undefined);
+
+    const label =
+      (typeof event.label === "string" && event.label.trim()) ||
+      (typeof event.agentId === "string" && event.agentId.trim()) ||
+      childSessionKey;
+
+    const agentId =
+      typeof event.agentId === "string" && event.agentId.trim()
+        ? event.agentId.trim()
+        : undefined;
+
+    if (!contextKey) return;
+    try {
+      const session = await store.resolveSession(
+        contextKey,
+        requesterSessionKey,
+      );
+      if (!session || session.finalized) return;
+
+      const existing = session.toolHistory.find(
+        (e) =>
+          e.toolCallId === `subagents:${label}` ||
+          e.toolName === `subagents:${label}`,
+      );
+      const effectiveAgentId = agentId ?? existing?.params?.agentId;
+      const effectiveTask = existing?.params?.task;
+
+      if (childSessionKey) {
+        subagentSessionMap.set(childSessionKey, {
+          contextKey,
+          requesterSessionKey,
+          label,
+          agentId: effectiveAgentId,
+          task: effectiveTask,
+        });
+      }
+
+      session.hasPendingSubagents = true;
+      session.confirmedDisplayState = {
+        ...(session.confirmedDisplayState ?? {}),
+        "group:subagents": "expanded",
+      };
+      session.monotonicSafetyFloor = {
+        ...(session.monotonicSafetyFloor ?? {}),
+        "group:subagents": "expanded",
+      };
+
+      const subagentEntry: ToolEntry = {
+        toolCallId: `subagents:${label}`,
+        toolName: `subagents:${label}`,
+        params: {
+          label,
+          agentId: effectiveAgentId,
+          task: effectiveTask,
+        },
+        status: existing?.status ?? "pending",
+      };
+      upsertSubagentToolGroup(session, [subagentEntry]);
+      await updateSessionStatus(session, false);
+    } catch (err) {
+      logger.warn("subagent_spawned: failed to update activity status", {
+        childSessionKey,
+        error: String(err),
+      });
+    }
+  }
+
+  async function handleSubagentOutcome(params: {
+    childSessionKey?: string;
+    outcome?: string;
+    error?: string;
+    requesterSessionKey?: string;
+  }): Promise<void> {
+    const childSessionKey = params.childSessionKey;
+    const tracked = childSessionKey
+      ? subagentSessionMap.get(childSessionKey)
+      : undefined;
+    const contextKey =
+      tracked?.contextKey ?? getDiscordContextKey(params.requesterSessionKey);
+    const requesterSessionKey =
+      tracked?.requesterSessionKey ?? params.requesterSessionKey;
+
+    if (!contextKey) return;
+    try {
+      const session = await store.resolveSession(
+        contextKey,
+        requesterSessionKey,
+      );
+      if (!session || session.finalized) return;
+
+      const label = tracked?.label;
+      const isOk = params.outcome === "ok";
+      const status = isOk ? "completed" : "error";
+      const error = isOk ? undefined : params.error || params.outcome;
+
+      let matched = false;
+      for (const entry of session.toolHistory) {
+        if (
+          label &&
+          (entry.toolCallId === `subagents:${label}` ||
+            entry.toolName === `subagents:${label}`)
+        ) {
+          entry.status = status;
+          entry.error = error;
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) {
+        const pendingChild = session.toolHistory.find(
+          (entry) =>
+            entry.toolName.startsWith("subagents:") &&
+            entry.status === "pending",
+        );
+        if (pendingChild) {
+          pendingChild.status = status;
+          pendingChild.error = error;
+          matched = true;
+        } else if (label) {
+          const childEntry: ToolEntry = {
+            toolCallId: `subagents:${label}`,
+            toolName: `subagents:${label}`,
+            params: {},
+            status,
+            error,
+          };
+          upsertSubagentToolGroup(session, [childEntry]);
+          matched = true;
+        }
+      }
+
+      if (matched) {
+        await updateSessionStatus(session, false);
+      }
+    } catch (err) {
+      logger.warn("subagent completion: failed to update activity status", {
+        childSessionKey,
+        error: String(err),
+      });
+    }
+  }
+
+  async function onSubagentProgress(
+    event: SubagentProgressEvent,
+    ctx: SubagentContext,
+  ): Promise<void> {
+    if (event.phase !== "ended") return;
+    await handleSubagentOutcome({
+      childSessionKey: event.childSessionKey,
+      outcome: event.outcome,
+      requesterSessionKey: ctx.requesterSessionKey,
+    });
+  }
+
+  async function onSubagentEnded(
+    event: SubagentEndedEvent,
+    ctx: SubagentContext,
+  ): Promise<void> {
+    const childSessionKey = event.targetSessionKey || ctx.childSessionKey;
+    await handleSubagentOutcome({
+      childSessionKey,
+      outcome: event.outcome ?? (event.error ? "error" : "ok"),
+      error: event.error,
+      requesterSessionKey: ctx.requesterSessionKey,
+    });
+  }
+
   return Object.freeze({
     onHindsightPipelineEvent,
     onHindsightRecallEvent: onHindsightPipelineEvent,
@@ -1235,5 +1626,8 @@ export function createHookHandlers(deps: HookDeps) {
     onBeforeCompaction,
     onAfterCompaction,
     onSkillHarnessPipelineEvent,
+    onSubagentSpawned,
+    onSubagentProgress,
+    onSubagentEnded,
   });
 }
