@@ -94,7 +94,7 @@ describe("plugin", () => {
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "discord-activity:hindsight-pipeline",
-        streams: ["plugin:hindsight"],
+        streams: ["plugin:hindsight-memory"],
         handle: expect.any(Function),
       }),
     );

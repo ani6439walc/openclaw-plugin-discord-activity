@@ -18,12 +18,12 @@ function recallEvent(
   envelope: Partial<AgentPipelineEvent> = {},
 ): AgentPipelineEvent {
   return {
-    stream: "plugin:hindsight",
+    stream: "plugin:hindsight-memory",
     sessionKey,
     runId: "run-1",
     data: {
       kind: "hindsight.recall",
-      pluginId: "hindsight",
+      pluginId: "hindsight-memory",
       recallId: "recall-1",
       state: "started",
       ...data,
@@ -322,9 +322,11 @@ describe("Hindsight event validation", () => {
 
   it.each([
     recallEvent({}, { stream: "other", runId: "run-1" }),
+    recallEvent({}, { stream: "plugin:hindsight", runId: "run-1" }),
     recallEvent({}, { stream: "hindsight-openclaw.recall", runId: "run-1" }),
     recallEvent({}, { runId: "" }),
     recallEvent({ pluginId: "other" }),
+    recallEvent({ pluginId: "hindsight" }),
     recallEvent({ pluginId: "hindsight-openclaw" }),
     recallEvent({ kind: "other" }),
     recallEvent({ recallId: "" }),

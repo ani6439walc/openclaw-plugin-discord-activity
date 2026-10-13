@@ -1,6 +1,6 @@
 import type { AgentPipelineEvent, ToolEntry } from "./types.js";
 
-export const HINDSIGHT_EVENT_STREAM = "plugin:hindsight";
+export const HINDSIGHT_EVENT_STREAM = "plugin:hindsight-memory";
 export const HINDSIGHT_TOOL = "hindsight";
 
 function nonEmptyString(value: unknown): value is string {
@@ -17,7 +17,8 @@ export function parseHindsightRecallEvent(
   const data = event.data;
   if (!data || typeof data !== "object" || data.kind !== "hindsight.recall")
     return;
-  if (data.pluginId !== undefined && data.pluginId !== "hindsight") return;
+  if (data.pluginId !== undefined && data.pluginId !== "hindsight-memory")
+    return;
   if (
     typeof data.recallId !== "string" ||
     !/^[a-zA-Z0-9_-]{1,128}$/.test(data.recallId)
