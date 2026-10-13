@@ -19,8 +19,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 function createBoundedHistory() {
   return [
     createToolEntry({
-      toolCallId: "active-memory:result",
-      toolName: "active-memory:result",
+      toolCallId: "hindsight:result",
+      toolName: "hindsight:result",
       params: { text: `memory-${"m".repeat(800)}` },
     }),
     createToolEntry({
@@ -369,8 +369,8 @@ describe("updateStatusMessage", () => {
     const toolHistory = [
       ...Array.from({ length: 7 }, (_, index) =>
         createToolEntry({
-          toolCallId: `active-memory:mem_${index}`,
-          toolName: `active-memory:memory_search_${index}`,
+          toolCallId: `hindsight:mem_${index}`,
+          toolName: `hindsight:memory_search_${index}`,
           params: { query: `memory ${index}` },
         }),
       ),
@@ -393,7 +393,7 @@ describe("updateStatusMessage", () => {
     expect(session.toolHistory).toHaveLength(14);
     expect(session.lastRenderedContent).not.toContain("memory_search_0");
     expect(session.lastRenderedContent).not.toContain("memory_search_6");
-    expect(session.lastRenderedContent).not.toContain("🧩 active-memory");
+    expect(session.lastRenderedContent).not.toContain("🧠 hindsight");
     expect(session.lastRenderedContent).not.toContain("normal_tool_0");
     expect(session.lastRenderedContent).toContain("normal_tool_1");
   });
@@ -412,9 +412,7 @@ describe("updateStatusMessage", () => {
 
     await updateStatusMessage(session, () => "token", true, undefined, 100);
 
-    expect(session.confirmedDisplayState?.["group:active-memory"]).toBe(
-      "removed",
-    );
+    expect(session.confirmedDisplayState?.["group:hindsight"]).toBe("removed");
     expect(session.monotonicSafetyFloor).toBeUndefined();
   });
 
@@ -518,9 +516,7 @@ describe("updateStatusMessage", () => {
     await uncertainUpdate;
 
     expect(session.confirmedDisplayState).toBeUndefined();
-    expect(session.monotonicSafetyFloor?.["group:active-memory"]).toBe(
-      "removed",
-    );
+    expect(session.monotonicSafetyFloor?.["group:hindsight"]).toBe("removed");
     expect(session.lastRenderedContent).toBe("old-content");
 
     session.toolHistory = [
@@ -532,10 +528,8 @@ describe("updateStatusMessage", () => {
     const retryBody = JSON.parse(
       String((fetchMock.mock.calls[3]?.[1] as RequestInit).body),
     ) as { content: string };
-    expect(retryBody.content).not.toContain("active-memory");
-    expect(session.confirmedDisplayState?.["group:active-memory"]).toBe(
-      "removed",
-    );
+    expect(retryBody.content).not.toContain("hindsight");
+    expect(session.confirmedDisplayState?.["group:hindsight"]).toBe("removed");
   });
 
   it("does not use the unchanged-content shortcut after an uncertain edit", async () => {
@@ -643,9 +637,7 @@ describe("updateStatusMessage", () => {
     const uncertainNonce = session.statusCreateNonce;
 
     expect(uncertainNonce).toEqual(expect.any(String));
-    expect(session.monotonicSafetyFloor?.["group:active-memory"]).toBe(
-      "removed",
-    );
+    expect(session.monotonicSafetyFloor?.["group:hindsight"]).toBe("removed");
 
     await updateStatusMessage(session, () => "", true, undefined, 100);
     expect(session.statusCreateNonce).toBe(uncertainNonce);
@@ -666,9 +658,7 @@ describe("updateStatusMessage", () => {
     expect((fetchMock.mock.calls[4]?.[1] as RequestInit).method).toBe("PATCH");
     expect(session.statusMessageId).toBe("status_1");
     expect(session.statusCreateNonce).toBeUndefined();
-    expect(session.confirmedDisplayState?.["group:active-memory"]).toBe(
-      "removed",
-    );
+    expect(session.confirmedDisplayState?.["group:hindsight"]).toBe("removed");
   });
 
   it("does not commit a deferred PATCH outcome into a replacement session", async () => {

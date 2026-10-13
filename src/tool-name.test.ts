@@ -36,7 +36,7 @@ describe("tool-name", () => {
       expect(getDisplayToolName("bash")).toBe("bash");
       expect(getDisplayToolName("web_search")).toBe("web_search");
       expect(getDisplayToolName("read")).toBe("read");
-      expect(getDisplayToolName("active-memory")).toBe("active-memory");
+      expect(getDisplayToolName("skill-harness")).toBe("skill-harness");
     });
 
     it("returns openclaw suffix for openclaw tools", () => {

@@ -43,11 +43,11 @@ describe("status block display state", () => {
     expect(second).not.toBe(first);
     expect(
       mergeStatusDisplayStates(
-        { "group:active-memory": "collapsed", "tool:call_1": "removed" },
-        { "group:active-memory": "expanded", "tool:call_2": "collapsed" },
+        { "group:hindsight": "collapsed", "tool:call_1": "removed" },
+        { "group:hindsight": "expanded", "tool:call_2": "collapsed" },
       ),
     ).toEqual({
-      "group:active-memory": "collapsed",
+      "group:hindsight": "collapsed",
       "tool:call_1": "removed",
       "tool:call_2": "collapsed",
     });
@@ -55,13 +55,13 @@ describe("status block display state", () => {
 
   it("accepts a deep-frozen prior state without mutation", () => {
     const prior = Object.freeze({
-      "group:active-memory": "collapsed" as const,
+      "group:hindsight": "collapsed" as const,
       "group:skill-harness": "removed" as const,
     });
     const history = [
       makeEntry({
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "hindsight:result",
+        toolName: "hindsight:result",
         params: { text: "memory" },
         status: "completed",
       }),
@@ -75,11 +75,11 @@ describe("status block display state", () => {
 
     const result = renderStatusContentWithState(history, true, 1_700, prior);
 
-    expect(stripAnsi(result.content)).toContain("active-memory ▸ ✔");
+    expect(stripAnsi(result.content)).toContain("hindsight ▸ ✔");
     expect(stripAnsi(result.content)).not.toContain("skill-harness");
     expect(result.displayState).toEqual(prior);
     expect(prior).toEqual({
-      "group:active-memory": "collapsed",
+      "group:hindsight": "collapsed",
       "group:skill-harness": "removed",
     });
   });
@@ -535,8 +535,8 @@ describe("display-value formatting", () => {
     const result = renderStatusContent(
       [
         makeEntry({
-          toolCallId: "active-memory:unsafe",
-          toolName: "active-memory:read\n\u001b[31mred```",
+          toolCallId: "hindsight:unsafe",
+          toolName: "hindsight:read\n\u001b[31mred```",
           params: {},
           status: "completed",
         }),
@@ -707,14 +707,14 @@ describe("compact scalar rows", () => {
     );
   });
 
-  it.each(["memory_search", "active-memory:memory_search"])(
+  it.each(["memory_search", "hindsight:memory_search"])(
     "packs %s corpus with numeric metadata",
     (toolName) => {
       const result = stripAnsi(
         renderStatusContent(
           [
             makeEntry({
-              toolCallId: "active-memory:search",
+              toolCallId: "hindsight:search",
               toolName,
               params: {
                 minScore: 0.2,
@@ -856,29 +856,29 @@ describe("ANSI internal group contract", () => {
     const result = renderStatusContent(
       [
         makeEntry({
-          toolCallId: "active-memory",
-          toolName: "active-memory",
+          toolCallId: "hindsight",
+          toolName: "hindsight",
           params: {},
           status: "error",
           error: "parent timeout",
         }),
         makeEntry({
-          toolCallId: "active-memory:search",
-          toolName: "active-memory:memory_search",
+          toolCallId: "hindsight:search",
+          toolName: "hindsight:memory_search",
           params: { query: "hello", limit: 5 },
           status: "completed",
           durationMs: 100,
         }),
         makeEntry({
-          toolCallId: "active-memory:write",
-          toolName: "active-memory:memory_write",
+          toolCallId: "hindsight:write",
+          toolName: "hindsight:memory_write",
           params: {},
           status: "error",
           error: "permission denied",
         }),
         makeEntry({
-          toolCallId: "active-memory:result",
-          toolName: "active-memory:result",
+          toolCallId: "hindsight:result",
+          toolName: "hindsight:result",
           params: { text: "first line\nsecond line" },
           status: "completed",
         }),
@@ -888,7 +888,7 @@ describe("ANSI internal group contract", () => {
 
     expect(stripAnsi(result)).toContain(
       [
-        "🧩 active-memory ▾ ♻︎",
+        "🧠 hindsight ▾ ♻︎",
         "    ├─ memory_search ✔ [100ms]",
         "    │   └─ limit: 5 · query: hello",
         "    ├─ memory_write ✘",
@@ -900,7 +900,7 @@ describe("ANSI internal group contract", () => {
       ].join("\n"),
     );
     expect(result).toContain(
-      `${BOLD_CYAN}🧩 active-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+      `${BOLD_CYAN}🧠 hindsight${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
     expect(result).toContain(
       `${CYAN}memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,
@@ -938,15 +938,15 @@ describe("group wall-clock duration", () => {
       renderStatusContent(
         [
           makeEntry({
-            toolCallId: "active-memory",
-            toolName: "active-memory",
+            toolCallId: "hindsight",
+            toolName: "hindsight",
             params: {},
             status: "completed",
             durationMs: 9_310,
           }),
           makeEntry({
             toolCallId: "memory-1",
-            toolName: "active-memory:memory_search",
+            toolName: "hindsight:memory_search",
             params: {},
             status: "completed",
             startedAtMs: 1_000,
@@ -957,27 +957,27 @@ describe("group wall-clock duration", () => {
       ),
     );
 
-    expect(result.split("\n")[1]).toBe("🧩 active-memory ▾ ✔ [9.31s]");
+    expect(result.split("\n")[1]).toBe("🧠 hindsight ▾ ✔ [9.31s]");
   });
 
   it.each([
     ["pending", "←"],
     ["completed", "✔"],
   ] as const)(
-    "does not derive active-memory group duration from children when its parent is %s without a duration",
+    "does not derive hindsight group duration from children when its parent is %s without a duration",
     (status, suffix) => {
       const result = stripAnsi(
         renderStatusContent(
           [
             makeEntry({
-              toolCallId: "active-memory",
-              toolName: "active-memory",
+              toolCallId: "hindsight",
+              toolName: "hindsight",
               params: {},
               status,
             }),
             makeEntry({
               toolCallId: "memory-1",
-              toolName: "active-memory:memory_search",
+              toolName: "hindsight:memory_search",
               params: {},
               status: "completed",
               startedAtMs: 1_000,
@@ -988,7 +988,7 @@ describe("group wall-clock duration", () => {
         ),
       );
 
-      expect(result.split("\n")[1]).toBe(`🧩 active-memory ▾ ${suffix}`);
+      expect(result.split("\n")[1]).toBe(`🧠 hindsight ▾ ${suffix}`);
     },
   );
 
@@ -1307,38 +1307,38 @@ describe("renderStatusContent", () => {
     expect(result).toContain("♻︎");
   });
 
-  it("renders active-memory group with completed suffix", () => {
+  it("renders hindsight group with completed suffix", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "am1",
-        toolName: "active-memory:memory_search",
+        toolCallId: "recall-1",
+        toolName: "hindsight:memory_search",
         params: { query: "test" },
         status: "completed",
       },
       {
-        toolCallId: "am2",
-        toolName: "active-memory:memory_read",
+        toolCallId: "recall-2",
+        toolName: "hindsight:memory_read",
         params: { id: "123" },
         status: "completed",
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✔");
+    expect(stripAnsi(result)).toContain("🧠 hindsight ▾ ✔");
     expect(result).toContain("memory_search");
     expect(result).toContain("memory_read");
   });
 
-  it("renders active-memory result as the last nested item", () => {
+  it("renders hindsight result as the last nested item", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "am1",
-        toolName: "active-memory:memory_search",
+        toolCallId: "recall-1",
+        toolName: "hindsight:memory_search",
         params: { query: "test" },
         status: "completed",
       },
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "hindsight:result",
+        toolName: "hindsight:result",
         params: { text: "每日早報重跑已觸發" },
         status: "completed",
       },
@@ -1352,12 +1352,12 @@ describe("renderStatusContent", () => {
     );
   });
 
-  it("applies the shared field limit to an active-memory result", () => {
+  it("applies the shared field limit to a hindsight result", () => {
     const text = `result-${"x".repeat(240)}-end`;
     const entries: ToolEntry[] = [
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "hindsight:result",
+        toolName: "hindsight:result",
         params: { text },
         status: "completed",
       },
@@ -1373,14 +1373,14 @@ describe("renderStatusContent", () => {
   it("renders subagent result entries after other nested tools regardless of history order", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "hindsight:result",
+        toolName: "hindsight:result",
         params: { text: "NONE" },
         status: "completed",
       },
       {
-        toolCallId: "active-memory:mem1",
-        toolName: "active-memory:memory_search",
+        toolCallId: "hindsight:mem1",
+        toolName: "hindsight:memory_search",
         params: { query: "7-11 賣貨便 出貨" },
         status: "completed",
       },
@@ -1409,11 +1409,11 @@ describe("renderStatusContent", () => {
   });
 
   it("shows up to three entries per subagent group before the main agent starts", () => {
-    const activeMemoryEntries: ToolEntry[] = Array.from(
+    const hindsightEntries: ToolEntry[] = Array.from(
       { length: 7 },
       (_, index) => ({
-        toolCallId: `active-memory:mem_${index}`,
-        toolName: `active-memory:memory_search_${index}`,
+        toolCallId: `hindsight:mem_${index}`,
+        toolName: `hindsight:memory_search_${index}`,
         params: { query: `memory ${index}` },
         status: "completed",
       }),
@@ -1429,7 +1429,7 @@ describe("renderStatusContent", () => {
     );
 
     const result = renderStatusContent(
-      [...activeMemoryEntries, ...skillHarnessEntries],
+      [...hindsightEntries, ...skillHarnessEntries],
       true,
     );
 
@@ -1442,8 +1442,8 @@ describe("renderStatusContent", () => {
   it("keeps each subagent child limit independent from outer status slots", () => {
     const subagentEntries: ToolEntry[] = [
       ...Array.from({ length: 5 }, (_, index) => ({
-        toolCallId: `active-memory:mem_${index}`,
-        toolName: `active-memory:memory_search_${index}`,
+        toolCallId: `hindsight:mem_${index}`,
+        toolName: `hindsight:memory_search_${index}`,
         params: {},
         status: "completed" as const,
       })),
@@ -1467,7 +1467,7 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✔");
+    expect(stripAnsi(result)).toContain("🧠 hindsight ▾ ✔");
     expect(stripAnsi(result)).toContain("💡 skill-harness ▾ ✔");
     expect(result).not.toContain("memory_search_0");
     expect(result).not.toContain("memory_search_1");
@@ -1480,8 +1480,8 @@ describe("renderStatusContent", () => {
   it("rolls out whole subagent groups as normal tools fill six outer slots", () => {
     const subagentEntries = [
       makeEntry({
-        toolCallId: "active-memory:memory",
-        toolName: "active-memory:memory_search",
+        toolCallId: "hindsight:memory",
+        toolName: "hindsight:memory_search",
         status: "completed",
       }),
       makeEntry({
@@ -1502,7 +1502,7 @@ describe("renderStatusContent", () => {
       [...subagentEntries, ...normalEntries.slice(0, 5)],
       true,
     );
-    expect(withFiveNormalTools).not.toContain("🧩 active-memory");
+    expect(withFiveNormalTools).not.toContain("🧠 hindsight");
     expect(stripAnsi(withFiveNormalTools)).toContain("💡 skill-harness ▾ ✔");
     expect(withFiveNormalTools).toContain("topic-triage");
     expect(withFiveNormalTools).toContain("normal_tool_4");
@@ -1511,7 +1511,7 @@ describe("renderStatusContent", () => {
       [...subagentEntries, ...normalEntries],
       true,
     );
-    expect(withSixNormalTools).not.toContain("🧩 active-memory");
+    expect(withSixNormalTools).not.toContain("🧠 hindsight");
     expect(withSixNormalTools).not.toContain("💡 skill-harness");
     expect(withSixNormalTools).toContain("normal_tool_0");
     expect(withSixNormalTools).toContain("normal_tool_5");
@@ -1520,14 +1520,14 @@ describe("renderStatusContent", () => {
   it("keeps subagent result entries at the end when limiting child entries", () => {
     const entries: ToolEntry[] = [
       ...Array.from({ length: 7 }, (_, index) => ({
-        toolCallId: `active-memory:mem_${index}`,
-        toolName: `active-memory:memory_search_${index}`,
+        toolCallId: `hindsight:mem_${index}`,
+        toolName: `hindsight:memory_search_${index}`,
         params: { query: `memory ${index}` },
         status: "completed" as const,
       })),
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "hindsight:result",
+        toolName: "hindsight:result",
         params: { text: "final result" },
         status: "completed",
       },
@@ -1543,17 +1543,17 @@ describe("renderStatusContent", () => {
     );
   });
 
-  it("renders active-memory group with pending suffix", () => {
+  it("renders hindsight group with pending suffix", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "hindsight",
+        toolName: "hindsight",
         params: {},
         status: "pending",
       },
     ];
     const result = renderStatusContent(entries, false);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ←");
+    expect(stripAnsi(result)).toContain("🧠 hindsight ▾ ←");
   });
 
   it("renders skill-harness group with pending suffix", () => {
@@ -1809,40 +1809,40 @@ describe("renderStatusContent", () => {
     expect(result).toContain("topic: |");
   });
 
-  it("renders active-memory group with error suffix", () => {
+  it("renders hindsight group with error suffix", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "hindsight",
+        toolName: "hindsight",
         params: {},
         status: "error",
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✘");
+    expect(stripAnsi(result)).toContain("🧠 hindsight ▾ ✘");
   });
 
-  it("renders active-memory error with error message detail", () => {
+  it("renders hindsight error with error message detail", () => {
     const entries: ToolEntry[] = [
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "hindsight",
+        toolName: "hindsight",
         params: {},
         status: "error",
         error: "timed out after 15000ms",
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("🧩 active-memory ▾ ✘");
+    expect(stripAnsi(result)).toContain("🧠 hindsight ▾ ✘");
     expect(stripAnsi(result)).toContain("error: timed out after 15000ms");
   });
 
-  it("renders mixed normal and active-memory entries", () => {
+  it("renders mixed normal and hindsight entries", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "web_search", status: "completed" }),
       {
-        toolCallId: "am1",
-        toolName: "active-memory:search",
+        toolCallId: "recall-1",
+        toolName: "hindsight:search",
         params: {},
         status: "completed",
       },
@@ -1850,25 +1850,13 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, false);
     expect(result).toContain("web_search");
-    expect(result).toContain("active-memory");
+    expect(result).toContain("hindsight");
     expect(result).toContain("read");
   });
 
   it("renders subagent groups in first-appearance order before normal tools", () => {
     const entries: ToolEntry[] = [
       makeEntry({ toolName: "read", status: "pending" }),
-      {
-        toolCallId: "active-memory:mem1",
-        toolName: "active-memory:memory_search",
-        params: { query: "test" },
-        status: "completed",
-      },
-      {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
-        params: { text: "result" },
-        status: "completed",
-      },
       {
         toolCallId: "skill-harness:result",
         toolName: "skill-harness:result",
@@ -1884,14 +1872,11 @@ describe("renderStatusContent", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    const amPos = result.indexOf("active-memory");
     const ihPos = result.indexOf("skill-harness");
     const hsPos = result.indexOf("hindsight");
     const readPos = result.indexOf("read");
-    expect(amPos).toBeLessThan(ihPos);
     expect(ihPos).toBeLessThan(hsPos);
     expect(hsPos).toBeLessThan(readPos);
-    expect(amPos).toBeGreaterThanOrEqual(0);
     expect(ihPos).toBeGreaterThanOrEqual(0);
     expect(hsPos).toBeGreaterThanOrEqual(0);
     expect(readPos).toBeGreaterThanOrEqual(0);
@@ -1912,24 +1897,16 @@ describe("renderStatusContent", () => {
         params: { result: "8 memories recalled" },
         status: "completed",
       },
-      {
-        toolCallId: "active-memory:mem1",
-        toolName: "active-memory:memory_search",
-        params: { query: "test" },
-        status: "completed",
-      },
     ];
     const result = renderStatusContent(entries, true);
     const ihPos = result.indexOf("skill-harness");
     const hsPos = result.indexOf("hindsight");
-    const amPos = result.indexOf("active-memory");
     const bashPos = result.indexOf("bash");
     expect(ihPos).toBeLessThan(hsPos);
-    expect(hsPos).toBeLessThan(amPos);
-    expect(amPos).toBeLessThan(bashPos);
+    expect(hsPos).toBeLessThan(bashPos);
   });
 
-  it("renders hindsight first when hindsight appears before skill-harness and active-memory", () => {
+  it("renders hindsight first when hindsight appears before skill-harness", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "hindsight:1",
@@ -1945,23 +1922,15 @@ describe("renderStatusContent", () => {
         status: "completed",
         durationMs: 2920,
       },
-      {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
-        params: { text: "cached profile" },
-        status: "completed",
-      },
       makeEntry({ toolName: "bash", status: "completed" }),
     ];
     const result = renderStatusContent(entries, true);
     const plain = stripAnsi(result);
     const hsPos = result.indexOf("hindsight");
     const ihPos = result.indexOf("skill-harness");
-    const amPos = result.indexOf("active-memory");
     const bashPos = result.indexOf("bash");
     expect(hsPos).toBeLessThan(ihPos);
-    expect(ihPos).toBeLessThan(amPos);
-    expect(amPos).toBeLessThan(bashPos);
+    expect(ihPos).toBeLessThan(bashPos);
     expect(plain).toContain("🧠 hindsight ▾ ✔ [1.57s]");
     expect(plain).toContain("result: 8 memories recalled");
     expect(plain).toContain("💡 skill-harness ▾ ✔ [2.92s]");

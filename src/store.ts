@@ -16,11 +16,7 @@ export function createSessionStore() {
     return session.toolHistory.some(
       (t) =>
         t.toolCallId !== "init" &&
-        !(
-          (t.toolCallId === "active-memory" ||
-            t.toolCallId === "skill-harness") &&
-          t.status === "pending"
-        ),
+        !(t.toolCallId === "skill-harness" && t.status === "pending"),
     );
   }
 

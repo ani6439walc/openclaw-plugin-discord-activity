@@ -3,7 +3,7 @@
 [![OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-blue.svg)](https://clawhub.ai/wei840222/plugins/discord-activity)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Discord Activity is an OpenClaw plugin that shows live agent and tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `active-memory`, `skill-harness`, and Hindsight recall status, then removes the status message after the agent finishes.
+Discord Activity is an OpenClaw plugin that shows live agent and tool activity in Discord. For each Discord conversation, it creates one ANSI-colored status message, edits that message as tools run, folds in internal `skill-harness` and Hindsight recall status, then removes the status message after the agent finishes.
 
 ## Why this exists
 
@@ -15,7 +15,7 @@ It helps answer:
 - Which tool or internal pipeline phase is running?
 - Did a tool complete, fail, or get reconciled after arriving before a Discord session existed?
 - How long did completed tools take?
-- Are internal companion workflows such as `active-memory` and `skill-harness` still running?
+- Are internal companion workflows such as `skill-harness` and Hindsight still running?
 
 The plugin is designed to fail open: if Discord credentials are missing or Discord API calls fail, it logs the problem and skips status updates instead of blocking the agent flow.
 
@@ -25,18 +25,9 @@ Status messages are Discord ANSI code blocks. The latest non-empty `progress_car
 
 ### Example display
 
-The image below is an example of how a live tool-status message appears in Discord:
-
-![Discord Activity showing nested companion workflows, tool durations, compact metadata, and exact truncation hints](https://raw.githubusercontent.com/ani6439walc/openclaw-plugin-discord-activity/main/example.png)
-
-This example shows `active-memory` and `skill-harness` groups, nested tool parameters, compact metadata rows, duration badges, and exact character-omission hints in one continuously edited Discord message. The same structure in simplified text form is:
+A simplified live status message looks like this:
 
 ```ansi
-🧩 active-memory ▾ ✔ [120ms]
-    ├─ memory_search ✔ [120ms]
-    │   └─ query: project notes
-    └─ result: Relevant memory found
-
 💡 skill-harness ▾ ✔ [450ms]
     └─ result: 2 skills selected: handoff, hindsight-docs (.92)
 
@@ -56,19 +47,16 @@ Status markers:
 Rendering rules to preserve:
 
 - The latest `progress_card` tool call is rendered as one protected `📋 progress` block above every activity entry instead of appearing as an ordinary tool. Its Markdown note is flattened into a plain-text summary on a separate non-bold blue line below the bold cyan tool-style header, with formatting markers, links, raw HTML, and line breaks removed; a leading `<progress aria-label="…">` contributes a compact label when no plan exists, and every valid plan step remains ordered with `✓` completed, `→` in progress, or `·` pending. A later empty card clears the block. Under the hard message limit, ordinary blocks are collapsed/removed before the progress note is compacted; plan steps remain visible whenever the protected content can fit.
-- Normal tools render after `active-memory` and `skill-harness` groups.
-- `active-memory` and `skill-harness` group order is stable.
+- Normal tools render after `skill-harness` and Hindsight groups.
+- `skill-harness` and Hindsight group order is stable.
 - Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.
 - A failed main agent renders once as `💥 agent ✘` at the bottom. It occupies one slot in the shared 6-entry budget, has no detail row, and is protected from normal block removal.
 - `skill-harness` renders as a single-row status entry with fixed format (`status` / `result` / `error`). During pipeline execution it renders current phase status and confidence (`(.xx)`), on completion it renders selected skills with confidence, and on failure/interruption it renders error.
 - The `skill-harness` status follows its explicit lifecycle: it remains `←` with live phase status while running and changes to `✔` with selected skills and confidence when `pipeline:completed` arrives. `pipeline:failed` or unobserved completion renders `✘` with error text.
-- `active-memory` result text renders as `result: <text>`. Fastpath context observed through `llm_input` renders as `fastpath`: a memory hit uses `status: observed`, while the explicit no-recall and unavailable outcomes use `status: skipped` and `status: unavailable`. Direct-message sessions also show sanitized, bounded memory text; shared or unknown session types retain status only. If no observable Active Memory child or prompt context appears before finalization, the group falls back to `status: inferred` without claiming a memory hit.
-- Failed `active-memory` child tools keep their own phase-local errors and durations. A distinct parent failure is also shown; identical parent/child error text is rendered once.
-- The `active-memory` group remains `←` while its parent awaits terminal `agent_end`, even when all child tools have completed; a failed child may still render the group as `✘`. A successful terminal parent changes the group to `✔`. Group duration is shown only from that terminal parent, so a pending parent or one without `durationMs` leaves the group duration blank while individual child durations remain visible.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - The `skill-harness` group duration comes directly from the producer's terminal parent lifecycle event. Individual phase durations still fall back to locally observed start/completion timing when the event does not provide `durationMs`.
 - Durations up to and including 1000ms render in milliseconds. Durations above 1000ms and under 10 seconds round to at most two decimal places; durations of 10 seconds or more round to at most one decimal place. Trailing fractional zeros and a leftover decimal point are omitted.
-- Status output keeps up to 3 child entries independently inside each of the `active-memory` and `skill-harness` groups. Internal groups, normal tools, and a main-agent failure share one 6-entry outer budget; the failure uses the last slot when present. Older eligible blocks are removed from the top without mutating retained `toolHistory`.
+- Status output keeps up to 3 child entries independently inside each of the `skill-harness` and Hindsight groups. Internal groups, normal tools, and a main-agent failure share one 6-entry outer budget; the failure uses the last slot when present. Older eligible blocks are removed from the top without mutating retained `toolHistory`.
 - Every visible field keeps at most 70 Unicode code points after sanitization and serialization. Truncated values append an exact gray `(+N chars)` hint (`char` when singular) without splitting surrogate pairs. Producer field order and supplied line breaks are preserved within that fixed prefix; the renderer does not add hard wraps.
 - Compact metadata rows pack any single-line fields whose total formatted width (key + value + colon/space/omission hint) is less than or equal to 34 characters, regardless of their data types.
 - Every internal group and normal tool header shows a non-bold light-gray disclosure marker: `▾` while details are expanded and `▸` after bounding collapses the block. A stable per-entry display identity keeps each block monotonic within one session generation: `expanded → collapsed → removed`. Confirmed Discord mutations advance confirmed state; uncertain delivery advances a conservative safety floor; later frames cannot resurrect or re-expand a degraded block.
@@ -85,9 +73,8 @@ The plugin listens to OpenClaw runtime events and maps them to one active Discor
 4. **`after_tool_call`** marks the matching entry completed, errored, or orphan-reconciled, preserves or derives completed duration data, and updates the status message.
 5. **`message_sending`** finalizes visible status before the final user-facing reply is sent.
 6. **`before_compaction` / `after_compaction`** preserve the active status across context compaction, show the compaction as pending/completed with duration, cancel attempt-level cleanup, and suspend the idle timer until the compacted run resumes.
-7. **`llm_input`** observes only a complete `<active_memory_plugin>` prompt block, never logs the full assembled prompt, and upgrades the Active Memory fastpath from inferred to observed. Memory text is retained only for canonical Discord direct-message sessions.
-8. **Main `agent_end`** records and displays the concrete main-agent error, owns main-session finalization and schedules cleanup, and captures final `active-memory` output and failure details from its internal session.
-9. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
+7. **Main `agent_end`** records and displays the concrete main-agent error, owns main-session finalization, and schedules cleanup.
+8. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. The plugin intentionally ignores legacy `skill-harness` `agent_end` result rendering.
 
 Session and race-safety behavior:
 
@@ -220,7 +207,7 @@ This release targets OpenClaw/plugin SDK `2026.6.11`, declares `2026.6.11` as th
 | `orphanTtlSeconds`       | `number` | `300`   | Time to keep orphaned tool calls while waiting for a session link.                                                                                           |
 | `replyMode`              | `string` | `all`   | `all` replies wherever a source message exists; `direct` replies only in canonical private-message sessions, while channel/group statuses remain standalone. |
 
-Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `active-memory` and `skill-harness` group.
+Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `skill-harness` and Hindsight group.
 
 ## Companion workflows
 

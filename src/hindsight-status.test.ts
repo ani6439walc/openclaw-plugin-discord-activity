@@ -51,7 +51,6 @@ describe("Hindsight recall status", () => {
       orphans: createOrphanManager(),
       getToken: () => "test-token",
       config: resolveConfig({}),
-      isActiveMemoryEnabled: () => false,
       isSkillHarnessEnabled: () => false,
     });
     await handlers.onMessageReceived(

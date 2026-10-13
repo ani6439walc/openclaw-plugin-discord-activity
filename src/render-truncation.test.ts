@@ -220,12 +220,12 @@ describe("bounded status rendering", () => {
 
   it("marks outer-budget-hidden internal groups as removed without a marker", () => {
     const history: ToolEntry[] = [
-      makeEntry("memory-parent", {}, { toolName: "active-memory" }),
+      makeEntry("memory-parent", {}, { toolName: "hindsight" }),
       makeEntry(
         "memory-child",
         {},
         {
-          toolName: "active-memory:memory_search",
+          toolName: "hindsight:memory_search",
         },
       ),
       makeEntry("harness-parent", {}, { toolName: "skill-harness" }),
@@ -241,9 +241,9 @@ describe("bounded status rendering", () => {
     const result = renderStatusContentWithState(history, false);
     const plain = stripAnsi(result.content);
 
-    expect(plain).not.toContain("active-memory");
+    expect(plain).not.toContain("hindsight");
     expect(plain).toContain("skill-harness");
-    expect(result.displayState["group:active-memory"]).toBe("removed");
+    expect(result.displayState["group:hindsight"]).toBe("removed");
     assertNoGlobalOmissionMarker(result.content);
   });
 

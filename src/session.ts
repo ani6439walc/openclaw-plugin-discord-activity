@@ -29,17 +29,13 @@ const activityGlobal = globalThis as typeof globalThis & {
   [ACTIVITY_RUNTIME_KEY]?: {
     readonly store: ReturnType<typeof createSessionStore>;
     readonly orphans: ReturnType<typeof createOrphanManager>;
-    readonly activeMemoryRunIdsBySession: WeakMap<SessionEntry, Set<string>>;
   };
 };
-export const {
-  store: defaultStore,
-  orphans: defaultOrphans,
-  activeMemoryRunIdsBySession,
-} = (activityGlobal[ACTIVITY_RUNTIME_KEY] ??= {
+export const { store: defaultStore, orphans: defaultOrphans } = (activityGlobal[
+  ACTIVITY_RUNTIME_KEY
+] ??= {
   store: createSessionStore(),
   orphans: createOrphanManager(),
-  activeMemoryRunIdsBySession: new WeakMap(),
 });
 
 function clearTimers(session: SessionEntry) {

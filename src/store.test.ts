@@ -69,18 +69,6 @@ describe("createSessionStore", () => {
       expect(store.hasVisibleStatusState(session)).toBe(false);
     });
 
-    it("returns false for active-memory placeholder only", () => {
-      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
-      const session = store.getOrCreateSession("discord:channel:123")!;
-      session.toolHistory.push({
-        toolCallId: "active-memory",
-        toolName: "active-memory",
-        params: {},
-        status: "pending",
-      });
-      expect(store.hasVisibleStatusState(session)).toBe(false);
-    });
-
     it("returns false for skill-harness placeholder only", () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       const session = store.getOrCreateSession("discord:channel:123")!;
@@ -93,32 +81,12 @@ describe("createSessionStore", () => {
       expect(store.hasVisibleStatusState(session)).toBe(false);
     });
 
-    it("returns false for active-memory and skill-harness placeholders only", () => {
-      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
-      const session = store.getOrCreateSession("discord:channel:123")!;
-      session.toolHistory.push(
-        {
-          toolCallId: "active-memory",
-          toolName: "active-memory",
-          params: {},
-          status: "pending",
-        },
-        {
-          toolCallId: "skill-harness",
-          toolName: "skill-harness",
-          params: {},
-          status: "pending",
-        },
-      );
-      expect(store.hasVisibleStatusState(session)).toBe(false);
-    });
-
-    it("returns true for active-memory error state", () => {
+    it("returns true for skill-harness error state", () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       const session = store.getOrCreateSession("discord:channel:123")!;
       session.toolHistory.push({
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "error",
       });

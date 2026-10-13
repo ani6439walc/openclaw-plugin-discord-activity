@@ -118,7 +118,7 @@ describe("ToolHistoryManager", () => {
     const history: ToolEntry[] = [
       {
         toolCallId: "call123",
-        toolName: "active-memory:memory_search",
+        toolName: "skill-harness:memory_search",
         params: { query: "live" },
         status: "error",
         error: "live failure",
@@ -130,7 +130,7 @@ describe("ToolHistoryManager", () => {
       manager.upsertEntries(history, [
         {
           toolCallId: "call123",
-          toolName: "active-memory:memory_search",
+          toolName: "skill-harness:memory_search",
           params: { query: "transcript" },
           status: "completed",
           durationMs: 99,
@@ -152,7 +152,7 @@ describe("ToolHistoryManager", () => {
       [
         {
           toolCallId: "call123",
-          toolName: "active-memory:memory_search",
+          toolName: "skill-harness:memory_search",
           params: {},
           status: "error",
           error: "first failure",
@@ -160,7 +160,7 @@ describe("ToolHistoryManager", () => {
         },
         {
           toolCallId: "call123",
-          toolName: "active-memory:memory_search",
+          toolName: "skill-harness:memory_search",
           params: {},
           status: "completed",
           durationMs: 99,
@@ -186,14 +186,14 @@ describe("ToolHistoryManager", () => {
         status: "completed",
       },
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "pending",
       },
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "result data" },
         status: "pending",
       },
@@ -207,54 +207,54 @@ describe("ToolHistoryManager", () => {
 
     const replacements: ToolEntry[] = [
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "completed",
       },
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "processed result" },
         status: "completed",
       },
     ];
 
-    manager.replaceSubagentGroup(history, "active-memory", replacements);
+    manager.replaceSubagentGroup(history, "skill-harness", replacements);
 
-    // Should replace the active-memory group while keeping other entries
+    // Should replace the skill-harness group while keeping other entries
     expect(history).toHaveLength(4);
     expect(history[0].toolName).toBe("normal_tool");
-    expect(history[1].toolName).toBe("active-memory");
+    expect(history[1].toolName).toBe("skill-harness");
     expect(history[1].status).toBe("completed");
-    expect(history[2].toolName).toBe("active-memory:result");
+    expect(history[2].toolName).toBe("skill-harness:result");
     expect(history[2].params).toEqual({ text: "processed result" });
     expect(history[3].toolName).toBe("another_tool");
   });
 
   it("replaces non-contiguous subagent entries without leaving duplicates", () => {
     const memorySearch: ToolEntry = {
-      toolCallId: "active-memory:memory_search",
-      toolName: "active-memory:memory_search",
+      toolCallId: "skill-harness:memory_search",
+      toolName: "skill-harness:memory_search",
       params: { query: "hello" },
       status: "completed",
     };
     const wikiSearch: ToolEntry = {
-      toolCallId: "active-memory:wiki_search",
-      toolName: "active-memory:wiki_search",
+      toolCallId: "skill-harness:wiki_search",
+      toolName: "skill-harness:wiki_search",
       params: { query: "hello" },
       status: "completed",
     };
     const history: ToolEntry[] = [
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "pending",
       },
       {
-        toolCallId: "skill-harness",
-        toolName: "skill-harness",
+        toolCallId: "hindsight",
+        toolName: "hindsight",
         params: {},
         status: "pending",
       },
@@ -262,15 +262,15 @@ describe("ToolHistoryManager", () => {
       wikiSearch,
     ];
 
-    manager.replaceSubagentGroup(history, "active-memory", [
+    manager.replaceSubagentGroup(history, "skill-harness", [
       memorySearch,
       wikiSearch,
     ]);
 
     expect(history.map((entry) => entry.toolName)).toEqual([
-      "active-memory:memory_search",
-      "active-memory:wiki_search",
-      "skill-harness",
+      "skill-harness:memory_search",
+      "skill-harness:wiki_search",
+      "hindsight",
     ]);
   });
 
@@ -283,20 +283,20 @@ describe("ToolHistoryManager", () => {
         status: "completed",
       },
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "pending",
       },
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "result data" },
         status: "pending",
       },
       {
-        toolCallId: "active-memory:query",
-        toolName: "active-memory:query",
+        toolCallId: "skill-harness:query",
+        toolName: "skill-harness:query",
         params: { text: "query data" },
         status: "pending",
       },
@@ -304,11 +304,11 @@ describe("ToolHistoryManager", () => {
 
     const childEntries = manager.findSubagentChildEntries(
       history,
-      "active-memory",
+      "skill-harness",
     );
 
     expect(childEntries).toHaveLength(2);
-    expect(childEntries[0].toolName).toBe("active-memory:result");
-    expect(childEntries[1].toolName).toBe("active-memory:query");
+    expect(childEntries[0].toolName).toBe("skill-harness:result");
+    expect(childEntries[1].toolName).toBe("skill-harness:query");
   });
 });

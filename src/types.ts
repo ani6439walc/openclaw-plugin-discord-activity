@@ -18,30 +18,11 @@ export type ToolEntry = {
   error?: string;
 };
 
-export type SubagentToolName = "active-memory" | "skill-harness" | "hindsight";
+export type SubagentToolName = "skill-harness" | "hindsight";
 
 export type StatusBlockDisplayLevel = "expanded" | "collapsed" | "removed";
 
 export type StatusDisplayState = Record<string, StatusBlockDisplayLevel>;
-
-export type AgentMessageContentItem = {
-  type?: string;
-  id?: string;
-  name?: string;
-  arguments?: unknown;
-  text?: string;
-};
-
-export type AgentEventMessage = {
-  role?: string;
-  content?: string | AgentMessageContentItem[];
-  toolCallId?: string;
-  toolName?: string;
-  isError?: boolean;
-  error?: string;
-  durationMs?: number;
-  details?: unknown;
-};
 
 export type OrphanEntry = {
   toolCallId: string;
@@ -113,7 +94,6 @@ export type HookDeps = {
   orphans: OrphanToolManager;
   getToken: GetTokenFn;
   config: PluginConfig;
-  isActiveMemoryEnabled: (agentId: string) => boolean;
   isSkillHarnessEnabled?: (agentId: string) => boolean;
 };
 
@@ -173,11 +153,6 @@ export type MessageSendingEvent = {
   metadata?: Record<string, unknown>;
 };
 
-export type BeforeAgentRunEvent = {
-  prompt: string;
-  messages: unknown[];
-};
-
 export type BeforeAgentReplyEvent = {
   cleanedBody: string;
 };
@@ -189,11 +164,6 @@ export type AgentContext = {
   accountId?: string;
   conversationId?: string;
   messageProvider?: string;
-};
-
-export type LlmInputEvent = {
-  prompt?: unknown;
-  runId?: string;
 };
 
 export type AgentEndEvent = {

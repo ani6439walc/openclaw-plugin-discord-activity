@@ -114,7 +114,6 @@ describe("createHookHandlers", () => {
   let orphans: ReturnType<typeof createOrphanManager>;
   let getToken: Mock<HookDeps["getToken"]>;
   let config: ReturnType<typeof resolveConfig>;
-  let isActiveMemoryEnabled: Mock<HookDeps["isActiveMemoryEnabled"]>;
   let isSkillHarnessEnabled: Mock<HookDeps["isSkillHarnessEnabled"]>;
   let handlers: ReturnType<typeof createHookHandlers>;
 
@@ -125,9 +124,6 @@ describe("createHookHandlers", () => {
     orphans = createOrphanManager();
     getToken = vi.fn<HookDeps["getToken"]>().mockReturnValue("test-token");
     config = resolveConfig({});
-    isActiveMemoryEnabled = vi
-      .fn<HookDeps["isActiveMemoryEnabled"]>()
-      .mockReturnValue(true);
     isSkillHarnessEnabled = vi
       .fn<HookDeps["isSkillHarnessEnabled"]>()
       .mockReturnValue(false);
@@ -136,7 +132,6 @@ describe("createHookHandlers", () => {
       orphans,
       getToken,
       config,
-      isActiveMemoryEnabled,
       isSkillHarnessEnabled,
     });
   });
@@ -167,7 +162,6 @@ describe("createHookHandlers", () => {
     });
 
     it("starts replacement generations with fresh display state", async () => {
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(false);
       const sessionKey = "agent:main:discord:direct:123";
 
@@ -179,11 +173,9 @@ describe("createHookHandlers", () => {
       if (!oldSession) throw new Error("expected initial session");
       oldSession.statusCreateNonce = "stale_nonce";
       oldSession.confirmedDisplayState = {
-        activeMemory: "removed",
         skillHarness: "collapsed",
       };
       oldSession.monotonicSafetyFloor = {
-        activeMemory: "removed",
         skillHarness: "removed",
       };
 
@@ -202,7 +194,6 @@ describe("createHookHandlers", () => {
 
     it("does not show skill-harness before pipeline events arrive and renders pending when started", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -244,7 +235,6 @@ describe("createHookHandlers", () => {
 
     it("renders skill-harness pipeline events for non-main agents (e.g. restricted in lobby) in an event-driven manner", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
 
       await handlers.onMessageReceived(
         { messageId: "msg_lobby_1", metadata: { to: "channel:123" } },
@@ -283,9 +273,8 @@ describe("createHookHandlers", () => {
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
-    it("maintains stable order between active-memory placeholder and skill-harness events", async () => {
+    it("maintains stable order between tool calls and skill-harness events", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -297,10 +286,13 @@ describe("createHookHandlers", () => {
         },
       );
 
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {} },
+        { sessionKey: "agent:main:discord:direct:123", toolName: "bash" },
+      );
+
       const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
-        "active-memory",
-      ]);
+      expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual(["call_1"]);
 
       await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
@@ -314,29 +306,17 @@ describe("createHookHandlers", () => {
       });
 
       expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual([
-        "active-memory",
+        "call_1",
         "skill-harness",
       ]);
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ←");
+      expect(plainContent).toContain("bash");
       expect(plainContent).toContain("💡 skill-harness ▾ ←");
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
-    it("skips active-memory sessions", async () => {
-      await handlers.onMessageReceived(
-        { messageId: "msg_1", metadata: {} },
-        {
-          channelId: "discord",
-          sessionKey: "discord:channel:123:active-memory:abc",
-        },
-      );
-      expect(store.contexts.size).toBe(0);
-    });
-
     it("characterizes the default hook flow with a channel reply reference", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(false);
       config = resolveConfig({});
       handlers = createHookHandlers({
@@ -344,7 +324,6 @@ describe("createHookHandlers", () => {
         orphans,
         getToken,
         config,
-        isActiveMemoryEnabled,
         isSkillHarnessEnabled,
       });
       const sessionKey = "agent:main:discord:channel:123";
@@ -390,7 +369,6 @@ describe("createHookHandlers", () => {
       "uses resolveConfig replyMode in the handler status POST for $sessionKey",
       async ({ replyMode, sessionKey, expectedReference }) => {
         const fetchMock = createDiscordFetchMock();
-        isActiveMemoryEnabled.mockReturnValue(false);
         isSkillHarnessEnabled.mockReturnValue(false);
         config = resolveConfig({ replyMode });
         handlers = createHookHandlers({
@@ -398,7 +376,6 @@ describe("createHookHandlers", () => {
           orphans,
           getToken,
           config,
-          isActiveMemoryEnabled,
           isSkillHarnessEnabled,
         });
 
@@ -430,7 +407,6 @@ describe("createHookHandlers", () => {
   describe("stale-run isolation", () => {
     async function createReplacementForNewRun() {
       createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(false);
       const sessionKey = "agent:main:discord:direct:123";
 
@@ -543,24 +519,6 @@ describe("createHookHandlers", () => {
       ]);
     });
 
-    it("rejects a late active-memory agent_end from a superseded run", async () => {
-      const { replacement, sessionKey } = await createReplacementForNewRun();
-
-      await handlers.onAgentEnd(
-        {
-          messages: [],
-          success: false,
-          error: "old active-memory failure",
-        },
-        {
-          sessionKey: `${sessionKey}:active-memory:old`,
-          runId: "run_old",
-        },
-      );
-
-      expect(replacement?.toolHistory).toEqual([]);
-    });
-
     it("rejects a late skill-harness pipeline event from a superseded run", async () => {
       const { replacement, sessionKey } = await createReplacementForNewRun();
 
@@ -581,353 +539,6 @@ describe("createHookHandlers", () => {
   });
 
   describe("queued successor admission", () => {
-    it("fails open when active-memory admission cannot resolve its parent", async () => {
-      const failingStore = {
-        ...store,
-        resolveSession: vi
-          .fn<typeof store.resolveSession>()
-          .mockRejectedValue(new Error("parent session unavailable")),
-      };
-      const failingHandlers = createHookHandlers({
-        store: failingStore,
-        orphans,
-        getToken,
-        config,
-        isActiveMemoryEnabled,
-        isSkillHarnessEnabled,
-      });
-
-      await expect(
-        failingHandlers.onBeforeAgentReply(
-          { cleanedBody: "active-memory admission" },
-          {
-            sessionKey: "agent:main:discord:direct:123:active-memory:child",
-            runId: "active-memory-run-current",
-          },
-        ),
-      ).resolves.toEqual({ handled: false });
-    });
-
-    it("does not let a delayed unregistered active-memory child tool event mutate its successor generation", async () => {
-      const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(false);
-      const sessionKey = "agent:main:discord:direct:123";
-      const activeMemorySessionKey = `${sessionKey}:active-memory:old`;
-      const activeMemoryRunId = "active-memory-run-old";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey,
-          accountId: "default",
-          runId: "run_old",
-        },
-      );
-      await handlers.onMessageSending(
-        { to: "user:123", content: "done" },
-        { channelId: "discord", sessionKey, runId: "run_old" },
-      );
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "queued followup" },
-        { sessionKey, runId: "run_new" },
-      );
-
-      const successor = store.sessions.get("discord:direct:123");
-      const historyBeforeLateChild = [...(successor?.toolHistory ?? [])];
-      const postCountBeforeLateChild = countChannelMessagePosts(fetchMock);
-      const patchCountBeforeLateChild = countCalls(
-        fetchMock,
-        "PATCH",
-        /\/channels\/dm_channel_123\/messages\/status_2$/,
-      );
-
-      await handlers.onBeforeToolCall(
-        {
-          toolCallId: "memory_call_old",
-          toolName: "memory_search",
-          params: { query: "old context" },
-          runId: activeMemoryRunId,
-        },
-        {
-          sessionKey: activeMemorySessionKey,
-          toolCallId: "memory_call_old",
-          toolName: "memory_search",
-          runId: activeMemoryRunId,
-        },
-      );
-
-      await handlers.onAgentEnd(
-        {
-          messages: [],
-          success: false,
-          error: "old active-memory failure",
-        },
-        {
-          sessionKey: activeMemorySessionKey,
-          runId: activeMemoryRunId,
-        },
-      );
-
-      expect(successor?.generation).toBe(2);
-      expect(successor?.runId).toBe("run_new");
-      expect(successor?.toolHistory).toEqual(historyBeforeLateChild);
-      expect(countChannelMessagePosts(fetchMock)).toBe(
-        postCountBeforeLateChild,
-      );
-      expect(
-        countCalls(
-          fetchMock,
-          "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_2$/,
-        ),
-      ).toBe(patchCountBeforeLateChild);
-    });
-
-    it("does not let a no-tool active-memory child run mutate its successor generation", async () => {
-      const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(false);
-      const sessionKey = "agent:main:discord:direct:123";
-      const activeMemorySessionKey = `${sessionKey}:active-memory:old`;
-      const activeMemoryRunId = "active-memory-run-old";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey,
-          accountId: "default",
-          runId: "run_old",
-        },
-      );
-      await handlers.onBeforeAgentRun(
-        { prompt: "old active-memory run", messages: [] },
-        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
-      );
-      await handlers.onMessageSending(
-        { to: "user:123", content: "done" },
-        { channelId: "discord", sessionKey, runId: "run_old" },
-      );
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "queued followup" },
-        { sessionKey, runId: "run_new" },
-      );
-
-      const successor = store.sessions.get("discord:direct:123");
-      const historyBeforeLateChild = [...(successor?.toolHistory ?? [])];
-      const postCountBeforeLateChild = countChannelMessagePosts(fetchMock);
-      const patchCountBeforeLateChild = countCalls(
-        fetchMock,
-        "PATCH",
-        /\/channels\/dm_channel_123\/messages\/status_2$/,
-      );
-
-      await handlers.onAgentEnd(
-        {
-          messages: [],
-          success: false,
-          error: "old active-memory failure",
-        },
-        {
-          sessionKey: activeMemorySessionKey,
-          runId: activeMemoryRunId,
-        },
-      );
-
-      expect(successor?.generation).toBe(2);
-      expect(successor?.runId).toBe("run_new");
-      expect(successor?.toolHistory).toEqual(historyBeforeLateChild);
-      expect(countChannelMessagePosts(fetchMock)).toBe(
-        postCountBeforeLateChild,
-      );
-      expect(
-        countCalls(
-          fetchMock,
-          "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_2$/,
-        ),
-      ).toBe(patchCountBeforeLateChild);
-    });
-
-    it("reconciles a registered no-tool active-memory child in the current generation", async () => {
-      createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(false);
-      const sessionKey = "agent:main:discord:direct:123";
-      const activeMemorySessionKey = `${sessionKey}:active-memory:current`;
-      const activeMemoryRunId = "active-memory-run-current";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey,
-          accountId: "default",
-          runId: "run_current",
-        },
-      );
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "current active-memory run" },
-        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
-      );
-      await handlers.onAgentEnd(
-        { messages: [], success: true, durationMs: 500 },
-        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
-      );
-
-      expect(
-        store.sessions.get("discord:direct:123")?.toolHistory,
-      ).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "active-memory",
-          status: "completed",
-          durationMs: 500,
-        }),
-      );
-    });
-
-    it("fails open when active-memory run registration cannot resolve its parent", async () => {
-      const failingStore = {
-        ...store,
-        resolveSession: vi
-          .fn<typeof store.resolveSession>()
-          .mockRejectedValue(new Error("parent session unavailable")),
-      };
-      const failingHandlers = createHookHandlers({
-        store: failingStore,
-        orphans,
-        getToken,
-        config,
-        isActiveMemoryEnabled,
-        isSkillHarnessEnabled,
-      });
-
-      await expect(
-        failingHandlers.onBeforeAgentRun(
-          { prompt: "active-memory recall", messages: [] },
-          {
-            sessionKey: "agent:main:discord:direct:123:active-memory:current",
-            runId: "active-memory-run-current",
-          },
-        ),
-      ).resolves.toBeUndefined();
-    });
-
-    it("shows tools from a registered active-memory child run", async () => {
-      createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(false);
-      const sessionKey = "agent:main:discord:direct:123";
-      const activeMemorySessionKey = `${sessionKey}:active-memory:current`;
-      const activeMemoryRunId = "active-memory-run-current";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey,
-          accountId: "default",
-          runId: "run_current",
-        },
-      );
-      await handlers.onBeforeAgentRun(
-        { prompt: "current active-memory run", messages: [] },
-        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
-      );
-      await handlers.onBeforeToolCall(
-        {
-          toolCallId: "memory_call",
-          toolName: "memory_get",
-          params: { path: "knowledge/concepts/example.md" },
-          runId: activeMemoryRunId,
-        },
-        {
-          sessionKey: activeMemorySessionKey,
-          toolCallId: "memory_call",
-          toolName: "memory_get",
-          runId: activeMemoryRunId,
-        },
-      );
-      await handlers.onAfterToolCall(
-        {
-          toolCallId: "memory_call",
-          toolName: "memory_get",
-          params: { path: "knowledge/concepts/example.md" },
-          runId: activeMemoryRunId,
-        },
-        {
-          sessionKey: activeMemorySessionKey,
-          toolCallId: "memory_call",
-          toolName: "memory_get",
-          runId: activeMemoryRunId,
-        },
-      );
-
-      await handlers.onAgentEnd(
-        {
-          messages: [{ role: "assistant", content: "NONE" }],
-          success: true,
-          durationMs: 500,
-        },
-        { sessionKey: activeMemorySessionKey, runId: activeMemoryRunId },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "active-memory:memory_call",
-          toolName: "active-memory:memory_get",
-          status: "completed",
-        }),
-      );
-      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "result: NONE",
-      );
-    });
-
-    it("ignores an unregistered distinct active-memory child in the current generation", async () => {
-      const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(false);
-      const sessionKey = "agent:main:discord:direct:123";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey,
-          accountId: "default",
-          runId: "run_current",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      const historyBeforeChild = [...(session?.toolHistory ?? [])];
-      const patchCountBeforeChild = countCalls(
-        fetchMock,
-        "PATCH",
-        /\/channels\/dm_channel_123\/messages\/status_1$/,
-      );
-      await handlers.onAgentEnd(
-        { messages: [], success: false, error: "unregistered child" },
-        {
-          sessionKey: `${sessionKey}:active-memory:unregistered`,
-          runId: "active-memory-run-unregistered",
-        },
-      );
-
-      expect(session?.toolHistory).toEqual(historyBeforeChild);
-      expect(
-        countCalls(
-          fetchMock,
-          "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
-        ),
-      ).toBe(patchCountBeforeChild);
-    });
-
     it("binds an admitted run to the unbound inbound generation in place", async () => {
       const fetchMock = createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";
@@ -955,7 +566,6 @@ describe("createHookHandlers", () => {
 
     it("starts a queued successor generation from before_agent_reply before skill-harness activity", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
       isSkillHarnessEnabled.mockReturnValue(true);
       config = resolveConfig({ replyMode: "direct" });
       handlers = createHookHandlers({
@@ -963,7 +573,6 @@ describe("createHookHandlers", () => {
         orphans,
         getToken,
         config,
-        isActiveMemoryEnabled,
         isSkillHarnessEnabled,
       });
       const sessionKey = "agent:main:discord:direct:123";
@@ -1013,16 +622,8 @@ describe("createHookHandlers", () => {
       expect(queuedSession?.runId).toBe("run_new");
       expect(queuedSession?.supersededRunIds).toContain("run_old");
       expect(queuedSession?.finalized).toBeFalsy();
-      expect(queuedSession?.toolHistory).toEqual([
-        expect.objectContaining({
-          toolCallId: "active-memory",
-          status: "pending",
-        }),
-      ]);
+      expect(queuedSession?.toolHistory).toEqual([]);
       expect(getStatusPostBodies(fetchMock)).toEqual([
-        expect.objectContaining({
-          message_reference: { message_id: "user_msg_1" },
-        }),
         expect.objectContaining({
           message_reference: { message_id: "user_msg_1" },
         }),
@@ -1055,7 +656,6 @@ describe("createHookHandlers", () => {
     it("guards queued successor takeover and fences late run events", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
       const sessionKey = "agent:main:discord:direct:123";
 
@@ -1195,7 +795,6 @@ describe("createHookHandlers", () => {
 
     it("fails open when queued status initialization cannot resolve a token", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
       const sessionKey = "agent:main:discord:direct:123";
 
@@ -1343,7 +942,6 @@ describe("createHookHandlers", () => {
         orphans,
         getToken,
         config,
-        isActiveMemoryEnabled,
         isSkillHarnessEnabled,
       });
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
@@ -1557,113 +1155,6 @@ describe("createHookHandlers", () => {
   });
 
   describe("onAfterToolCall", () => {
-    it("shows active-memory subagent tool calls in the parent session", async () => {
-      const fetchMock = createDiscordFetchMock();
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
-
-      await handlers.onBeforeToolCall(
-        {
-          toolCallId: "call_1",
-          toolName: "memory_search",
-          params: { query: "fastpath" },
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-          toolName: "memory_search",
-          toolCallId: "call_1",
-        },
-      );
-
-      await handlers.onAfterToolCall(
-        {
-          toolCallId: "call_1",
-          toolName: "memory_search",
-          params: { query: "fastpath" },
-          durationMs: 42,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-          toolName: "memory_search",
-          toolCallId: "call_1",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toEqual([
-        expect.objectContaining({
-          toolCallId: "active-memory",
-          toolName: "active-memory",
-          status: "pending",
-        }),
-        expect.objectContaining({
-          toolCallId: "active-memory:call_1",
-          toolName: "active-memory:memory_search",
-          status: "completed",
-          durationMs: 42,
-        }),
-      ]);
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ←\n");
-      expect(plainContent).toContain("memory_search ✔ [42ms]");
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
-    });
-
-    it("shows active-memory tool calls from subagent-scoped session keys", async () => {
-      const fetchMock = createDiscordFetchMock();
-      const activeMemorySessionKey =
-        "agent:main:discord:direct:123:subagent:abc:active-memory:def";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
-
-      await handlers.onBeforeToolCall(
-        {
-          toolCallId: "call_1",
-          toolName: "memory_search",
-          params: { query: "fastpath" },
-        },
-        {
-          sessionKey: activeMemorySessionKey,
-          toolName: "memory_search",
-          toolCallId: "call_1",
-        },
-      );
-
-      await handlers.onAfterToolCall(
-        {
-          toolCallId: "call_1",
-          toolName: "memory_search",
-          params: { query: "fastpath" },
-          durationMs: 42,
-        },
-        {
-          sessionKey: activeMemorySessionKey,
-          toolName: "memory_search",
-          toolCallId: "call_1",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ←\n");
-      expect(plainContent).toContain("memory_search ✔ [42ms]");
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
-    });
-
     it("reconciles orphan tool entry", async () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       orphans.add({
@@ -1927,7 +1418,6 @@ describe("createHookHandlers", () => {
         orphans,
         getToken,
         config,
-        isActiveMemoryEnabled,
         isSkillHarnessEnabled,
       });
 
@@ -2044,315 +1534,8 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
-    it("observes active-memory fastpath context from llm_input in a DM", async () => {
-      createDiscordFetchMock();
-      const sessionKey = "agent:main:discord:direct:123";
-      const runId = "run_observed";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, runId, accountId: "default" },
-      );
-      await handlers.onLlmInput(
-        {
-          prompt:
-            "Context:\n<active_memory_plugin>- Prefer aisle seats. (Source: MEMORY.md#L12)</active_memory_plugin>\n\nBook a flight",
-          runId,
-        },
-        { channelId: "discord", sessionKey, runId },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "active-memory:fastpath-observed",
-          params: {
-            status: "observed",
-            result: "- Prefer aisle seats. (Source: MEMORY.md#L12)",
-          },
-          status: "completed",
-        }),
-      );
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ✔");
-      expect(plainContent).toContain("fastpath ✔");
-      expect(plainContent).toContain("status: observed");
-      expect(plainContent).toContain("Prefer aisle seats");
-
-      await handlers.onMessageSending(
-        { to: "user:123", content: "done" },
-        { channelId: "discord", sessionKey, runId },
-      );
-      expect(
-        session?.toolHistory.some(
-          (entry) => entry.toolCallId === "active-memory:fastpath-inferred",
-        ),
-      ).toBe(false);
-    });
-
-    it.each(["channel", "group"] as const)(
-      "observes fastpath without retaining memory text in a Discord %s",
-      async (kind) => {
-        createDiscordFetchMock();
-        const sessionKey = `agent:main:discord:${kind}:123`;
-        const runId = `run_${kind}`;
-
-        await handlers.onMessageReceived(
-          { messageId: "user_msg_1", metadata: { to: `${kind}:123` } },
-          { channelId: "discord", sessionKey, runId, accountId: "default" },
-        );
-        await handlers.onLlmInput(
-          {
-            prompt:
-              "<active_memory_plugin>Private remembered detail.</active_memory_plugin> request",
-            runId,
-          },
-          { channelId: "discord", sessionKey, runId },
-        );
-
-        const session = store.sessions.get(`discord:${kind}:123`);
-        expect(session?.toolHistory).toContainEqual(
-          expect.objectContaining({
-            toolCallId: "active-memory:fastpath-observed",
-            params: { status: "observed" },
-          }),
-        );
-        expect(JSON.stringify(session?.toolHistory)).not.toContain(
-          "Private remembered detail",
-        );
-        expect(session?.lastRenderedContent).not.toContain(
-          "Private remembered detail",
-        );
-      },
-    );
-
-    it("renders active-memory fastpath outcomes from llm_input", async () => {
-      createDiscordFetchMock();
-      const sessionKey = "agent:main:discord:direct:123";
-      const runId = "run_outcome";
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, runId, accountId: "default" },
-      );
-
-      await handlers.onLlmInput(
-        {
-          prompt:
-            "<active_memory_plugin>Active Memory intentionally skipped deep recall because this turn did not ask for past context.</active_memory_plugin>",
-          runId,
-        },
-        { channelId: "discord", sessionKey, runId },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "active-memory:fastpath-observed",
-          params: { status: "skipped" },
-        }),
-      );
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("fastpath ✔");
-      expect(plainContent).toContain("status: skipped");
-    });
-
-    it("ignores malformed, stale, and deep-recall llm_input observations", async () => {
-      createDiscordFetchMock();
-      const sessionKey = "agent:main:discord:direct:123";
-      const runId = "run_current";
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, runId, accountId: "default" },
-      );
-
-      await handlers.onLlmInput(
-        { prompt: "<active_memory_plugin>missing close", runId },
-        { channelId: "discord", sessionKey, runId },
-      );
-      await handlers.onLlmInput(
-        {
-          prompt: "<active_memory_plugin>Stale memory.</active_memory_plugin>",
-          runId: "run_stale",
-        },
-        { channelId: "discord", sessionKey, runId: "run_stale" },
-      );
-      expect(
-        store.sessions
-          .get("discord:direct:123")
-          ?.toolHistory.some(
-            (entry) => entry.toolCallId === "active-memory:fastpath-observed",
-          ),
-      ).toBe(false);
-
-      const session = store.sessions.get("discord:direct:123");
-      session?.toolHistory.push({
-        toolCallId: "active-memory:search",
-        toolName: "active-memory:memory_search",
-        params: {},
-        status: "completed",
-      });
-      await handlers.onLlmInput(
-        {
-          prompt:
-            "<active_memory_plugin>Should not display.</active_memory_plugin>",
-          runId,
-        },
-        { channelId: "discord", sessionKey, runId },
-      );
-      expect(JSON.stringify(session?.toolHistory)).not.toContain(
-        "Should not display",
-      );
-    });
-
-    it("replaces an observed fastpath entry when deep recall arrives later", async () => {
-      createDiscordFetchMock();
-      const sessionKey = "agent:main:discord:direct:123";
-      const runId = "run_deep_late";
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, runId, accountId: "default" },
-      );
-      await handlers.onLlmInput(
-        {
-          prompt:
-            "<active_memory_plugin>Temporary observed context.</active_memory_plugin>",
-          runId,
-        },
-        { channelId: "discord", sessionKey, runId },
-      );
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "hello" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-            { role: "assistant", content: "Deep recall result" },
-          ],
-          success: true,
-        },
-        { sessionKey: `${sessionKey}:active-memory:abc` },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(
-        session?.toolHistory.some(
-          (entry) => entry.toolCallId === "active-memory:fastpath-observed",
-        ),
-      ).toBe(false);
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("memory_search ✔");
-      expect(plainContent).toContain("result: Deep recall result");
-      expect(plainContent).not.toContain("Temporary observed context");
-    });
-
-    it("upgrades inferred status when llm_input settles after message_sending", async () => {
-      createDiscordFetchMock();
-      const sessionKey = "agent:main:discord:direct:123";
-      const runId = "run_late_llm_input";
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, runId, accountId: "default" },
-      );
-      await handlers.onMessageSending(
-        { to: "user:123", content: "done" },
-        { channelId: "discord", sessionKey, runId },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.finalized).toBe(true);
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "active-memory:fastpath-inferred",
-        }),
-      );
-
-      await handlers.onLlmInput(
-        {
-          prompt:
-            "<active_memory_plugin>Late observed memory.</active_memory_plugin>",
-          runId,
-        },
-        { channelId: "discord", sessionKey, runId },
-      );
-
-      expect(
-        session?.toolHistory.some(
-          (entry) => entry.toolCallId === "active-memory:fastpath-inferred",
-        ),
-      ).toBe(false);
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "active-memory:fastpath-observed",
-          params: { status: "observed", result: "Late observed memory." },
-        }),
-      );
-    });
-
-    it("upserts duplicate fastpath observations without duplicate entries", async () => {
-      createDiscordFetchMock();
-      const sessionKey = "agent:main:discord:direct:123";
-      const runId = "run_duplicate";
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, runId, accountId: "default" },
-      );
-      const event = {
-        prompt: "<active_memory_plugin>Observed memory.</active_memory_plugin>",
-        runId,
-      };
-      const ctx = { channelId: "discord", sessionKey, runId };
-
-      await handlers.onLlmInput(event, ctx);
-      await handlers.onLlmInput(event, ctx);
-
-      expect(
-        store.sessions
-          .get("discord:direct:123")
-          ?.toolHistory.filter(
-            (entry) => entry.toolCallId === "active-memory:fastpath-observed",
-          ),
-      ).toHaveLength(1);
-    });
-
-    it("marks an unobserved active-memory fastpath as inferred before final cleanup", async () => {
-      createDiscordFetchMock();
-      const sessionKey = "agent:main:discord:direct:123";
-      const runId = "run_fastpath";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        { channelId: "discord", sessionKey, runId, accountId: "default" },
-      );
-
-      await handlers.onMessageSending(
-        { to: "user:123", content: "done" },
-        { channelId: "discord", sessionKey, runId },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ✔");
-      expect(plainContent).toContain("fastpath ✔");
-      expect(plainContent).toContain("status: inferred");
-    });
-
-    it("does not finalize on before_agent_reply when only pending subagent placeholders exist", async () => {
+    it("does not finalize on before_agent_reply before any activity exists", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -2373,12 +1556,12 @@ describe("createHookHandlers", () => {
       expect(result).toEqual({ handled: false });
       expect(session?.finalized).toBeFalsy();
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ←");
+      expect(plainContent).toBe("");
       expect(plainContent).not.toContain("💡 skill-harness");
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      expect(countChannelMessagePosts(fetchMock)).toBe(0);
     });
 
-    it("keeps one status message across before_agent_reply, active-memory agent_end, and main agent_end cleanup", async () => {
+    it("keeps one status message across before_agent_reply and agent_end cleanup", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
 
@@ -2411,32 +1594,6 @@ describe("createHookHandlers", () => {
       expect(session?.clearTimer).toBeUndefined();
 
       await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "hello" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-          ],
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-        },
-      );
-
-      await handlers.onAgentEnd(
         { messages: [], success: true },
         { sessionKey: "agent:main:discord:direct:123" },
       );
@@ -2448,7 +1605,7 @@ describe("createHookHandlers", () => {
           "PATCH",
           /\/channels\/dm_channel_123\/messages\/status_1$/,
         ),
-      ).toBe(2);
+      ).toBe(0);
       expect(
         store.sessions.get("discord:direct:123")?.clearTimer,
       ).toBeDefined();
@@ -2512,7 +1669,7 @@ describe("createHookHandlers", () => {
       expect(replacement).not.toBe(firstSession);
       expect(replacement?.generation).toBe(2);
       expect(replacement?.finalized).toBe(false);
-      expect(countChannelMessagePosts(fetchMock)).toBe(2);
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
       expect(
         countCalls(
           fetchMock,
@@ -2522,199 +1679,8 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
-    it("keeps active-memory visible as error when active-memory agent_end times out before producing tool entries", async () => {
-      const fetchMock = createDiscordFetchMock();
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
-
-      await handlers.onAgentEnd(
-        {
-          messages: [],
-          success: false,
-          error: "timed out after 15000ms",
-          durationMs: 15196,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toEqual([
-        expect.objectContaining({
-          toolCallId: "active-memory",
-          toolName: "active-memory",
-          status: "error",
-          durationMs: 15196,
-          error: "timed out after 15000ms",
-        }),
-      ]);
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ✘ [15.2s]");
-      expect(plainContent).toContain("timed out after 15000ms");
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
-      expect(
-        countCalls(
-          fetchMock,
-          "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
-        ),
-      ).toBe(1);
-    });
-
-    it("renders the final active-memory assistant message as a result item", async () => {
-      const fetchMock = createDiscordFetchMock();
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
-
-      const pendingSession = store.sessions.get("discord:direct:123");
-      if (!pendingSession) throw new Error("expected active session");
-      pendingSession.confirmedDisplayState = {
-        "group:active-memory": "collapsed",
-      };
-      pendingSession.monotonicSafetyFloor = {
-        "group:active-memory": "collapsed",
-      };
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "hello" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-            {
-              role: "assistant",
-              content: "每日早報重跑已觸發 Cron job",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            toolCallId: "active-memory:mem_1",
-            toolName: "active-memory:memory_search",
-            status: "completed",
-          }),
-          expect.objectContaining({
-            toolCallId: "active-memory:result",
-            toolName: "active-memory:result",
-            params: { text: "每日早報重跑已觸發 Cron job" },
-            status: "completed",
-          }),
-        ]),
-      );
-      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "active-memory ▾ ✔",
-      );
-      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "result: 每日早報重跑已觸發 Cron job",
-      );
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
-      expect(
-        countCalls(
-          fetchMock,
-          "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
-        ),
-      ).toBe(1);
-    });
-
-    it("captures active-memory results from subagent-scoped session keys", async () => {
-      const fetchMock = createDiscordFetchMock();
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "hello" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-            {
-              role: "assistant",
-              content: "NONE",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey:
-            "agent:main:discord:direct:123:subagent:abc:active-memory:def",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
-      expect(plainContent).toContain("🧩 active-memory ▾ ✔");
-      expect(plainContent).toContain("memory_search ✔");
-      expect(plainContent).toContain("result: NONE");
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
-      expect(
-        countCalls(
-          fetchMock,
-          "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
-        ),
-      ).toBe(1);
-    });
-
     it("renders skill-harness pipeline events as a single status entry with status/result format", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -2810,7 +1776,6 @@ describe("createHookHandlers", () => {
 
     it("renders canonical skill-harness failures as phase-local errors", async () => {
       createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -2856,7 +1821,6 @@ describe("createHookHandlers", () => {
 
     it("calculates skill-harness phase duration from first to final pipeline event", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
       const nowSpy = vi.spyOn(Date, "now");
 
@@ -2936,7 +1900,6 @@ describe("createHookHandlers", () => {
 
     it("does not render duplicate skill-harness pipeline events twice", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -2979,7 +1942,6 @@ describe("createHookHandlers", () => {
 
     it("uses skill-harness data sessionKey when the event wrapper omits it", async () => {
       createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -3010,7 +1972,6 @@ describe("createHookHandlers", () => {
 
     it("accepts the skill-harness sessionKey fallback run id", async () => {
       createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
       const sessionKey = "agent:main:discord:direct:123";
 
@@ -3047,121 +2008,8 @@ describe("createHookHandlers", () => {
       );
     });
 
-    it("keeps active-memory agent end correlated when its child run id differs from the parent", async () => {
-      createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
-      isSkillHarnessEnabled.mockReturnValue(true);
-      const sessionKey = "agent:main:discord:direct:123";
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey,
-          accountId: "default",
-          runId: "main-run-1",
-        },
-      );
-      const activeMemorySessionKey = `${sessionKey}:active-memory:child`;
-      const activeMemoryContext = {
-        sessionKey: activeMemorySessionKey,
-        toolName: "memory_search",
-        toolCallId: "memory-call-1",
-        runId: "active-memory-run-1",
-      };
-      await handlers.onBeforeAgentReply(
-        { cleanedBody: "active-memory admission" },
-        {
-          sessionKey: activeMemorySessionKey,
-          runId: "active-memory-run-1",
-        },
-      );
-      await handlers.onBeforeToolCall(
-        {
-          toolCallId: "memory-call-1",
-          toolName: "memory_search",
-          params: { query: "weight history" },
-          runId: "active-memory-run-1",
-        },
-        activeMemoryContext,
-      );
-      await handlers.onAfterToolCall(
-        {
-          toolCallId: "memory-call-1",
-          toolName: "memory_search",
-          params: { query: "weight history" },
-          durationMs: 100,
-          runId: "active-memory-run-1",
-        },
-        activeMemoryContext,
-      );
-      await handlers.onAgentEnd(
-        { messages: [], success: true, durationMs: 500 },
-        {
-          sessionKey: activeMemorySessionKey,
-          runId: "active-memory-run-1",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.runId).toBe("main-run-1");
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "active-memory",
-          status: "completed",
-          durationMs: 500,
-        }),
-      );
-
-      await handlers.onBeforeToolCall(
-        {
-          toolCallId: "main-call-1",
-          toolName: "bash",
-          params: { command: "pwd" },
-          runId: "main-run-1",
-        },
-        {
-          sessionKey,
-          toolName: "bash",
-          toolCallId: "main-call-1",
-          runId: "main-run-1",
-        },
-      );
-
-      expect(session?.runId).toBe("main-run-1");
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "main-call-1",
-          toolName: "bash",
-          status: "pending",
-        }),
-      );
-
-      await handlers.onSkillHarnessPipelineEvent({
-        runId: "main-run-1",
-        stream: "plugin:skill-harness",
-        sessionKey,
-        data: {
-          kind: "skill-harness.pipeline",
-          phase: "pipeline",
-          state: "completed",
-          result: ["implementation"],
-        },
-      });
-
-      expect(session?.runId).toBe("main-run-1");
-      expect(session?.toolHistory).toContainEqual(
-        expect.objectContaining({
-          toolCallId: "skill-harness",
-          status: "completed",
-          params: { result: "1 skill selected: implementation" },
-        }),
-      );
-    });
-
     it("does not downgrade completed skill-harness to pending", async () => {
       createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -3203,7 +2051,6 @@ describe("createHookHandlers", () => {
 
     it("ignores legacy skill-harness agent_end result rendering", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -3256,7 +2103,6 @@ describe("createHookHandlers", () => {
 
     it("ignores malformed skill-harness pipeline events", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(false);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -3291,62 +2137,6 @@ describe("createHookHandlers", () => {
       const session = store.sessions.get("discord:direct:123");
       expect(session?.toolHistory).toEqual([]);
       expect(countChannelMessagePosts(fetchMock)).toBe(0);
-    });
-
-    it("does not reuse earlier assistant text when the final assistant message has only tool calls", async () => {
-      const fetchMock = createDiscordFetchMock();
-
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
-          sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
-
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: "這是比較早的摘要",
-            },
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "hello" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(session?.toolHistory).toEqual(
-        expect.not.arrayContaining([
-          expect.objectContaining({
-            toolCallId: "active-memory:result",
-          }),
-        ]),
-      );
-      expect(session?.lastRenderedContent).not.toContain("- result:");
-      expect(session?.lastRenderedContent).toContain("memory_search");
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
 
     it("ignores late tool events after finalization instead of creating another status message", async () => {
@@ -3422,9 +2212,8 @@ describe("createHookHandlers", () => {
       ).toBe(patchCountBefore);
     });
 
-    it("keeps parent order stable across the real subagent lifecycle", async () => {
+    it("keeps skill-harness ahead of tool calls across its lifecycle", async () => {
       const fetchMock = createDiscordFetchMock();
-      isActiveMemoryEnabled.mockReturnValue(true);
       isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
@@ -3441,6 +2230,11 @@ describe("createHookHandlers", () => {
         { sessionKey: "agent:main:discord:direct:123" },
       );
 
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {} },
+        { sessionKey: "agent:main:discord:direct:123", toolName: "bash" },
+      );
+
       await handlers.onSkillHarnessPipelineEvent({
         runId: "run-1",
         stream: "plugin:skill-harness",
@@ -3454,56 +2248,13 @@ describe("createHookHandlers", () => {
 
       const initial = store.sessions.get("discord:direct:123");
       expect(initial?.toolHistory.map((t) => t.toolCallId)).toEqual([
-        "active-memory",
+        "call_1",
         "skill-harness",
       ]);
 
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "mem_1",
-                  name: "memory_search",
-                  arguments: { query: "hello" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "mem_1",
-              toolName: "memory_search",
-            },
-            {
-              role: "assistant",
-              content: "NONE",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:active-memory:abc",
-        },
-      );
-
-      const afterActiveMemory = store.sessions.get("discord:direct:123");
-      expect(
-        afterActiveMemory?.toolHistory.find(
-          (entry) => entry.toolCallId === "active-memory",
-        ),
-      ).toEqual(expect.objectContaining({ status: "completed" }));
-      const activeMemoryContent = stripAnsi(
-        afterActiveMemory?.lastRenderedContent ?? "",
-      );
-      expect(activeMemoryContent).toContain("🧩 active-memory ▾ ✔");
-      expect(activeMemoryContent).toContain("💡 skill-harness ▾ ←");
-      expect(
-        afterActiveMemory!.lastRenderedContent!.indexOf("🧩 active-memory"),
-      ).toBeLessThan(
-        afterActiveMemory!.lastRenderedContent!.indexOf("skill-harness"),
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {} },
+        { sessionKey: "agent:main:discord:direct:123", toolName: "bash" },
       );
 
       await handlers.onSkillHarnessPipelineEvent({
@@ -3534,11 +2285,11 @@ describe("createHookHandlers", () => {
       const skillHarnessContent = stripAnsi(
         afterSkillHarness?.lastRenderedContent ?? "",
       );
-      expect(skillHarnessContent).toContain("🧩 active-memory ▾ ✔");
+      expect(skillHarnessContent).toContain("bash");
       expect(skillHarnessContent).toContain("💡 skill-harness ▾ ✔");
       expect(
-        afterSkillHarness!.lastRenderedContent!.indexOf("🧩 active-memory"),
-      ).toBeLessThan(
+        afterSkillHarness!.lastRenderedContent!.indexOf("bash"),
+      ).toBeGreaterThan(
         afterSkillHarness!.lastRenderedContent!.indexOf("💡 skill-harness"),
       );
 
@@ -3548,13 +2299,11 @@ describe("createHookHandlers", () => {
       );
 
       const final = store.sessions.get("discord:direct:123");
-      expect(stripAnsi(final?.lastRenderedContent ?? "")).toContain(
-        "🧩 active-memory ▾ ✔",
-      );
+      expect(stripAnsi(final?.lastRenderedContent ?? "")).toContain("bash");
       expect(final?.lastRenderedContent).toContain("skill-harness");
-      expect(
-        final!.lastRenderedContent!.indexOf("🧩 active-memory"),
-      ).toBeLessThan(final!.lastRenderedContent!.indexOf("💡 skill-harness"));
+      expect(final!.lastRenderedContent!.indexOf("bash")).toBeGreaterThan(
+        final!.lastRenderedContent!.indexOf("💡 skill-harness"),
+      );
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
   });

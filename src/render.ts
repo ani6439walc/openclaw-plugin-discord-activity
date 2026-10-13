@@ -51,7 +51,7 @@ function getAuthoritativeGroupParent(
   parentEntry: ToolEntry | undefined,
 ): ToolEntry | undefined {
   if (!parentEntry) return;
-  if (prefix === "active-memory" || prefix === "hindsight") return parentEntry;
+  if (prefix === "hindsight") return parentEntry;
   if (
     prefix === "skill-harness" &&
     (parentEntry.status !== "pending" ||
@@ -234,16 +234,11 @@ function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
   };
 }
 
-export const SUBAGENT_GROUP_NAMES = [
-  "active-memory",
-  "skill-harness",
-  "hindsight",
-] as const;
+export const SUBAGENT_GROUP_NAMES = ["skill-harness", "hindsight"] as const;
 
 export type InternalGroupName = (typeof SUBAGENT_GROUP_NAMES)[number];
 
 function getSubagentGroupIcon(prefix: InternalGroupName): string {
-  if (prefix === "active-memory") return "🧩";
   if (prefix === "skill-harness") return "💡";
   if (prefix === "hindsight") return "🧠";
   return getToolIcon(prefix);
@@ -450,10 +445,7 @@ function renderSubagentGroup(
       nodes.push(createFieldNode(row));
     }
   }
-  if (
-    (prefix === "skill-harness" || prefix === "hindsight") &&
-    realEntries.length === 0
-  ) {
+  if (realEntries.length === 0) {
     for (const entry of group) {
       const parentFields = formatDisplayFields(entry.params, {
         toolName: entry.toolName,

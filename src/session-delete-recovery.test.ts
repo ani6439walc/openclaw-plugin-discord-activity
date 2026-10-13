@@ -38,11 +38,11 @@ describe("Discord status deletion recovery", () => {
       statusMessageId: "status_old",
       statusCreateNonce: "stale_nonce",
       confirmedDisplayState: {
-        activeMemory: "removed",
+        hindsight: "removed",
         skillHarness: "collapsed",
       },
       monotonicSafetyFloor: {
-        activeMemory: "removed",
+        hindsight: "removed",
         skillHarness: "removed",
       },
     });
