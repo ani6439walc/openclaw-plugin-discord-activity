@@ -51,7 +51,7 @@ function getAuthoritativeGroupParent(
   parentEntry: ToolEntry | undefined,
 ): ToolEntry | undefined {
   if (!parentEntry) return;
-  if (prefix === "active-memory" || prefix === "hindsight") return parentEntry;
+  if (prefix === "hindsight") return parentEntry;
   if (
     prefix === "skill-harness" &&
     (parentEntry.status !== "pending" ||
@@ -189,14 +189,11 @@ function getSkillHarnessResultFields(entry: ToolEntry): DisplayField[] {
   try {
     const obj = JSON.parse(cleanText);
     if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-      return formatDisplayFields(obj, { toolName: entry.toolName });
+      return formatDisplayFields(obj);
     }
   } catch {}
 
-  return formatDisplayFields(
-    { result: cleanText },
-    { toolName: entry.toolName },
-  );
+  return formatDisplayFields({ result: cleanText });
 }
 
 function createEntryFieldNodes(
@@ -205,7 +202,6 @@ function createEntryFieldNodes(
 ): StatusNode[] {
   const nodes = packMainFields(
     formatDisplayFields(entry.params, {
-      toolName: entry.toolName,
       excludeKeys: options?.excludeKeys,
     }),
   ).map(createFieldNode);
@@ -234,16 +230,11 @@ function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
   };
 }
 
-export const SUBAGENT_GROUP_NAMES = [
-  "active-memory",
-  "skill-harness",
-  "hindsight",
-] as const;
+export const SUBAGENT_GROUP_NAMES = ["skill-harness", "hindsight"] as const;
 
 export type InternalGroupName = (typeof SUBAGENT_GROUP_NAMES)[number];
 
 function getSubagentGroupIcon(prefix: InternalGroupName): string {
-  if (prefix === "active-memory") return "🧩";
   if (prefix === "skill-harness") return "💡";
   if (prefix === "hindsight") return "🧠";
   return getToolIcon(prefix);
@@ -450,14 +441,9 @@ function renderSubagentGroup(
       nodes.push(createFieldNode(row));
     }
   }
-  if (
-    (prefix === "skill-harness" || prefix === "hindsight") &&
-    realEntries.length === 0
-  ) {
+  if (realEntries.length === 0) {
     for (const entry of group) {
-      const parentFields = formatDisplayFields(entry.params, {
-        toolName: entry.toolName,
-      });
+      const parentFields = formatDisplayFields(entry.params);
       for (const row of packMainFields(parentFields)) {
         nodes.push(createFieldNode(row));
       }
@@ -876,11 +862,4 @@ export function renderStatusContent(
   maxLength = STATUS_MAX_LENGTH,
 ): string {
   return renderStatusContentWithState(toolHistory, isFinal, maxLength).content;
-}
-
-export function isContentTooLong(
-  content: string,
-  _entryCount: number,
-): boolean {
-  return content.length > STATUS_MAX_LENGTH;
 }

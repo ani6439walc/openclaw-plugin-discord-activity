@@ -331,30 +331,3 @@ export function finishPendingSkillHarness(history: ToolEntry[]): void {
     entry.error = "skill selection unavailable";
   }
 }
-
-export function parseSkillHarnessPipelineEntry(
-  event: AgentPipelineEvent,
-): ToolEntry | undefined {
-  return updateSkillHarnessEntry(undefined, event, Date.now());
-}
-
-export function mergeSkillHarnessPipelineEntry(
-  existingChildEntries: ToolEntry[],
-  entry: ToolEntry,
-  _observedAtMs: number,
-): { changed: boolean; entries: ToolEntry[] } {
-  const existing = existingChildEntries.find(
-    (tool) =>
-      tool.toolCallId === entry.toolCallId ||
-      tool.toolName === SKILL_HARNESS_TOOL,
-  );
-  if (existing && JSON.stringify(existing) === JSON.stringify(entry)) {
-    return { changed: false, entries: existingChildEntries };
-  }
-  const retained = existingChildEntries.filter(
-    (tool) =>
-      tool.toolCallId !== entry.toolCallId &&
-      tool.toolName !== SKILL_HARNESS_TOOL,
-  );
-  return { changed: true, entries: [entry, ...retained] };
-}

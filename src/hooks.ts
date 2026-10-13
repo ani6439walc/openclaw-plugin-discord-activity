@@ -10,8 +10,6 @@ import type {
   AfterToolCallEvent,
   MessageSendingEvent,
   BeforeAgentReplyEvent,
-  LlmInputEvent,
-  BeforeAgentRunEvent,
   AgentContext,
   AgentEndEvent,
   AgentPipelineEvent,
@@ -21,19 +19,12 @@ import type {
 import { clearMaxDisplayTimer, clearSessionTimer } from "./helpers.js";
 import {
   getDiscordContextKey,
-  isCanonicalDirectSessionKey,
-  isActiveMemorySessionKey,
-  isSkillHarnessSessionKey,
+  isSkillHarnessReviewSessionKey,
   isSubagentSessionKey,
-  getActiveMemorySourceSessionKey,
   extractIdFromMetadata,
   extractSenderId,
-  extractAgentIdFromSessionKey,
-  parseActiveMemoryPromptContext,
-  parseActiveMemoryToolEntries,
 } from "./parser.js";
 import {
-  activeMemoryRunIdsBySession,
   retireSession,
   scheduleSessionCleanup,
   updateStatusMessage,
@@ -50,8 +41,6 @@ import {
 import {
   finishPendingSkillHarness,
   getSkillHarnessPipelineSessionKey,
-  mergeSkillHarnessPipelineEntry,
-  parseSkillHarnessPipelineEntry,
   updateSkillHarnessEntry,
 } from "./skill-harness-status.js";
 import {
@@ -107,45 +96,6 @@ function stableParamsKey(params: unknown): string {
   return JSON.stringify(stableValue(params ?? {}));
 }
 
-function reconcileActiveMemoryTranscriptEntries(
-  history: readonly ToolEntry[],
-  entries: readonly ToolEntry[],
-): ToolEntry[] {
-  const liveChildren = history.filter(
-    (entry) =>
-      entry.toolName.startsWith("active-memory:") &&
-      entry.toolName !== "active-memory:result",
-  );
-  const claimed = new Set<ToolEntry>();
-
-  return entries.map((entry) => {
-    const exact = liveChildren.find(
-      (candidate) =>
-        !claimed.has(candidate) && candidate.toolCallId === entry.toolCallId,
-    );
-    if (exact) {
-      claimed.add(exact);
-      return entry;
-    }
-    if (entry.toolName === "active-memory:result") {
-      return entry;
-    }
-
-    const semanticMatch = liveChildren.find(
-      (candidate) =>
-        !claimed.has(candidate) &&
-        candidate.toolName === entry.toolName &&
-        stableParamsKey(candidate.params) === stableParamsKey(entry.params),
-    );
-    if (!semanticMatch) {
-      return entry;
-    }
-
-    claimed.add(semanticMatch);
-    return { ...entry, toolCallId: semanticMatch.toolCallId };
-  });
-}
-
 function isDuplicateCodexOpenClawToolEntry(
   existing: ToolDedupeIdentity,
   incoming: ToolDedupeIdentity,
@@ -198,36 +148,11 @@ function upsertToolEntry(
   return { ...existing, ...updates };
 }
 
-function buildPendingSubagentEntries(
-  agentId: string | undefined,
-  isActiveMemoryEnabled: (agentId: string) => boolean,
-): ToolEntry[] {
-  const entries: ToolEntry[] = [];
-
-  if (agentId === undefined || isActiveMemoryEnabled(agentId)) {
-    entries.push({
-      toolCallId: "active-memory",
-      toolName: "active-memory",
-      params: {},
-      status: "pending",
-    });
-  }
-
-  return entries;
-}
-
 export function createHookHandlers(deps: HookDeps) {
-  const { store, orphans, getToken, config, isActiveMemoryEnabled } = deps;
+  const { store, orphans, getToken, config } = deps;
 
   // Initialize the ToolHistoryManager
   const toolHistoryManager = new ToolHistoryManager(config);
-
-  function registerActiveMemoryRun(session: SessionEntry, runId: string): void {
-    const activeMemoryRunIds =
-      activeMemoryRunIdsBySession.get(session) ?? new Set<string>();
-    activeMemoryRunIds.add(runId);
-    activeMemoryRunIdsBySession.set(session, activeMemoryRunIds);
-  }
 
   function getCompactionToolCallId(session: SessionEntry): string {
     return `compaction:${session.compactionEpoch ?? 0}`;
@@ -270,27 +195,6 @@ export function createHookHandlers(deps: HookDeps) {
     );
   }
 
-  function completeUnobservedActiveMemoryPlaceholder(
-    session: SessionEntry,
-  ): void {
-    const placeholder = session.toolHistory.find(
-      (entry) => entry.toolCallId === "active-memory",
-    );
-    if (!placeholder || placeholder.status !== "pending") return;
-    const hasObservedActiveMemory = session.toolHistory.some((entry) =>
-      entry.toolName.startsWith("active-memory:"),
-    );
-    if (hasObservedActiveMemory) return;
-
-    placeholder.status = "completed";
-    session.toolHistory.push({
-      toolCallId: "active-memory:fastpath-inferred",
-      toolName: "active-memory:fastpath",
-      params: { status: "inferred" },
-      status: "completed",
-    });
-  }
-
   async function updateSessionStatus(
     session: SessionEntry,
     isFinal: boolean,
@@ -303,21 +207,6 @@ export function createHookHandlers(deps: HookDeps) {
       config.maxStatusMessageLength,
       config.replyMode,
     );
-  }
-
-  async function showPendingSubagentEntries(
-    session: SessionEntry,
-    ownerSessionKey: string | undefined,
-  ): Promise<void> {
-    const agentId = extractAgentIdFromSessionKey(ownerSessionKey);
-    const pendingEntries = buildPendingSubagentEntries(
-      agentId,
-      isActiveMemoryEnabled,
-    );
-    if (pendingEntries.length === 0) return;
-
-    toolHistoryManager.addEntries(session.toolHistory, pendingEntries);
-    await updateSessionStatus(session, false);
   }
 
   async function replaceActivityGeneration(
@@ -343,7 +232,6 @@ export function createHookHandlers(deps: HookDeps) {
       supersededRunIds: new Set([
         ...(activeSession.supersededRunIds ?? []),
         ...(activeSession.runId ? [activeSession.runId] : []),
-        ...(activeMemoryRunIdsBySession.get(activeSession) ?? []),
       ]),
       finalized: false,
       toolHistory: [],
@@ -358,7 +246,6 @@ export function createHookHandlers(deps: HookDeps) {
       });
     });
 
-    await showPendingSubagentEntries(replacement, ownerSessionKey);
     return replacement;
   }
 
@@ -366,32 +253,13 @@ export function createHookHandlers(deps: HookDeps) {
     ctx: { sessionKey?: string },
     hookName: string,
   ): boolean {
+    // Isolate background reviews and legacy internal sessions from user activity.
     if (
-      isActiveMemorySessionKey(ctx.sessionKey) ||
-      isSkillHarnessSessionKey(ctx.sessionKey) ||
+      ctx.sessionKey?.includes(":active-memory:") ||
+      isSkillHarnessReviewSessionKey(ctx.sessionKey) ||
       isSubagentSessionKey(ctx.sessionKey)
     ) {
-      logger.trace(
-        `${hookName}: skip (active-memory/skill-harness/subagent) session.`,
-        {
-          sessionKey: ctx.sessionKey,
-        },
-      );
-      return true;
-    }
-    return false;
-  }
-
-  function shouldSkipToolSession(
-    ctx: { sessionKey?: string },
-    hookName: string,
-  ): boolean {
-    if (
-      isSkillHarnessSessionKey(ctx.sessionKey) ||
-      (isSubagentSessionKey(ctx.sessionKey) &&
-        !isActiveMemorySessionKey(ctx.sessionKey))
-    ) {
-      logger.trace(`${hookName}: skip (skill-harness/subagent) session.`, {
+      logger.trace(`${hookName}: skip internal session.`, {
         sessionKey: ctx.sessionKey,
       });
       return true;
@@ -411,11 +279,7 @@ export function createHookHandlers(deps: HookDeps) {
       });
       return false;
     }
-    if (
-      session.runId &&
-      session.runId !== runId &&
-      !activeMemoryRunIdsBySession.get(session)?.has(runId)
-    ) {
+    if (session.runId && session.runId !== runId) {
       logger.debug("skip hook for stale run.", {
         contextKey: session.contextKey,
         expectedRunId: session.runId,
@@ -436,7 +300,6 @@ export function createHookHandlers(deps: HookDeps) {
     session: SessionEntry,
     eventRunId: string | undefined,
     contextRunId: string | undefined,
-    bindRun = true,
   ) {
     if (eventRunId && contextRunId && eventRunId !== contextRunId) {
       logger.warn("skip tool hook with inconsistent run ids.", {
@@ -447,16 +310,13 @@ export function createHookHandlers(deps: HookDeps) {
       return false;
     }
     const runId = eventRunId ?? contextRunId;
-    return bindRun
-      ? bindSessionRun(session, runId)
-      : isSessionRunCurrent(session, runId);
+    return bindSessionRun(session, runId);
   }
 
   async function resolveAndFinalize(
     ctx: AgentContext,
     delayMs: number,
     hookName: string,
-    requireVisibleState = false,
     resolvedSession?: SessionEntry,
   ) {
     const contextKey = getDiscordContextKey(ctx.sessionKey);
@@ -467,7 +327,6 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return;
     if (!store.isCurrentSession(session)) return;
     if (!bindSessionRun(session, ctx.runId)) return;
-    if (requireVisibleState && !store.hasVisibleStatusState(session)) return;
     const compactionEpoch = session.compactionEpoch ?? 0;
     session.finalized = true;
     await updateSessionStatus(session, true);
@@ -541,35 +400,24 @@ export function createHookHandlers(deps: HookDeps) {
       if (ctx.runId) activeSession.runId = ctx.runId;
     }
 
-    const session = store.getOrCreateSession(contextKey, ctx.sessionKey);
-    if (session && session.toolHistory.length === 0) {
-      await showPendingSubagentEntries(session, ctx.sessionKey);
-    }
+    store.getOrCreateSession(contextKey, ctx.sessionKey);
   }
 
   async function onBeforeToolCall(
     event: BeforeToolCallEvent,
     ctx: ToolContext,
   ) {
-    if (shouldSkipToolSession(ctx, "before_tool_call")) return;
+    if (shouldSkipSession(ctx, "before_tool_call")) return;
     const observedAtMs = Date.now();
     logHookEvent("before_tool_call", event, ctx);
     orphans.pruneStale();
 
-    const sourceSessionKey =
-      getActiveMemorySourceSessionKey(ctx.sessionKey) ?? ctx.sessionKey;
+    const sourceSessionKey = ctx.sessionKey;
     const contextKey = getDiscordContextKey(sourceSessionKey);
     const session = contextKey
       ? await store.resolveSession(contextKey, sourceSessionKey)
       : undefined;
-    const isActiveMemoryTool = isActiveMemorySessionKey(ctx.sessionKey);
-    const toolCallId =
-      isActiveMemoryTool && event.toolCallId
-        ? `active-memory:${event.toolCallId}`
-        : event.toolCallId;
-    const toolName = isActiveMemoryTool
-      ? `active-memory:${event.toolName}`
-      : event.toolName;
+    const { toolCallId, toolName } = event;
 
     if (!session) {
       if (toolCallId && toolName) {
@@ -590,8 +438,7 @@ export function createHookHandlers(deps: HookDeps) {
       return;
     }
 
-    if (!bindToolEventRun(session, event.runId, ctx.runId, !isActiveMemoryTool))
-      return;
+    if (!bindToolEventRun(session, event.runId, ctx.runId)) return;
 
     if (session.finalized) {
       logger.debug("before_tool_call: skip finalized session.", {
@@ -614,23 +461,20 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onAfterToolCall(event: AfterToolCallEvent, ctx: ToolContext) {
-    if (shouldSkipToolSession(ctx, "after_tool_call")) return;
+    if (shouldSkipSession(ctx, "after_tool_call")) return;
     const observedAtMs = Date.now();
     logHookEvent("after_tool_call", event, ctx);
     orphans.pruneStale();
 
-    const sourceSessionKey =
-      getActiveMemorySourceSessionKey(ctx.sessionKey) ?? ctx.sessionKey;
+    const sourceSessionKey = ctx.sessionKey;
     const contextKey = getDiscordContextKey(sourceSessionKey);
     const session = contextKey
       ? await store.resolveSession(contextKey, sourceSessionKey)
       : undefined;
-    const isActiveMemoryTool = isActiveMemorySessionKey(ctx.sessionKey);
 
     if (!session) return;
 
-    if (!bindToolEventRun(session, event.runId, ctx.runId, !isActiveMemoryTool))
-      return;
+    if (!bindToolEventRun(session, event.runId, ctx.runId)) return;
 
     if (session.finalized) {
       logger.debug("after_tool_call: skip finalized session.", {
@@ -641,9 +485,7 @@ export function createHookHandlers(deps: HookDeps) {
     }
 
     if (!event.toolCallId) return;
-    const toolCallId = isActiveMemoryTool
-      ? `active-memory:${event.toolCallId}`
-      : event.toolCallId;
+    const toolCallId = event.toolCallId;
 
     let toolEntry = findDedupedToolEntry(session.toolHistory, {
       toolCallId,
@@ -723,66 +565,6 @@ export function createHookHandlers(deps: HookDeps) {
     }
   }
 
-  async function onLlmInput(
-    event: LlmInputEvent,
-    ctx: AgentContext,
-  ): Promise<void> {
-    if (shouldSkipSession(ctx, "llm_input")) return;
-    const parsed = parseActiveMemoryPromptContext(event.prompt);
-    if (!parsed) return;
-
-    const contextKey = getDiscordContextKey(ctx.sessionKey);
-    if (!contextKey) return;
-    try {
-      const session = await store.resolveSession(contextKey, ctx.sessionKey);
-      if (!session) return;
-      const runId = event.runId ?? ctx.runId;
-      if (!isSessionRunCurrent(session, runId)) return;
-
-      const parentEntry = session.toolHistory.find(
-        (entry) => entry.toolCallId === "active-memory",
-      );
-      if (!parentEntry || parentEntry.status === "error") return;
-      const hasDeepRecallEntry = session.toolHistory.some(
-        (entry) =>
-          entry.toolName.startsWith("active-memory:") &&
-          entry.toolName !== "active-memory:fastpath",
-      );
-      if (hasDeepRecallEntry) return;
-
-      const isDirect = isCanonicalDirectSessionKey(ctx.sessionKey);
-      const observedEntry: ToolEntry = {
-        toolCallId: "active-memory:fastpath-observed",
-        toolName: "active-memory:fastpath",
-        params:
-          parsed.kind === "memory"
-            ? {
-                status: "observed",
-                ...(isDirect ? { result: parsed.text } : {}),
-              }
-            : { status: parsed.outcome },
-        status: "completed",
-      };
-      parentEntry.status = "completed";
-      const inferredIndex = session.toolHistory.findIndex(
-        (entry) => entry.toolCallId === "active-memory:fastpath-inferred",
-      );
-      if (inferredIndex >= 0) session.toolHistory.splice(inferredIndex, 1);
-      const newEntries = toolHistoryManager.upsertEntries(session.toolHistory, [
-        observedEntry,
-      ]);
-      if (newEntries.length > 0) {
-        toolHistoryManager.addEntries(session.toolHistory, newEntries);
-      }
-      await updateSessionStatus(session, session.finalized === true);
-    } catch (err) {
-      logger.warn("llm_input: failed to render active-memory context.", {
-        sessionKey: ctx.sessionKey,
-        error: String(err),
-      });
-    }
-  }
-
   async function onMessageSending(
     event: MessageSendingEvent,
     ctx: MessageContext,
@@ -811,7 +593,6 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return undefined;
     if (!bindSessionRun(session, ctx.runId)) return undefined;
     if (session.finalized) return undefined;
-    completeUnobservedActiveMemoryPlaceholder(session);
     finishPendingHindsightRecalls(session.toolHistory);
     finishPendingSkillHarness(session.toolHistory);
     session.finalized = true;
@@ -819,62 +600,10 @@ export function createHookHandlers(deps: HookDeps) {
     return undefined;
   }
 
-  async function onBeforeAgentRun(
-    _event: BeforeAgentRunEvent,
-    ctx: AgentContext,
-  ) {
-    if (!isActiveMemorySessionKey(ctx.sessionKey) || !ctx.runId) return;
-    const sourceSessionKey = getActiveMemorySourceSessionKey(ctx.sessionKey);
-    const contextKey = getDiscordContextKey(sourceSessionKey);
-    if (!contextKey || !sourceSessionKey) return;
-    try {
-      const session = await store.resolveSession(contextKey, sourceSessionKey);
-      if (!session || !store.isCurrentSession(session)) return;
-      if (session.supersededRunIds?.has(ctx.runId)) return;
-      registerActiveMemoryRun(session, ctx.runId);
-    } catch (err) {
-      logger.warn("before_agent_run: failed to register active-memory run.", {
-        contextKey,
-        sessionKey: ctx.sessionKey,
-        error: String(err),
-      });
-    }
-  }
-
   async function onBeforeAgentReply(
     event: BeforeAgentReplyEvent,
     ctx: AgentContext,
   ) {
-    if (isActiveMemorySessionKey(ctx.sessionKey)) {
-      const sourceSessionKey = getActiveMemorySourceSessionKey(ctx.sessionKey);
-      const contextKey = getDiscordContextKey(sourceSessionKey);
-      try {
-        if (ctx.runId && contextKey && sourceSessionKey) {
-          const session = await store.resolveSession(
-            contextKey,
-            sourceSessionKey,
-          );
-          if (
-            session &&
-            store.isCurrentSession(session) &&
-            !session.finalized &&
-            !session.supersededRunIds?.has(ctx.runId)
-          ) {
-            registerActiveMemoryRun(session, ctx.runId);
-          }
-        }
-      } catch (err) {
-        logger.warn(
-          "before_agent_reply: failed to register active-memory run.",
-          {
-            contextKey,
-            sessionKey: ctx.sessionKey,
-            error: String(err),
-          },
-        );
-      }
-      return { handled: false };
-    }
     if (shouldSkipSession(ctx, "before_agent_reply")) return { handled: false };
     logHookEvent("before_agent_reply", event, ctx);
 
@@ -916,16 +645,7 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onAgentEnd(event: AgentEndEvent, ctx: AgentContext) {
-    if (
-      isSubagentSessionKey(ctx.sessionKey) &&
-      !isActiveMemorySessionKey(ctx.sessionKey) &&
-      !isSkillHarnessSessionKey(ctx.sessionKey)
-    ) {
-      logger.trace("agent_end: skip subagent session.", {
-        sessionKey: ctx.sessionKey,
-      });
-      return;
-    }
+    if (shouldSkipSession(ctx, "agent_end")) return;
     logHookEvent("agent_end", event, ctx);
 
     const contextKey = getDiscordContextKey(ctx.sessionKey);
@@ -933,110 +653,10 @@ export function createHookHandlers(deps: HookDeps) {
       ? store.sessions.get(contextKey)?.compactionActive === true
       : false;
     if (contextKey) {
-      if (isActiveMemorySessionKey(ctx.sessionKey)) {
-        const sourceSessionKey = getActiveMemorySourceSessionKey(
-          ctx.sessionKey,
-        );
-        const session = sourceSessionKey
-          ? store.getOrCreateSession(contextKey, sourceSessionKey)
-          : undefined;
-        if (session) {
-          if (ctx.runId && session.supersededRunIds?.has(ctx.runId)) return;
-          if (
-            ctx.runId &&
-            ctx.runId !== session.runId &&
-            !activeMemoryRunIdsBySession.get(session)?.has(ctx.runId)
-          ) {
-            return;
-          }
-          clearSessionTimer(session);
-          const entries = reconcileActiveMemoryTranscriptEntries(
-            session.toolHistory,
-            parseActiveMemoryToolEntries(event),
-          );
-          if (entries.length > 0) {
-            for (
-              let index = session.toolHistory.length - 1;
-              index >= 0;
-              index -= 1
-            ) {
-              if (
-                session.toolHistory[index]?.toolName ===
-                "active-memory:fastpath"
-              ) {
-                session.toolHistory.splice(index, 1);
-              }
-            }
-          }
-          const preservedPlaceholder = session.toolHistory.find(
-            (t) => t.toolCallId === "active-memory",
-          );
-          const parentEntry: ToolEntry | undefined =
-            event.error || event.success === false
-              ? {
-                  toolCallId: "active-memory",
-                  toolName: "active-memory",
-                  params: preservedPlaceholder?.params ?? {},
-                  status: "error",
-                  startedAtMs: preservedPlaceholder?.startedAtMs,
-                  durationMs: event.durationMs,
-                  error: event.error,
-                }
-              : preservedPlaceholder || typeof event.durationMs === "number"
-                ? {
-                    toolCallId: "active-memory",
-                    toolName: "active-memory",
-                    params: preservedPlaceholder?.params ?? {},
-                    status: "completed",
-                    startedAtMs: preservedPlaceholder?.startedAtMs,
-                    durationMs:
-                      event.durationMs ?? preservedPlaceholder?.durationMs,
-                  }
-                : undefined;
-
-          if (entries.length > 0 || parentEntry) {
-            if (
-              entries.some((entry) => entry.toolName === "active-memory:result")
-            ) {
-              session.confirmedDisplayState = {
-                ...(session.confirmedDisplayState ?? {}),
-                "group:active-memory": "expanded",
-              };
-              session.monotonicSafetyFloor = {
-                ...(session.monotonicSafetyFloor ?? {}),
-                "group:active-memory": "expanded",
-              };
-            }
-            const newEntries =
-              entries.length > 0
-                ? toolHistoryManager.upsertEntries(session.toolHistory, entries)
-                : [];
-            const childEntries = toolHistoryManager
-              .findSubagentChildEntries(session.toolHistory, "active-memory")
-              .concat(newEntries);
-            toolHistoryManager.replaceSubagentGroup(
-              session.toolHistory,
-              "active-memory",
-              parentEntry ? [parentEntry, ...childEntries] : childEntries,
-            );
-            toolHistoryManager.trim(session.toolHistory);
-          }
-          await updateSessionStatus(session, true);
-        }
-        return;
-      }
-
-      if (isSkillHarnessSessionKey(ctx.sessionKey)) {
-        return;
-      }
-
       const session = await store.resolveSession(contextKey, ctx.sessionKey);
       if (!session || !bindSessionRun(session, ctx.runId)) return;
       finishPendingHindsightRecalls(session.toolHistory);
       finishPendingSkillHarness(session.toolHistory);
-      if (event.success !== false && !event.error) {
-        completeUnobservedActiveMemoryPlaceholder(session);
-      }
       if (compactionWasActiveAtDispatch) {
         session.compactionActive = false;
         finishCompactionEntry(session, "error");
@@ -1062,13 +682,7 @@ export function createHookHandlers(deps: HookDeps) {
         }
       }
 
-      await resolveAndFinalize(
-        ctx,
-        AGENT_END_DELAY_MS,
-        "agent_end",
-        false,
-        session,
-      );
+      await resolveAndFinalize(ctx, AGENT_END_DELAY_MS, "agent_end", session);
     }
   }
 
@@ -1223,13 +837,10 @@ export function createHookHandlers(deps: HookDeps) {
 
   return Object.freeze({
     onHindsightPipelineEvent,
-    onHindsightRecallEvent: onHindsightPipelineEvent,
     onMessageReceived,
     onBeforeToolCall,
     onAfterToolCall,
     onMessageSending,
-    onLlmInput,
-    onBeforeAgentRun,
     onBeforeAgentReply,
     onAgentEnd,
     onBeforeCompaction,

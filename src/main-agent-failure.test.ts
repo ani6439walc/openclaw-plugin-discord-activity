@@ -39,8 +39,8 @@ describe("main agent failure rendering", () => {
     const result = renderStatusContent(
       [
         entry({
-          toolCallId: "active-memory:mem_1",
-          toolName: "active-memory:memory_search",
+          toolCallId: "hindsight:mem_1",
+          toolName: "hindsight:memory_search",
         }),
         entry({
           toolCallId: "skill-harness:phase_1",
@@ -67,7 +67,7 @@ describe("main agent failure rendering", () => {
     expect(plain).toContain("error: provider timeout");
     expect(plain).toContain("bash ▾ ✘");
     expect(plain).toContain("error: permission denied");
-    expect(result.indexOf("active-memory")).toBeLessThan(
+    expect(result.indexOf("hindsight")).toBeLessThan(
       result.indexOf("skill-harness"),
     );
     expect(result.indexOf("skill-harness")).toBeLessThan(
@@ -128,8 +128,6 @@ describe("main agent failure rendering", () => {
       orphans: createOrphanManager(),
       getToken: () => "token",
       config: resolveConfig({}),
-      isActiveMemoryEnabled: () => false,
-      isSkillHarnessEnabled: () => false,
     });
     const sessionKey = "discord:channel:123";
 
@@ -172,8 +170,6 @@ describe("main agent failure rendering", () => {
       orphans: createOrphanManager(),
       getToken: () => "token",
       config: resolveConfig({}),
-      isActiveMemoryEnabled: () => false,
-      isSkillHarnessEnabled: () => false,
     });
     const sessionKey = "discord:channel:123";
 

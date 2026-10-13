@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   finishPendingSkillHarness,
   getSkillHarnessPipelineSessionKey,
-  mergeSkillHarnessPipelineEntry,
-  parseSkillHarnessPipelineEntry,
   updateSkillHarnessEntry,
 } from "./skill-harness-status.js";
 import type { AgentPipelineEvent, ToolEntry } from "./types.js";
@@ -394,35 +392,7 @@ describe("finishPendingSkillHarness", () => {
   });
 });
 
-describe("backward compatibility helpers", () => {
-  it("parses single pipeline entry via parseSkillHarnessPipelineEntry", () => {
-    const entry = parseSkillHarnessPipelineEntry(
-      makePipelineEvent("pipeline", "started"),
-    );
-
-    expect(entry?.toolCallId).toBe("skill-harness");
-    expect(entry?.status).toBe("pending");
-  });
-
-  it("merges entries via mergeSkillHarnessPipelineEntry", () => {
-    const entry1: ToolEntry = {
-      toolCallId: "skill-harness",
-      toolName: "skill-harness",
-      status: "pending",
-      params: { status: "selecting skills" },
-    };
-    const entry2: ToolEntry = {
-      toolCallId: "skill-harness",
-      toolName: "skill-harness",
-      status: "completed",
-      params: { result: "no relevant skills" },
-    };
-
-    const res = mergeSkillHarnessPipelineEntry([entry1], entry2, 2_000);
-    expect(res.changed).toBe(true);
-    expect(res.entries[0]).toBe(entry2);
-  });
-
+describe("pipeline session routing", () => {
   it("extracts sessionKey via getSkillHarnessPipelineSessionKey", () => {
     expect(
       getSkillHarnessPipelineSessionKey(

@@ -3,7 +3,6 @@ import type { GetTokenFn, SessionEntry } from "./types.js";
 import {
   sendMessageWithResult as sendDiscordMessageWithResult,
   editMessageWithResult as editDiscordMessageWithResult,
-  deleteMessage as deleteDiscordMessage,
   deleteMessageWithResult as deleteDiscordMessageWithResult,
   resolveDmChannel as resolveDmChannelApi,
 } from "./discord-api.js";
@@ -61,48 +60,6 @@ export async function editDiscordStatusMessageWithResult(
     content,
     token,
   );
-}
-
-export async function editDiscordStatusMessage(
-  getToken: GetTokenFn,
-  channelId: string,
-  messageId: string,
-  content: string,
-  accountId?: string,
-): Promise<boolean> {
-  return (
-    (
-      await editDiscordStatusMessageWithResult(
-        getToken,
-        channelId,
-        messageId,
-        content,
-        accountId,
-      )
-    ).outcome === "applied"
-  );
-}
-
-/**
- * @deprecated Compatibility wrapper; use deleteDiscordStatusMessageWithResult
- * for internal failure classification.
- */
-export async function deleteDiscordStatusMessage(
-  getToken: GetTokenFn,
-  channelId: string,
-  messageId: string,
-  accountId?: string,
-): Promise<boolean> {
-  const token = getToken(accountId);
-  if (!token) {
-    logger.warn("deleteDiscordStatusMessage: no token available", {
-      channelId,
-      messageId,
-    });
-    return false;
-  }
-
-  return await deleteDiscordMessage(channelId, messageId, token);
 }
 
 export async function deleteDiscordStatusMessageWithResult(
@@ -228,20 +185,4 @@ export async function sendDiscordStatusWithDmFallbackWithResult(
     replyToId,
     nonce,
   );
-}
-
-export async function sendDiscordStatusWithDmFallback(
-  getToken: GetTokenFn,
-  session: SessionEntry,
-  content: string,
-  replyToId?: string,
-): Promise<string | undefined> {
-  return (
-    await sendDiscordStatusWithDmFallbackWithResult(
-      getToken,
-      session,
-      content,
-      replyToId,
-    )
-  ).messageId;
 }

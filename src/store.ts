@@ -13,15 +13,7 @@ export function createSessionStore() {
   }
 
   function hasVisibleStatusState(session: SessionEntry): boolean {
-    return session.toolHistory.some(
-      (t) =>
-        t.toolCallId !== "init" &&
-        !(
-          (t.toolCallId === "active-memory" ||
-            t.toolCallId === "skill-harness") &&
-          t.status === "pending"
-        ),
-    );
+    return session.toolHistory.length > 0;
   }
 
   async function waitForPendingOp(

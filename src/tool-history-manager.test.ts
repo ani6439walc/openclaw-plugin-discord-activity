@@ -114,69 +114,6 @@ describe("ToolHistoryManager", () => {
     expect(history[4].toolCallId).toBe("call14");
   });
 
-  it("keeps live failure state when transcript data reports success", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call123",
-        toolName: "active-memory:memory_search",
-        params: { query: "live" },
-        status: "error",
-        error: "live failure",
-        durationMs: 42,
-      },
-    ];
-
-    expect(
-      manager.upsertEntries(history, [
-        {
-          toolCallId: "call123",
-          toolName: "active-memory:memory_search",
-          params: { query: "transcript" },
-          status: "completed",
-          durationMs: 99,
-        },
-      ]),
-    ).toEqual([]);
-    expect(history[0]).toEqual(
-      expect.objectContaining({
-        status: "error",
-        error: "live failure",
-        durationMs: 42,
-      }),
-    );
-  });
-
-  it("keeps failure sticky across duplicate new entries", () => {
-    const newEntries = manager.upsertEntries(
-      [],
-      [
-        {
-          toolCallId: "call123",
-          toolName: "active-memory:memory_search",
-          params: {},
-          status: "error",
-          error: "first failure",
-          durationMs: 42,
-        },
-        {
-          toolCallId: "call123",
-          toolName: "active-memory:memory_search",
-          params: {},
-          status: "completed",
-          durationMs: 99,
-        },
-      ],
-    );
-
-    expect(newEntries).toEqual([
-      expect.objectContaining({
-        status: "error",
-        error: "first failure",
-        durationMs: 42,
-      }),
-    ]);
-  });
-
   it("should replace subagent group", () => {
     const history: ToolEntry[] = [
       {
@@ -186,14 +123,14 @@ describe("ToolHistoryManager", () => {
         status: "completed",
       },
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "pending",
       },
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "result data" },
         status: "pending",
       },
@@ -207,108 +144,70 @@ describe("ToolHistoryManager", () => {
 
     const replacements: ToolEntry[] = [
       {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
         params: {},
         status: "completed",
       },
       {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
+        toolCallId: "skill-harness:result",
+        toolName: "skill-harness:result",
         params: { text: "processed result" },
         status: "completed",
       },
     ];
 
-    manager.replaceSubagentGroup(history, "active-memory", replacements);
+    manager.replaceSubagentGroup(history, "skill-harness", replacements);
 
-    // Should replace the active-memory group while keeping other entries
+    // Should replace the skill-harness group while keeping other entries
     expect(history).toHaveLength(4);
     expect(history[0].toolName).toBe("normal_tool");
-    expect(history[1].toolName).toBe("active-memory");
+    expect(history[1].toolName).toBe("skill-harness");
     expect(history[1].status).toBe("completed");
-    expect(history[2].toolName).toBe("active-memory:result");
+    expect(history[2].toolName).toBe("skill-harness:result");
     expect(history[2].params).toEqual({ text: "processed result" });
     expect(history[3].toolName).toBe("another_tool");
   });
 
   it("replaces non-contiguous subagent entries without leaving duplicates", () => {
     const memorySearch: ToolEntry = {
-      toolCallId: "active-memory:memory_search",
-      toolName: "active-memory:memory_search",
+      toolCallId: "skill-harness:memory_search",
+      toolName: "skill-harness:memory_search",
       params: { query: "hello" },
       status: "completed",
     };
     const wikiSearch: ToolEntry = {
-      toolCallId: "active-memory:wiki_search",
-      toolName: "active-memory:wiki_search",
+      toolCallId: "skill-harness:wiki_search",
+      toolName: "skill-harness:wiki_search",
       params: { query: "hello" },
       status: "completed",
     };
     const history: ToolEntry[] = [
-      {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
-        params: {},
-        status: "pending",
-      },
       {
         toolCallId: "skill-harness",
         toolName: "skill-harness",
         params: {},
         status: "pending",
       },
+      {
+        toolCallId: "hindsight",
+        toolName: "hindsight",
+        params: {},
+        status: "pending",
+      },
       memorySearch,
       wikiSearch,
     ];
 
-    manager.replaceSubagentGroup(history, "active-memory", [
+    manager.replaceSubagentGroup(history, "skill-harness", [
       memorySearch,
       wikiSearch,
     ]);
 
     expect(history.map((entry) => entry.toolName)).toEqual([
-      "active-memory:memory_search",
-      "active-memory:wiki_search",
-      "skill-harness",
+      "skill-harness:memory_search",
+      "skill-harness:wiki_search",
+      "hindsight",
     ]);
-  });
-
-  it("should find subagent child entries", () => {
-    const history: ToolEntry[] = [
-      {
-        toolCallId: "call1",
-        toolName: "normal_tool",
-        params: {},
-        status: "completed",
-      },
-      {
-        toolCallId: "active-memory",
-        toolName: "active-memory",
-        params: {},
-        status: "pending",
-      },
-      {
-        toolCallId: "active-memory:result",
-        toolName: "active-memory:result",
-        params: { text: "result data" },
-        status: "pending",
-      },
-      {
-        toolCallId: "active-memory:query",
-        toolName: "active-memory:query",
-        params: { text: "query data" },
-        status: "pending",
-      },
-    ];
-
-    const childEntries = manager.findSubagentChildEntries(
-      history,
-      "active-memory",
-    );
-
-    expect(childEntries).toHaveLength(2);
-    expect(childEntries[0].toolName).toBe("active-memory:result");
-    expect(childEntries[1].toolName).toBe("active-memory:query");
   });
 });

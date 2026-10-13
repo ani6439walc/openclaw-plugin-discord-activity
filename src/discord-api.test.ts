@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  deleteMessage,
-  editMessage,
+  deleteMessageWithResult,
   editMessageWithResult,
   sendMessageWithResult,
 } from "./discord-api.js";
@@ -173,42 +172,20 @@ describe("sendMessageWithResult", () => {
   });
 });
 
-describe("editMessage", () => {
+describe("editMessageWithResult", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  it("returns true when Discord accepts the PATCH", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ id: "status_1" }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      editMessage("channel_1", "status_1", "content", "token"),
-    ).resolves.toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("returns false for a non-retryable non-2xx response", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ message: "Forbidden" }, 403),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      editMessage("channel_1", "status_1", "content", "token"),
-    ).resolves.toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("returns false after network retries are exhausted", async () => {
+  it("classifies exhausted network retries as uncertain", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () => {
       throw new Error("network unavailable");
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const editPromise = editMessage(
+    const editPromise = editMessageWithResult(
       "channel_1",
       "status_1",
       "content",
@@ -216,7 +193,10 @@ describe("editMessage", () => {
     );
     await vi.runAllTimersAsync();
 
-    await expect(editPromise).resolves.toBe(false);
+    await expect(editPromise).resolves.toEqual({
+      outcome: "uncertain",
+      reason: "network-error",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -226,10 +206,10 @@ describe("editMessage", () => {
     [503, "uncertain", "http-503"],
   ] as const)("classifies HTTP %s as %s", async (status, outcome, reason) => {
     if (status === 503) vi.useFakeTimers();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ message: "response" }, status)),
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ message: "response" }, status),
     );
+    vi.stubGlobal("fetch", fetchMock);
 
     const resultPromise = editMessageWithResult(
       "channel_1",
@@ -244,24 +224,30 @@ describe("editMessage", () => {
       status,
       reason,
     });
+    expect(fetchMock).toHaveBeenCalledTimes(status === 503 ? 3 : 1);
   });
 });
 
-describe("deleteMessage", () => {
+describe("deleteMessageWithResult", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  it("returns true when Discord deletes the message", async () => {
+  it("reports a deleted message", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => emptyResponse()),
     );
 
-    await expect(deleteMessage("channel_1", "status_1", "token")).resolves.toBe(
-      true,
-    );
+    await expect(
+      deleteMessageWithResult("channel_1", "status_1", "token"),
+    ).resolves.toEqual({
+      deleted: true,
+      retryable: false,
+      status: 204,
+      reason: "deleted",
+    });
   });
 
   it("treats an already-absent message as deleted", async () => {
@@ -270,13 +256,18 @@ describe("deleteMessage", () => {
       vi.fn(async () => jsonResponse({ message: "Unknown Message" }, 404)),
     );
 
-    await expect(deleteMessage("channel_1", "status_1", "token")).resolves.toBe(
-      true,
-    );
+    await expect(
+      deleteMessageWithResult("channel_1", "status_1", "token"),
+    ).resolves.toEqual({
+      deleted: true,
+      retryable: false,
+      status: 404,
+      reason: "not-found",
+    });
   });
 
   it.each([401, 403])(
-    "returns false for non-retryable HTTP %s",
+    "classifies non-retryable HTTP %s as terminal",
     async (status) => {
       const fetchMock = vi.fn(async () =>
         jsonResponse({ message: "Denied" }, status),
@@ -284,14 +275,19 @@ describe("deleteMessage", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       await expect(
-        deleteMessage("channel_1", "status_1", "token"),
-      ).resolves.toBe(false);
+        deleteMessageWithResult("channel_1", "status_1", "token"),
+      ).resolves.toEqual({
+        deleted: false,
+        retryable: false,
+        status,
+        reason: `http-${status}`,
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     },
   );
 
   it.each([429, 503])(
-    "returns false after retryable HTTP %s is exhausted",
+    "classifies exhausted HTTP %s retries as retryable",
     async (status) => {
       vi.useFakeTimers();
       const fetchMock = vi.fn(async () =>
@@ -301,25 +297,42 @@ describe("deleteMessage", () => {
       );
       vi.stubGlobal("fetch", fetchMock);
 
-      const deletePromise = deleteMessage("channel_1", "status_1", "token");
+      const deletePromise = deleteMessageWithResult(
+        "channel_1",
+        "status_1",
+        "token",
+      );
       await vi.runAllTimersAsync();
 
-      await expect(deletePromise).resolves.toBe(false);
+      await expect(deletePromise).resolves.toEqual({
+        deleted: false,
+        retryable: true,
+        status,
+        reason: `http-${status}`,
+      });
       expect(fetchMock).toHaveBeenCalledTimes(3);
     },
   );
 
-  it("returns false after network retries are exhausted", async () => {
+  it("classifies exhausted network retries as retryable", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () => {
       throw new Error("network unavailable");
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const deletePromise = deleteMessage("channel_1", "status_1", "token");
+    const deletePromise = deleteMessageWithResult(
+      "channel_1",
+      "status_1",
+      "token",
+    );
     await vi.runAllTimersAsync();
 
-    await expect(deletePromise).resolves.toBe(false);
+    await expect(deletePromise).resolves.toEqual({
+      deleted: false,
+      retryable: true,
+      reason: "network-error",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

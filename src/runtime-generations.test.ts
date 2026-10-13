@@ -12,8 +12,6 @@ async function loadGeneration() {
       orphans: defaultOrphans,
       getToken: () => "test-token",
       config: resolveConfig({}),
-      isActiveMemoryEnabled: () => true,
-      isSkillHarnessEnabled: () => false,
     }),
   };
 }
@@ -37,7 +35,7 @@ describe("activity across plugin generations", () => {
     vi.resetModules();
   });
 
-  it("updates the inbound status when tools and recall finish in other module generations", async () => {
+  it("updates the inbound status when tools start and finish in other module generations", async () => {
     const contents: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -50,9 +48,9 @@ describe("activity across plugin generations", () => {
       }),
     );
     const inbound = await loadGeneration();
-    const recall = await loadGeneration();
+    const tools = await loadGeneration();
     const agent = await loadGeneration();
-    generations.push(inbound, recall, agent);
+    generations.push(inbound, tools, agent);
     await inbound.handlers.onMessageReceived(
       { messageId: "message-1" },
       {
@@ -62,39 +60,7 @@ describe("activity across plugin generations", () => {
         runId: "main-run",
       },
     );
-    const recallContext = {
-      sessionKey: `${sessionKey}:active-memory:recall-1`,
-      runId: "recall-run",
-    };
-    await recall.handlers.onBeforeAgentRun(
-      { prompt: "", messages: [] },
-      recallContext,
-    );
-
-    await agent.handlers.onBeforeToolCall(
-      {
-        toolName: "memory_search",
-        toolCallId: "recall-tool",
-        params: {},
-        runId: "recall-run",
-      },
-      { ...recallContext, toolName: "memory_search" },
-    );
-    await agent.handlers.onAfterToolCall(
-      {
-        toolName: "memory_search",
-        toolCallId: "recall-tool",
-        params: {},
-        runId: "recall-run",
-        durationMs: 100,
-      },
-      { ...recallContext, toolName: "memory_search" },
-    );
-    await agent.handlers.onAgentEnd(
-      { success: true, messages: [], durationMs: 200 },
-      recallContext,
-    );
-    await agent.handlers.onBeforeToolCall(
+    await tools.handlers.onBeforeToolCall(
       {
         toolName: "exec",
         toolCallId: "main-tool",
@@ -117,20 +83,11 @@ describe("activity across plugin generations", () => {
     expect(inbound.store.sessions.get(contextKey)?.toolHistory).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          toolCallId: "active-memory",
-          status: "completed",
-        }),
-        expect.objectContaining({
-          toolCallId: "active-memory:recall-tool",
-          status: "completed",
-        }),
-        expect.objectContaining({
           toolCallId: "main-tool",
           status: "completed",
         }),
       ]),
     );
     expect(contents.at(-1)).toContain("exec");
-    expect(contents.at(-1)).toContain("memory_search");
   });
 });

@@ -19,57 +19,6 @@ export class ToolHistoryManager {
   }
 
   /**
-   * Adds multiple tool entries to the history
-   */
-  addEntries(history: ToolEntry[], entries: ToolEntry[]): void {
-    entries.forEach((entry) => this.ensureDisplayId(entry));
-    history.push(...entries);
-    this.trim(history);
-  }
-
-  /**
-   * Upserts entries: updates those existing in history, collects new ones.
-   * Returns the array of new entries (not yet in history) with duplicates resolved.
-   */
-  upsertEntries(history: ToolEntry[], entries: ToolEntry[]): ToolEntry[] {
-    const newEntries: ToolEntry[] = [];
-    for (const entry of entries) {
-      this.ensureDisplayId(entry);
-      const existingInHistory = history.find(
-        (t) => t.toolCallId === entry.toolCallId,
-      );
-      if (existingInHistory) {
-        this.ensureDisplayId(existingInHistory);
-        this.updateEntry(history, entry.toolCallId, {
-          status: existingInHistory.status === "error" ? "error" : entry.status,
-          params: entry.params,
-          toolName: entry.toolName,
-          error: existingInHistory.error ?? entry.error,
-          durationMs: existingInHistory.durationMs ?? entry.durationMs,
-        });
-      } else {
-        const existingInNew = newEntries.find(
-          (t) => t.toolCallId === entry.toolCallId,
-        );
-        if (existingInNew) {
-          const idx = newEntries.indexOf(existingInNew);
-          newEntries[idx] = {
-            ...newEntries[idx],
-            status: existingInNew.status === "error" ? "error" : entry.status,
-            params: entry.params,
-            toolName: entry.toolName,
-            error: existingInNew.error ?? entry.error,
-            durationMs: existingInNew.durationMs ?? entry.durationMs,
-          };
-        } else {
-          newEntries.push(entry);
-        }
-      }
-    }
-    return newEntries;
-  }
-
-  /**
    * Updates an existing tool entry by toolCallId
    */
   updateEntry(
@@ -101,23 +50,6 @@ export class ToolHistoryManager {
    */
   isSubagentEntry(entry: ToolEntry, prefix: SubagentToolName): boolean {
     return entry.toolName === prefix || entry.toolName.startsWith(`${prefix}:`);
-  }
-
-  /**
-   * Checks if an entry is a subagent child entry (only child entries)
-   */
-  isSubagentChildEntry(entry: ToolEntry, prefix: SubagentToolName): boolean {
-    return entry.toolName.startsWith(`${prefix}:`);
-  }
-
-  /**
-   * Finds only the child entries of a subagent
-   */
-  findSubagentChildEntries(
-    history: ToolEntry[],
-    prefix: SubagentToolName,
-  ): ToolEntry[] {
-    return history.filter((entry) => this.isSubagentChildEntry(entry, prefix));
   }
 
   /**
