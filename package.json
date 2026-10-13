@@ -1,5 +1,5 @@
 {
-  "name": "@wei840222/openclaw-plugin-discord-activity",
+  "name": "discord-activity",
   "displayName": "Discord Activity",
   "description": "Shows live agent and tool activity as a Discord message that is updated and deleted when the agent finishes.",
   "version": "2026.10.2",
