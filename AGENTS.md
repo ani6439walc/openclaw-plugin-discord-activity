@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository contains a TypeScript OpenClaw plugin that reports live tool activity in Discord. Runtime code lives in `src/`; tests are colocated as `src/*.test.ts`. Keep plugin assembly in `src/plugin.ts`, hook orchestration in `src/hooks.ts`, Discord message lifecycle in `src/session.ts`, REST behavior in `src/discord-api.ts`, and pure ANSI rendering in `src/render.ts`. Root entrypoints (`api.ts`, `index.ts`, and `token.ts`) bridge the OpenClaw SDK. User-facing configuration is declared in `openclaw.plugin.json`..
+This repository contains a TypeScript OpenClaw plugin that reports live tool activity in Discord. Runtime code lives in `src/`; tests are colocated as `src/*.test.ts`. Keep plugin assembly in `src/plugin.ts`, hook orchestration in `src/hooks.ts`, Discord message lifecycle in `src/session.ts`, REST behavior in `src/discord-api.ts`, and pure ANSI rendering in `src/render.ts`. Root entrypoints (`api.ts`, `index.ts`, and `token.ts`) bridge the OpenClaw SDK. User-facing configuration is declared in `openclaw.plugin.json`.
 
 For targeted discovery, prefer CodeGraph prompts such as:
 

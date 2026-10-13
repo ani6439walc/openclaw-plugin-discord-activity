@@ -139,6 +139,132 @@ describe("createHookHandlers", () => {
     vi.restoreAllMocks();
   });
 
+  describe("legacy internal-session isolation", () => {
+    it.each([
+      "message_received",
+      "before_tool_call",
+      "after_tool_call",
+      "before_agent_reply",
+      "message_sending",
+      "agent_end",
+      "before_compaction",
+      "after_compaction",
+    ] as const)(
+      "ignores legacy child %s and keeps the parent usable",
+      async (hook) => {
+        vi.useFakeTimers();
+        const fetchMock = createDiscordFetchMock();
+        const contextKey = "discord:channel:123";
+        const sessionKey = `agent:main:${contextKey}`;
+        const parentContext = {
+          channelId: "discord",
+          sessionKey,
+          runId: "parent-run",
+        };
+        await handlers.onMessageReceived(
+          { messageId: "parent-message", metadata: { to: "channel:123" } },
+          parentContext,
+        );
+        await handlers.onBeforeToolCall(
+          {
+            toolCallId: "parent-tool",
+            toolName: "bash",
+            params: { command: "pwd" },
+          },
+          { ...parentContext, toolName: "bash" },
+        );
+        const parent = store.sessions.get(contextKey)!;
+        const contextBefore = structuredClone(store.contexts.get(contextKey));
+        const historyBefore = structuredClone(parent.toolHistory);
+        const generationBefore = parent.generation;
+        const contentBefore = parent.lastRenderedContent;
+        const timerBefore = parent.maxDisplayTimer;
+        fetchMock.mockClear();
+        const childContext = {
+          channelId: "discord",
+          sessionKey: `${sessionKey}:active-memory:child`,
+          runId: "child-run",
+        };
+        const childTool = {
+          toolCallId: "child-tool",
+          toolName: "memory_search",
+          params: { query: "ignored" },
+        };
+        const events = {
+          message_received: () =>
+            handlers.onMessageReceived(
+              { messageId: "child-message", metadata: { to: "channel:123" } },
+              childContext,
+            ),
+          before_tool_call: () =>
+            handlers.onBeforeToolCall(childTool, {
+              ...childContext,
+              toolName: childTool.toolName,
+            }),
+          after_tool_call: () =>
+            handlers.onAfterToolCall(childTool, {
+              ...childContext,
+              toolName: childTool.toolName,
+            }),
+          before_agent_reply: () =>
+            handlers.onBeforeAgentReply(
+              { cleanedBody: "internal" },
+              childContext,
+            ),
+          message_sending: () =>
+            handlers.onMessageSending(
+              { to: "channel:123", content: "internal" },
+              childContext,
+            ),
+          agent_end: () =>
+            handlers.onAgentEnd(
+              { success: false, error: "child failure" },
+              childContext,
+            ),
+          before_compaction: () =>
+            handlers.onBeforeCompaction({ messageCount: 10 }, childContext),
+          after_compaction: () =>
+            handlers.onAfterCompaction(
+              { messageCount: 2, compactedCount: 8 },
+              childContext,
+            ),
+        };
+        const childEvent = events[hook]();
+        await vi.advanceTimersByTimeAsync(100);
+        await childEvent;
+        await flushPromises();
+        expect(store.sessions.get(contextKey)).toBe(parent);
+        expect(store.contexts.get(contextKey)).toEqual(contextBefore);
+        expect(parent.ownerSessionKey).toBe(sessionKey);
+        expect(parent.runId).toBe("parent-run");
+        expect(parent.generation).toBe(generationBefore);
+        expect(parent.toolHistory).toEqual(historyBefore);
+        expect(parent.lastRenderedContent).toBe(contentBefore);
+        expect(parent.finalized).not.toBe(true);
+        expect(parent.clearTimer).toBeUndefined();
+        expect(parent.maxDisplayTimer).toBe(timerBefore);
+        expect(orphans.get("child-tool")).toBeUndefined();
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        await handlers.onAfterToolCall(
+          {
+            toolCallId: "parent-tool",
+            toolName: "bash",
+            params: { command: "pwd" },
+            durationMs: 12,
+          },
+          { ...parentContext, toolName: "bash" },
+        );
+        expect(parent.toolHistory[0]).toMatchObject({
+          toolCallId: "parent-tool",
+          status: "completed",
+          durationMs: 12,
+        });
+        expect(fetchMock).toHaveBeenCalled();
+      },
+    );
+  });
+
   describe("onMessageReceived", () => {
     it("ignores non-discord contexts", async () => {
       await handlers.onMessageReceived(

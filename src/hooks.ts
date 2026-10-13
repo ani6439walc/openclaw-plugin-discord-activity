@@ -253,11 +253,13 @@ export function createHookHandlers(deps: HookDeps) {
     ctx: { sessionKey?: string },
     hookName: string,
   ): boolean {
+    // Retain isolation for legacy internal sessions without rendering their activity.
     if (
+      ctx.sessionKey?.includes(":active-memory:") ||
       isSkillHarnessSessionKey(ctx.sessionKey) ||
       isSubagentSessionKey(ctx.sessionKey)
     ) {
-      logger.trace(`${hookName}: skip (skill-harness/subagent) session.`, {
+      logger.trace(`${hookName}: skip internal session.`, {
         sessionKey: ctx.sessionKey,
       });
       return true;
