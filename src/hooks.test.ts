@@ -114,7 +114,6 @@ describe("createHookHandlers", () => {
   let orphans: ReturnType<typeof createOrphanManager>;
   let getToken: Mock<HookDeps["getToken"]>;
   let config: ReturnType<typeof resolveConfig>;
-  let isSkillHarnessEnabled: Mock<HookDeps["isSkillHarnessEnabled"]>;
   let handlers: ReturnType<typeof createHookHandlers>;
 
   beforeEach(() => {
@@ -124,15 +123,11 @@ describe("createHookHandlers", () => {
     orphans = createOrphanManager();
     getToken = vi.fn<HookDeps["getToken"]>().mockReturnValue("test-token");
     config = resolveConfig({});
-    isSkillHarnessEnabled = vi
-      .fn<HookDeps["isSkillHarnessEnabled"]>()
-      .mockReturnValue(false);
     handlers = createHookHandlers({
       store,
       orphans,
       getToken,
       config,
-      isSkillHarnessEnabled,
     });
   });
 
@@ -162,7 +157,6 @@ describe("createHookHandlers", () => {
     });
 
     it("starts replacement generations with fresh display state", async () => {
-      isSkillHarnessEnabled.mockReturnValue(false);
       const sessionKey = "agent:main:discord:direct:123";
 
       await handlers.onMessageReceived(
@@ -194,7 +188,6 @@ describe("createHookHandlers", () => {
 
     it("does not show skill-harness before pipeline events arrive and renders pending when started", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "msg_1", metadata: { to: "user:123" } },
@@ -275,7 +268,6 @@ describe("createHookHandlers", () => {
 
     it("maintains stable order between tool calls and skill-harness events", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "msg_1", metadata: { to: "user:123" } },
@@ -317,14 +309,12 @@ describe("createHookHandlers", () => {
 
     it("characterizes the default hook flow with a channel reply reference", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(false);
       config = resolveConfig({});
       handlers = createHookHandlers({
         store,
         orphans,
         getToken,
         config,
-        isSkillHarnessEnabled,
       });
       const sessionKey = "agent:main:discord:channel:123";
 
@@ -369,14 +359,12 @@ describe("createHookHandlers", () => {
       "uses resolveConfig replyMode in the handler status POST for $sessionKey",
       async ({ replyMode, sessionKey, expectedReference }) => {
         const fetchMock = createDiscordFetchMock();
-        isSkillHarnessEnabled.mockReturnValue(false);
         config = resolveConfig({ replyMode });
         handlers = createHookHandlers({
           store,
           orphans,
           getToken,
           config,
-          isSkillHarnessEnabled,
         });
 
         await handlers.onMessageReceived(
@@ -407,7 +395,6 @@ describe("createHookHandlers", () => {
   describe("stale-run isolation", () => {
     async function createReplacementForNewRun() {
       createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(false);
       const sessionKey = "agent:main:discord:direct:123";
 
       await handlers.onMessageReceived(
@@ -566,14 +553,12 @@ describe("createHookHandlers", () => {
 
     it("starts a queued successor generation from before_agent_reply before skill-harness activity", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
       config = resolveConfig({ replyMode: "direct" });
       handlers = createHookHandlers({
         store,
         orphans,
         getToken,
         config,
-        isSkillHarnessEnabled,
       });
       const sessionKey = "agent:main:discord:direct:123";
 
@@ -656,7 +641,6 @@ describe("createHookHandlers", () => {
     it("guards queued successor takeover and fences late run events", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
       const sessionKey = "agent:main:discord:direct:123";
 
       await handlers.onMessageReceived(
@@ -795,7 +779,6 @@ describe("createHookHandlers", () => {
 
     it("fails open when queued status initialization cannot resolve a token", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
       const sessionKey = "agent:main:discord:direct:123";
 
       await handlers.onMessageReceived(
@@ -942,7 +925,6 @@ describe("createHookHandlers", () => {
         orphans,
         getToken,
         config,
-        isSkillHarnessEnabled,
       });
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
 
@@ -1407,6 +1389,46 @@ describe("createHookHandlers", () => {
       consoleSpy.mockRestore();
     });
 
+    it("preserves a pending pipeline status during compaction before any tool runs", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_pipeline_compact";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId },
+      );
+      await handlers.onSkillHarnessPipelineEvent({
+        runId,
+        sessionKey,
+        stream: "plugin:skill-harness",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "started",
+        },
+      });
+      await handlers.onBeforeCompaction(
+        { messageCount: 42 },
+        { sessionKey, runId },
+      );
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.compactionActive).toBe(true);
+      expect(session?.maxDisplayTimer).toBeUndefined();
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      await handlers.onAfterCompaction(
+        { messageCount: 10, compactedCount: 32 },
+        { sessionKey, runId },
+      );
+      expect(session?.compactionActive).toBe(false);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ✔",
+      );
+    });
+
     it("preserves an active status across an attempt-level agent_end and compaction", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
@@ -1418,7 +1440,6 @@ describe("createHookHandlers", () => {
         orphans,
         getToken,
         config,
-        isSkillHarnessEnabled,
       });
 
       await handlers.onMessageReceived(
@@ -1536,7 +1557,6 @@ describe("createHookHandlers", () => {
 
     it("does not finalize on before_agent_reply before any activity exists", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1681,7 +1701,6 @@ describe("createHookHandlers", () => {
 
     it("renders skill-harness pipeline events as a single status entry with status/result format", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1776,7 +1795,6 @@ describe("createHookHandlers", () => {
 
     it("renders canonical skill-harness failures as phase-local errors", async () => {
       createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1821,7 +1839,6 @@ describe("createHookHandlers", () => {
 
     it("calculates skill-harness phase duration from first to final pipeline event", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
       const nowSpy = vi.spyOn(Date, "now");
 
       await handlers.onMessageReceived(
@@ -1900,7 +1917,6 @@ describe("createHookHandlers", () => {
 
     it("does not render duplicate skill-harness pipeline events twice", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1942,7 +1958,6 @@ describe("createHookHandlers", () => {
 
     it("uses skill-harness data sessionKey when the event wrapper omits it", async () => {
       createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -1972,7 +1987,6 @@ describe("createHookHandlers", () => {
 
     it("accepts the skill-harness sessionKey fallback run id", async () => {
       createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
       const sessionKey = "agent:main:discord:direct:123";
 
       await handlers.onMessageReceived(
@@ -2010,7 +2024,6 @@ describe("createHookHandlers", () => {
 
     it("does not downgrade completed skill-harness to pending", async () => {
       createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -2049,61 +2062,67 @@ describe("createHookHandlers", () => {
       expect(entry?.status).toBe("completed");
     });
 
-    it("ignores legacy skill-harness agent_end result rendering", async () => {
-      const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
+    it.each([
+      "agent:main:discord:direct:123:skill-harness:abc",
+      "agent:main:discord:direct:123:subagent:abc:skill-harness:def",
+    ])(
+      "ignores internal agent_end without finalizing the parent: %s",
+      async (sessionKey) => {
+        const fetchMock = createDiscordFetchMock();
 
-      await handlers.onMessageReceived(
-        { messageId: "user_msg_1", metadata: { to: "user:123" } },
-        {
-          channelId: "discord",
+        await handlers.onMessageReceived(
+          { messageId: "user_msg_1", metadata: { to: "user:123" } },
+          {
+            channelId: "discord",
+            sessionKey: "agent:main:discord:direct:123",
+            accountId: "default",
+          },
+        );
+
+        await handlers.onSkillHarnessPipelineEvent({
+          runId: "run-1",
+          stream: "plugin:skill-harness",
           sessionKey: "agent:main:discord:direct:123",
-          accountId: "default",
-        },
-      );
+          data: {
+            kind: "skill-harness.pipeline",
+            phase: "pipeline",
+            state: "started",
+          },
+        });
 
-      await handlers.onSkillHarnessPipelineEvent({
-        runId: "run-1",
-        stream: "plugin:skill-harness",
-        sessionKey: "agent:main:discord:direct:123",
-        data: {
-          kind: "skill-harness.pipeline",
-          phase: "pipeline",
-          state: "started",
-        },
-      });
+        await handlers.onAgentEnd(
+          {
+            messages: [
+              {
+                role: "assistant",
+                content:
+                  "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
+              },
+            ],
+            success: true,
+          },
+          {
+            sessionKey,
+          },
+        );
 
-      await handlers.onAgentEnd(
-        {
-          messages: [
-            {
-              role: "assistant",
-              content:
-                "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
-            },
-          ],
-          success: true,
-        },
-        {
-          sessionKey: "agent:main:discord:direct:123:skill-harness:abc",
-        },
-      );
-
-      const session = store.sessions.get("discord:direct:123");
-      expect(
-        session?.toolHistory.some(
-          (tool) => tool.toolName === "skill-harness:result",
-        ),
-      ).toBe(false);
-      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-        "💡 skill-harness ▾ ←",
-      );
-      expect(countChannelMessagePosts(fetchMock)).toBe(1);
-    });
+        const session = store.sessions.get("discord:direct:123");
+        expect(session?.finalized).not.toBe(true);
+        expect(session?.clearTimer).toBeUndefined();
+        expect(
+          session?.toolHistory.some(
+            (tool) => tool.toolName === "skill-harness:result",
+          ),
+        ).toBe(false);
+        expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+          "💡 skill-harness ▾ ←",
+        );
+        expect(countChannelMessagePosts(fetchMock)).toBe(1);
+      },
+    );
 
     it("ignores malformed skill-harness pipeline events", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -2214,7 +2233,6 @@ describe("createHookHandlers", () => {
 
     it("keeps skill-harness ahead of tool calls across its lifecycle", async () => {
       const fetchMock = createDiscordFetchMock();
-      isSkillHarnessEnabled.mockReturnValue(true);
 
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },

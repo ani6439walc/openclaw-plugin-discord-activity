@@ -94,12 +94,6 @@ export type HookDeps = {
   orphans: OrphanToolManager;
   getToken: GetTokenFn;
   config: PluginConfig;
-  isSkillHarnessEnabled?: (agentId: string) => boolean;
-};
-
-export type StatusRenderResult = {
-  content: string;
-  trimmed: boolean;
 };
 
 export type StatefulStatusRenderResult = {

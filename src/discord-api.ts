@@ -192,16 +192,6 @@ export async function sendMessageWithResult(
   }
 }
 
-export async function sendMessage(
-  channelId: string,
-  content: string,
-  token: string,
-  replyToId?: string,
-): Promise<string | undefined> {
-  return (await sendMessageWithResult(channelId, content, token, replyToId))
-    .messageId;
-}
-
 export async function editMessageWithResult(
   channelId: string,
   messageId: string,
@@ -247,18 +237,6 @@ export async function editMessageWithResult(
       reason: "network-error",
     };
   }
-}
-
-export async function editMessage(
-  channelId: string,
-  messageId: string,
-  content: string,
-  token: string,
-): Promise<boolean> {
-  return (
-    (await editMessageWithResult(channelId, messageId, content, token))
-      .outcome === "applied"
-  );
 }
 
 export type DeleteMessageResult = {
@@ -309,13 +287,4 @@ export async function deleteMessageWithResult(
       reason: "network-error",
     };
   }
-}
-
-/** @deprecated Compatibility wrapper; use deleteMessageWithResult internally. */
-export async function deleteMessage(
-  channelId: string,
-  messageId: string,
-  token: string,
-): Promise<boolean> {
-  return (await deleteMessageWithResult(channelId, messageId, token)).deleted;
 }

@@ -12,7 +12,6 @@ async function loadGeneration() {
       orphans: defaultOrphans,
       getToken: () => "test-token",
       config: resolveConfig({}),
-      isSkillHarnessEnabled: () => false,
     }),
   };
 }

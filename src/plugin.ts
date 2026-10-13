@@ -3,6 +3,7 @@ import { resolveDiscordToken } from "../token.js";
 import { defaultStore, defaultOrphans } from "./session.js";
 import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
+import { SKILL_HARNESS_EVENT_STREAM } from "./skill-harness-status.js";
 import { HINDSIGHT_EVENT_STREAM } from "./hindsight-status.js";
 
 export function createPlugin(
@@ -47,7 +48,7 @@ export function createPlugin(
       api.on("after_compaction", handlers.onAfterCompaction);
       registerAgentEventSubscription?.({
         id: "discord-activity:skill-harness-pipeline",
-        streams: ["plugin:skill-harness"],
+        streams: [SKILL_HARNESS_EVENT_STREAM],
         handle: handlers.onSkillHarnessPipelineEvent,
       });
       registerAgentEventSubscription?.({

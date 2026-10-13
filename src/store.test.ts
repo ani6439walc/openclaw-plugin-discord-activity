@@ -69,16 +69,17 @@ describe("createSessionStore", () => {
       expect(store.hasVisibleStatusState(session)).toBe(false);
     });
 
-    it("returns false for skill-harness placeholder only", () => {
+    it("returns true for an observed pending skill-harness pipeline", () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       const session = store.getOrCreateSession("discord:channel:123")!;
       session.toolHistory.push({
         toolCallId: "skill-harness",
         toolName: "skill-harness",
-        params: {},
+        params: { status: "selecting skills" },
         status: "pending",
+        startedAtMs: 1_000,
       });
-      expect(store.hasVisibleStatusState(session)).toBe(false);
+      expect(store.hasVisibleStatusState(session)).toBe(true);
     });
 
     it("returns true for skill-harness error state", () => {

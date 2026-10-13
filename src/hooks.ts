@@ -315,7 +315,6 @@ export function createHookHandlers(deps: HookDeps) {
     ctx: AgentContext,
     delayMs: number,
     hookName: string,
-    requireVisibleState = false,
     resolvedSession?: SessionEntry,
   ) {
     const contextKey = getDiscordContextKey(ctx.sessionKey);
@@ -326,7 +325,6 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return;
     if (!store.isCurrentSession(session)) return;
     if (!bindSessionRun(session, ctx.runId)) return;
-    if (requireVisibleState && !store.hasVisibleStatusState(session)) return;
     const compactionEpoch = session.compactionEpoch ?? 0;
     session.finalized = true;
     await updateSessionStatus(session, true);
@@ -645,15 +643,7 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onAgentEnd(event: AgentEndEvent, ctx: AgentContext) {
-    if (
-      isSubagentSessionKey(ctx.sessionKey) &&
-      !isSkillHarnessSessionKey(ctx.sessionKey)
-    ) {
-      logger.trace("agent_end: skip subagent session.", {
-        sessionKey: ctx.sessionKey,
-      });
-      return;
-    }
+    if (shouldSkipSession(ctx, "agent_end")) return;
     logHookEvent("agent_end", event, ctx);
 
     const contextKey = getDiscordContextKey(ctx.sessionKey);
@@ -661,10 +651,6 @@ export function createHookHandlers(deps: HookDeps) {
       ? store.sessions.get(contextKey)?.compactionActive === true
       : false;
     if (contextKey) {
-      if (isSkillHarnessSessionKey(ctx.sessionKey)) {
-        return;
-      }
-
       const session = await store.resolveSession(contextKey, ctx.sessionKey);
       if (!session || !bindSessionRun(session, ctx.runId)) return;
       finishPendingHindsightRecalls(session.toolHistory);
@@ -694,13 +680,7 @@ export function createHookHandlers(deps: HookDeps) {
         }
       }
 
-      await resolveAndFinalize(
-        ctx,
-        AGENT_END_DELAY_MS,
-        "agent_end",
-        false,
-        session,
-      );
+      await resolveAndFinalize(ctx, AGENT_END_DELAY_MS, "agent_end", session);
     }
   }
 
@@ -855,7 +835,6 @@ export function createHookHandlers(deps: HookDeps) {
 
   return Object.freeze({
     onHindsightPipelineEvent,
-    onHindsightRecallEvent: onHindsightPipelineEvent,
     onMessageReceived,
     onBeforeToolCall,
     onAfterToolCall,

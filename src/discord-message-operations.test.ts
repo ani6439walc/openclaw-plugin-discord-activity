@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deleteDiscordStatusMessageWithResult,
-  editDiscordStatusMessage,
   editDiscordStatusMessageWithResult,
   sendDiscordStatusWithDmFallbackWithResult,
 } from "./discord-message-operations.js";
@@ -14,39 +13,33 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("editDiscordStatusMessage", () => {
+describe("editDiscordStatusMessageWithResult", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("returns false without a Discord token", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      editDiscordStatusMessage(() => "", "channel_1", "status_1", "content"),
-    ).resolves.toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("returns false when the Discord PATCH fails", async () => {
+  it("classifies a failed Discord PATCH as rejected", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({ message: "Forbidden" }, 403),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      editDiscordStatusMessage(
+      editDiscordStatusMessageWithResult(
         () => "token",
         "channel_1",
         "status_1",
         "content",
       ),
-    ).resolves.toBe(false);
+    ).resolves.toEqual({
+      outcome: "rejected",
+      status: 403,
+      reason: "http-403",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("classifies a missing token as rejected in the detailed API", async () => {
+  it("classifies a missing token as rejected", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -100,15 +93,6 @@ describe("editDiscordStatusMessage", () => {
       });
       expect(tokenGetter).not.toHaveBeenCalled();
       expect(fetchMock).not.toHaveBeenCalled();
-
-      await expect(
-        editDiscordStatusMessage(
-          tokenGetter,
-          "channel_1",
-          "status_1",
-          emptyContent,
-        ),
-      ).resolves.toBe(false);
     },
   );
 });

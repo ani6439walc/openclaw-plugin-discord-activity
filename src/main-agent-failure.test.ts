@@ -128,7 +128,6 @@ describe("main agent failure rendering", () => {
       orphans: createOrphanManager(),
       getToken: () => "token",
       config: resolveConfig({}),
-      isSkillHarnessEnabled: () => false,
     });
     const sessionKey = "discord:channel:123";
 
@@ -171,7 +170,6 @@ describe("main agent failure rendering", () => {
       orphans: createOrphanManager(),
       getToken: () => "token",
       config: resolveConfig({}),
-      isSkillHarnessEnabled: () => false,
     });
     const sessionKey = "discord:channel:123";
 

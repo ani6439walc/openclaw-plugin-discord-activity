@@ -1,9 +1,7 @@
 import type { AgentPipelineEvent, ToolEntry } from "./types.js";
 
 export const HINDSIGHT_EVENT_STREAM = "plugin:hindsight";
-export const HINDSIGHT_RECALL_STREAM = HINDSIGHT_EVENT_STREAM;
 export const HINDSIGHT_TOOL = "hindsight";
-export const HINDSIGHT_RECALL_TOOL = HINDSIGHT_TOOL;
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;

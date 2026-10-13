@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   createDefaultStatusDisplayState,
-  isContentTooLong,
   mergeStatusDisplayStates,
   renderStatusContent,
   renderStatusContentWithState,
 } from "./render.js";
-import { formatParams, getToolIcon } from "./formatting.js";
+import { getToolIcon } from "./formatting.js";
 import type { ToolEntry } from "./types.js";
 
 function makeEntry(overrides: Partial<ToolEntry> = {}): ToolEntry {
@@ -1170,29 +1169,6 @@ describe("group wall-clock duration", () => {
 });
 
 describe("renderStatusContent", () => {
-  it("reports the exact number of omitted Unicode characters", () => {
-    const value = `${"a".repeat(749)}😀\n${"b".repeat(6)}`;
-
-    const result = formatParams({ result: value });
-
-    expect(result).toContain(`😀... 7 chars more`);
-    expect(result).not.toContain("(truncated)");
-    expect(result).not.toMatch(
-      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
-    );
-  });
-
-  it("reports omitted Unicode characters for single-line values", () => {
-    const value = `${"a".repeat(149)}😀${"b".repeat(6)}`;
-
-    const result = formatParams({ query: value });
-
-    expect(result).toContain(`😀... 6 chars more`);
-    expect(result).not.toMatch(
-      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
-    );
-  });
-
   it("renders a single pending tool", () => {
     const result = renderStatusContent([makeEntry()], false);
     expect(result).toContain("bash");
@@ -1953,20 +1929,6 @@ describe("renderStatusContent", () => {
     const plain = stripAnsi(result.content);
     expect(plain).toContain("🧠 hindsight ▸ ✔ [1.57s]");
     expect(plain).not.toContain("result: 8 memories recalled");
-  });
-});
-
-describe("isContentTooLong", () => {
-  it("returns true when content exceeds max length", () => {
-    expect(isContentTooLong("x".repeat(1701), 1)).toBe(true);
-  });
-
-  it("does not use aggregate entry count for content length checks", () => {
-    expect(isContentTooLong("short", 7)).toBe(false);
-  });
-
-  it("returns false when within limits", () => {
-    expect(isContentTooLong("short", 1)).toBe(false);
   });
 });
 

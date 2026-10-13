@@ -189,14 +189,11 @@ function getSkillHarnessResultFields(entry: ToolEntry): DisplayField[] {
   try {
     const obj = JSON.parse(cleanText);
     if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-      return formatDisplayFields(obj, { toolName: entry.toolName });
+      return formatDisplayFields(obj);
     }
   } catch {}
 
-  return formatDisplayFields(
-    { result: cleanText },
-    { toolName: entry.toolName },
-  );
+  return formatDisplayFields({ result: cleanText });
 }
 
 function createEntryFieldNodes(
@@ -205,7 +202,6 @@ function createEntryFieldNodes(
 ): StatusNode[] {
   const nodes = packMainFields(
     formatDisplayFields(entry.params, {
-      toolName: entry.toolName,
       excludeKeys: options?.excludeKeys,
     }),
   ).map(createFieldNode);
@@ -447,9 +443,7 @@ function renderSubagentGroup(
   }
   if (realEntries.length === 0) {
     for (const entry of group) {
-      const parentFields = formatDisplayFields(entry.params, {
-        toolName: entry.toolName,
-      });
+      const parentFields = formatDisplayFields(entry.params);
       for (const row of packMainFields(parentFields)) {
         nodes.push(createFieldNode(row));
       }
@@ -868,11 +862,4 @@ export function renderStatusContent(
   maxLength = STATUS_MAX_LENGTH,
 ): string {
   return renderStatusContentWithState(toolHistory, isFinal, maxLength).content;
-}
-
-export function isContentTooLong(
-  content: string,
-  _entryCount: number,
-): boolean {
-  return content.length > STATUS_MAX_LENGTH;
 }
