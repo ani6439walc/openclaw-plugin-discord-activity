@@ -12,11 +12,12 @@ export function isSubagentSessionKey(sessionKey: string | undefined): boolean {
   return typeof sessionKey === "string" && sessionKey.includes(":subagent:");
 }
 
-export function isSkillHarnessSessionKey(
+export function isSkillHarnessReviewSessionKey(
   sessionKey: string | undefined,
 ): boolean {
   return (
-    typeof sessionKey === "string" && sessionKey.includes(":skill-harness:")
+    typeof sessionKey === "string" &&
+    sessionKey.includes(":skill-harness-review:")
   );
 }
 

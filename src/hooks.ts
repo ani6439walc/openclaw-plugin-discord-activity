@@ -19,7 +19,7 @@ import type {
 import { clearMaxDisplayTimer, clearSessionTimer } from "./helpers.js";
 import {
   getDiscordContextKey,
-  isSkillHarnessSessionKey,
+  isSkillHarnessReviewSessionKey,
   isSubagentSessionKey,
   extractIdFromMetadata,
   extractSenderId,
@@ -253,10 +253,10 @@ export function createHookHandlers(deps: HookDeps) {
     ctx: { sessionKey?: string },
     hookName: string,
   ): boolean {
-    // Retain isolation for legacy internal sessions without rendering their activity.
+    // Isolate background reviews and legacy internal sessions from user activity.
     if (
       ctx.sessionKey?.includes(":active-memory:") ||
-      isSkillHarnessSessionKey(ctx.sessionKey) ||
+      isSkillHarnessReviewSessionKey(ctx.sessionKey) ||
       isSubagentSessionKey(ctx.sessionKey)
     ) {
       logger.trace(`${hookName}: skip internal session.`, {

@@ -74,7 +74,7 @@ The plugin listens to OpenClaw runtime events and maps them to one active Discor
 5. **`message_sending`** finalizes visible status before the final user-facing reply is sent.
 6. **`before_compaction` / `after_compaction`** preserve the active status across context compaction, show the compaction as pending/completed with duration, cancel attempt-level cleanup, and suspend the idle timer until the compacted run resumes.
 7. **Main `agent_end`** records and displays the concrete main-agent error, owns main-session finalization, and schedules cleanup.
-8. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. No Skill Harness enablement configuration is read and no placeholder is created before an event arrives. Internal `skill-harness` session hooks are ignored so they cannot mutate or finalize the main conversation status.
+8. **`plugin:skill-harness` pipeline events** feed `skill-harness` status. No Skill Harness enablement configuration is read and no placeholder is created before an event arrives. Background `skill-harness-review` tool hooks are ignored so they cannot enter the user activity history or orphan cache. Legacy `:skill-harness:` sessions are no longer supported or specially filtered.
 
 Session and race-safety behavior:
 

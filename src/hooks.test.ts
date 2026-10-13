@@ -2188,65 +2188,6 @@ describe("createHookHandlers", () => {
       expect(entry?.status).toBe("completed");
     });
 
-    it.each([
-      "agent:main:discord:direct:123:skill-harness:abc",
-      "agent:main:discord:direct:123:subagent:abc:skill-harness:def",
-    ])(
-      "ignores internal agent_end without finalizing the parent: %s",
-      async (sessionKey) => {
-        const fetchMock = createDiscordFetchMock();
-
-        await handlers.onMessageReceived(
-          { messageId: "user_msg_1", metadata: { to: "user:123" } },
-          {
-            channelId: "discord",
-            sessionKey: "agent:main:discord:direct:123",
-            accountId: "default",
-          },
-        );
-
-        await handlers.onSkillHarnessPipelineEvent({
-          runId: "run-1",
-          stream: "plugin:skill-harness",
-          sessionKey: "agent:main:discord:direct:123",
-          data: {
-            kind: "skill-harness.pipeline",
-            phase: "pipeline",
-            state: "started",
-          },
-        });
-
-        await handlers.onAgentEnd(
-          {
-            messages: [
-              {
-                role: "assistant",
-                content:
-                  "INTENT:RESEARCH | GOAL: 查文件 | SUGGESTED_TOOLS: context7",
-              },
-            ],
-            success: true,
-          },
-          {
-            sessionKey,
-          },
-        );
-
-        const session = store.sessions.get("discord:direct:123");
-        expect(session?.finalized).not.toBe(true);
-        expect(session?.clearTimer).toBeUndefined();
-        expect(
-          session?.toolHistory.some(
-            (tool) => tool.toolName === "skill-harness:result",
-          ),
-        ).toBe(false);
-        expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
-          "💡 skill-harness ▾ ←",
-        );
-        expect(countChannelMessagePosts(fetchMock)).toBe(1);
-      },
-    );
-
     it("ignores malformed skill-harness pipeline events", async () => {
       const fetchMock = createDiscordFetchMock();
 
