@@ -169,8 +169,8 @@ importers:
   .:
     dependencies:
       openclaw:
-        specifier: 2026.10.2
-        version: 2026.10.2(undici@8.10.2)
+        specifier: 2026.10.3
+        version: 2026.10.3(undici@8.10.2)
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -464,9 +464,6 @@ packages:
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
     engines: {node: '>=6.0.0'}
 
-  '@jridgewell/sourcemap-codec@1.5.5':
-    resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
-
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
@@ -643,8 +640,8 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@openclaw/ai@2026.10.2':
-    resolution: {integrity: sha512-cgw8vpCfbmnY5Qbe+7gZWN1lsnCuBUFasu2nNjUkDAtKh+RzvPQZudMvkhA34vVhuQZ8KUf6D45dMePWC560Ww==}
+  '@openclaw/ai@2026.10.3':
+    resolution: {integrity: sha512-nPB0z/GMTyQayVu1JSDOml+orERUBzg9zo+2f4UxLLpDLJe0ERHrOPQQ3tGV+fDu/jATN9EAfXJPRMNUs1168g==}
     engines: {node: '>=22.19.0'}
 
   '@openclaw/fs-safe-darwin-arm64@0.24.2':
@@ -1990,8 +1987,8 @@ packages:
       zod:
         optional: true
 
-  openclaw@2026.10.2:
-    resolution: {integrity: sha512-FuLLF+WI12ypwQ0r+pcKDcmB+kXus5N4QClaKEnaAn6GN4I1AitkOhwv0GFl2rVKpvuUBDQWIfglHNy6Trv/EQ==}
+  openclaw@2026.10.3:
+    resolution: {integrity: sha512-ncl6LntMlf76K39LFhVrDXQTbaGNAG5j52f7PL5P8vIn0knWmCrvfAe9DHMslFq+47HeOWBH2CBYQH8zEb+UAA==}
     engines: {node: '>=24.16.0 <25 || >=26.1.0'}
     hasBin: true
     bundledDependencies:
@@ -2764,14 +2761,12 @@ snapshots:
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
-  '@jridgewell/sourcemap-codec@1.5.5': {}
-
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
   '@jridgewell/trace-mapping@0.3.31':
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
-      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/sourcemap-codec': 1.6.0
 
   '@koromix/koffi-android-arm64@3.3.1': {}
 
@@ -2875,7 +2870,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.2
     optional: true
 
-  '@openclaw/ai@2026.10.2(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)':
+  '@openclaw/ai@2026.10.3(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)':
     dependencies:
       '@anthropic-ai/sdk': 0.128.0(zod@4.6.5)
       '@google/genai': 2.24.0(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))
@@ -3950,7 +3945,7 @@ snapshots:
       ws: 8.21.3
       zod: 4.6.5
 
-  openclaw@2026.10.2(undici@8.10.2):
+  openclaw@2026.10.3(undici@8.10.2):
     dependencies:
       '@agentclientprotocol/sdk': 1.5.0(zod@4.6.5)
       '@anthropic-ai/sdk': 0.128.0(zod@4.6.5)
@@ -3967,7 +3962,7 @@ snapshots:
       '@mistralai/mistralai': 2.7.0
       '@modelcontextprotocol/sdk': 1.31.0(zod@4.6.5)
       '@mozilla/readability': 0.6.0
-      '@openclaw/ai': 2026.10.2(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)
+      '@openclaw/ai': 2026.10.3(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)
       '@openclaw/fs-safe': 0.24.2
       '@silvia-odwyer/photon-node': 0.3.4
       '@trycua/cua-driver': 0.28.2
