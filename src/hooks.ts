@@ -228,7 +228,7 @@ export function createHookHandlers(deps: HookDeps) {
       session.contentDeliveryUncertain !== true &&
       session.lastRenderedContent !== undefined &&
       session.lastRenderedContent ===
-      renderedContent(session, session.toolHistory)
+        renderedContent(session, session.toolHistory)
     );
   }
 
@@ -792,7 +792,10 @@ export function createHookHandlers(deps: HookDeps) {
             error: String(err),
           });
         }
-        if (!store.isCurrentSession(session) || !bindSessionRun(session, ctx.runId)) {
+        if (
+          !store.isCurrentSession(session) ||
+          !bindSessionRun(session, ctx.runId)
+        ) {
           return;
         }
       }
@@ -802,7 +805,6 @@ export function createHookHandlers(deps: HookDeps) {
       if (hasFailure && (!session.finalized || failureVisibleChange)) {
         recordMainAgentFailure(session, event);
       }
-
 
       logger.info("agent_end: finalizing session", {
         contextKey,

@@ -535,8 +535,8 @@ export async function updateStatusMessage(
       commitDisplayState(session, displayState, "uncertain");
     }
   })();
-
   session.pendingOp = op;
+
   try {
     await op;
   } finally {
