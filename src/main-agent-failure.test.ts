@@ -250,6 +250,58 @@ describe("main agent failure rendering", () => {
     expect(session.clearTimer).toBeDefined();
   });
 
+  it("keeps the newer failure when an older agent_end arrives during its update", async () => {
+    let releasePatch: () => void = () => { };
+    const patchGate = new Promise<void>((resolve) => {
+      releasePatch = resolve;
+    });
+    let heldPatch = false;
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "PATCH" && !heldPatch) {
+        heldPatch = true;
+        await patchGate;
+      }
+      if (method === "DELETE") return new Response(null, { status: 204 });
+      return jsonResponse({ id: "status_1" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = createHookHandlers({
+      store: defaultStore,
+      orphans: createOrphanManager(),
+      getToken: () => "token",
+      config: resolveConfig({}),
+    });
+    const sessionKey = "discord:channel:123";
+    await handlers.onMessageReceived(
+      { messageId: "user_1", metadata: { to: "channel:123" } },
+      { channelId: "discord", sessionKey },
+    );
+    await handlers.onAgentEnd(
+      { success: false, error: "failure A" },
+      { sessionKey },
+    );
+    const newer = handlers.onAgentEnd(
+      { success: false, error: "failure B" },
+      { sessionKey },
+    );
+    await Promise.resolve();
+    const older = handlers.onAgentEnd(
+      { success: false, error: "failure A" },
+      { sessionKey },
+    );
+    releasePatch();
+    await newer;
+    await older;
+    const session = defaultStore.sessions.get("discord:channel:123")!;
+    expect(session.toolHistory).toContainEqual(
+      expect.objectContaining({ toolCallId: "agent", error: "failure B" }),
+    );
+    expect(stripAnsi(session.lastRenderedContent ?? "")).toContain("failure B");
+    expect(stripAnsi(session.lastRenderedContent ?? "")).not.toContain("failure A");
+  });
+
+
   it("retries an identical failure when its create delivery is uncertain", async () => {
     vi.useFakeTimers();
     let failCreate = true;
