@@ -1,40 +1,9 @@
-import { vi } from "vitest";
-import type { Mock } from "vitest";
-import type {
-  SessionEntry,
-  ChannelMeta,
-  ToolEntry,
-  OrphanEntry,
-} from "./src/types.js";
-
-export type Handler = (event: any, ctx: any) => Promise<any>;
-
-export const mockLogger = {
-  trace: vi.fn() as Mock<(message?: string, ...args: unknown[]) => void>,
-  debug: vi.fn() as Mock<(message?: string, ...args: unknown[]) => void>,
-  warn: vi.fn() as Mock<(message?: string, ...args: unknown[]) => void>,
-};
+import type { SessionEntry, ToolEntry, OrphanEntry } from "./src/types.js";
 
 export async function flushPromises(): Promise<void> {
   for (let i = 0; i < 20; i++) {
     await Promise.resolve();
   }
-}
-
-export function getLastStatusContent(calls: any[], channelId: string): string {
-  const relevant = calls.filter(([url, init]) => {
-    const method = (init as RequestInit | undefined)?.method ?? "POST";
-    return (
-      String(url).includes(`/channels/${channelId}/messages`) &&
-      (method === "POST" || method === "PATCH")
-    );
-  });
-  const last = relevant[relevant.length - 1];
-  if (!last) return "";
-  const body = JSON.parse(
-    String((last[1] as RequestInit | undefined)?.body ?? "{}"),
-  ) as { content?: string };
-  return body.content ?? "";
 }
 
 export function deferred<T>() {
@@ -67,23 +36,6 @@ export function createMockSessionEntry(
     maxDisplayTimer: undefined,
     ...overrides,
   };
-}
-
-export function createMockChannelMeta(
-  overrides?: Partial<ChannelMeta>,
-): ChannelMeta {
-  return {
-    actualChannelId: "123456",
-    userMessageId: "msg_001",
-    senderId: "user_001",
-    ...overrides,
-  };
-}
-
-export function createMockTokenResolver(
-  token = "test-bot-token",
-): Mock<() => string> {
-  return vi.fn().mockReturnValue(token);
 }
 
 export function createToolEntry(overrides?: Partial<ToolEntry>): ToolEntry {

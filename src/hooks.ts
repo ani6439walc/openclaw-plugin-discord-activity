@@ -29,7 +29,7 @@ import {
   scheduleSessionCleanup,
   updateStatusMessage,
 } from "./session.js";
-import { AGENT_END_DELAY_MS } from "./constants.js";
+import { DEFAULT_AGENT_END_DELAY_MS } from "./constants.js";
 import { ToolHistoryManager } from "./tool-history-manager.js";
 import {
   canonicalToolNameForDedupe,
@@ -825,14 +825,19 @@ export function createHookHandlers(deps: HookDeps) {
           contextKey,
           session,
           ctx.sessionKey,
-          AGENT_END_DELAY_MS,
+          DEFAULT_AGENT_END_DELAY_MS,
           "agent_end_delayed",
           getToken,
         );
         return;
       }
 
-      await resolveAndFinalize(ctx, AGENT_END_DELAY_MS, "agent_end", session);
+      await resolveAndFinalize(
+        ctx,
+        DEFAULT_AGENT_END_DELAY_MS,
+        "agent_end",
+        session,
+      );
     }
   }
 

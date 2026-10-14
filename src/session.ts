@@ -38,10 +38,6 @@ export const { store: defaultStore, orphans: defaultOrphans } = (activityGlobal[
   orphans: createOrphanManager(),
 });
 
-function clearTimers(session: SessionEntry) {
-  clearAllSessionTimers(session);
-}
-
 function resetSessionState(session: SessionEntry) {
   session.toolHistory = [];
   session.statusCreateNonce = undefined;
@@ -188,7 +184,7 @@ export async function retireSession(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
-  clearTimers(session);
+  clearAllSessionTimers(session);
   logger.info(`[${hookName}_retire] retiring session`, {
     contextKey: session.contextKey,
     generation: session.generation,

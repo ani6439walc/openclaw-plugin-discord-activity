@@ -12,7 +12,7 @@ import {
 } from "./formatting.js";
 import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
 import {
-  STATUS_MAX_LENGTH,
+  DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   STATUS_MAX_ENTRIES,
   STATUS_MAX_SUBAGENT_ENTRIES,
 } from "./constants.js";
@@ -760,7 +760,10 @@ function renderBoundedStatus(
     );
   }
 
-  const maxLength = Math.min(requestedMaxLength, STATUS_MAX_LENGTH);
+  const maxLength = Math.min(
+    requestedMaxLength,
+    DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
+  );
   const displayState = mergeStatusDisplayStates(priorState);
   const complete = (content: string): StatefulStatusRenderResult => ({
     content,
@@ -802,7 +805,7 @@ function renderBoundedStatus(
 export function renderStatusContentWithState(
   toolHistory: readonly ToolEntry[],
   _isFinal: boolean,
-  maxLength = STATUS_MAX_LENGTH,
+  maxLength = DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   priorState = createDefaultStatusDisplayState(),
 ): StatefulStatusRenderResult {
   const displayState = mergeStatusDisplayStates(priorState);
@@ -859,7 +862,7 @@ export function renderStatusContentWithState(
 export function renderStatusContent(
   toolHistory: readonly ToolEntry[],
   isFinal: boolean,
-  maxLength = STATUS_MAX_LENGTH,
+  maxLength = DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
 ): string {
   return renderStatusContentWithState(toolHistory, isFinal, maxLength).content;
 }
