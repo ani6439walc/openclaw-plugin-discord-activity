@@ -239,6 +239,16 @@ export function createHookHandlers(deps: HookDeps) {
 
     clearSessionTimer(activeSession);
     store.sessions.set(activeSession.contextKey, replacement);
+    logger.info(
+      `replacing activity generation for ${activeSession.contextKey}`,
+      {
+        oldGeneration: activeSession.generation,
+        newGeneration: replacement.generation,
+        retirementReason,
+        nextRunId,
+        ownerSessionKey,
+      },
+    );
     retireSession(activeSession, retirementReason, getToken).catch((err) => {
       logger.warn("failed to retire old session on owner switch.", {
         contextKey: activeSession.contextKey,
@@ -441,9 +451,11 @@ export function createHookHandlers(deps: HookDeps) {
     if (!bindToolEventRun(session, event.runId, ctx.runId)) return;
 
     if (session.finalized) {
-      logger.debug("before_tool_call: skip finalized session.", {
+      logger.info("before_tool_call: skip finalized session.", {
         sessionKey: ctx.sessionKey,
         toolCallId: event.toolCallId,
+        runId: event.runId,
+        generation: session.generation,
       });
       return;
     }
@@ -477,9 +489,11 @@ export function createHookHandlers(deps: HookDeps) {
     if (!bindToolEventRun(session, event.runId, ctx.runId)) return;
 
     if (session.finalized) {
-      logger.debug("after_tool_call: skip finalized session.", {
+      logger.info("after_tool_call: skip finalized session.", {
         sessionKey: ctx.sessionKey,
         toolCallId: event.toolCallId,
+        runId: event.runId,
+        generation: session.generation,
       });
       return;
     }
@@ -593,6 +607,12 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return undefined;
     if (!bindSessionRun(session, ctx.runId)) return undefined;
     if (session.finalized) return undefined;
+    logger.info("message_sending: finalizing session", {
+      contextKey,
+      sessionKey,
+      runId: ctx.runId,
+      generation: session.generation,
+    });
     finishPendingHindsightRecalls(session.toolHistory);
     finishPendingSkillHarness(session.toolHistory);
     session.finalized = true;
@@ -623,6 +643,14 @@ export function createHookHandlers(deps: HookDeps) {
         return { handled: false };
       }
       if (!session.finalized) return { handled: false };
+
+      logger.info("before_agent_reply: triggering run replacement", {
+        contextKey,
+        sessionKey: ctx.sessionKey,
+        currentRunId: session.runId,
+        incomingRunId: ctx.runId,
+        generation: session.generation,
+      });
 
       await replaceActivityGeneration(
         session,
@@ -681,6 +709,15 @@ export function createHookHandlers(deps: HookDeps) {
           toolHistoryManager.addEntry(session.toolHistory, failureEntry);
         }
       }
+
+      logger.info("agent_end: finalizing session", {
+        contextKey,
+        sessionKey: ctx.sessionKey,
+        runId: ctx.runId,
+        generation: session.generation,
+        success: event.success,
+        hasError: Boolean(event.error),
+      });
 
       await resolveAndFinalize(ctx, AGENT_END_DELAY_MS, "agent_end", session);
     }

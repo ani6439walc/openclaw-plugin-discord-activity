@@ -1,4 +1,8 @@
-import { definePluginEntry, type OpenClawPluginApi } from "../api.js";
+import {
+  definePluginEntry,
+  setApiLogger,
+  type OpenClawPluginApi,
+} from "../api.js";
 import { resolveDiscordToken } from "../token.js";
 import { defaultStore, defaultOrphans } from "./session.js";
 import { createHookHandlers } from "./hooks.js";
@@ -9,6 +13,19 @@ import { HINDSIGHT_EVENT_STREAM } from "./hindsight-status.js";
 export function createPlugin(
   api: OpenClawPluginApi,
 ): ReturnType<typeof definePluginEntry> {
+  const runtimeApi = api as unknown as {
+    logger?: Parameters<typeof setApiLogger>[0];
+    agent?: {
+      events?: {
+        registerAgentEventSubscription?: OpenClawPluginApi["agent"]["events"]["registerAgentEventSubscription"];
+      };
+    };
+  };
+
+  if (runtimeApi.logger) {
+    setApiLogger(runtimeApi.logger);
+  }
+
   const config = resolveConfig(api.pluginConfig ?? {});
   const getToken = (accountId?: string) =>
     resolveDiscordToken(api.config, { accountId }).token;
@@ -28,13 +45,6 @@ export function createPlugin(
     description:
       "Shows live agent and tool activity as a Discord message that is updated and deleted when the agent finishes.",
     register() {
-      const runtimeApi = api as unknown as {
-        agent?: {
-          events?: {
-            registerAgentEventSubscription?: OpenClawPluginApi["agent"]["events"]["registerAgentEventSubscription"];
-          };
-        };
-      };
       const registerAgentEventSubscription =
         runtimeApi.agent?.events?.registerAgentEventSubscription;
 

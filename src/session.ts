@@ -189,6 +189,12 @@ export async function retireSession(
   getToken: (accountId?: string) => string,
 ) {
   clearTimers(session);
+  logger.info(`[${hookName}_retire] retiring session`, {
+    contextKey: session.contextKey,
+    generation: session.generation,
+    hasStatusMessage: Boolean(session.statusMessageId),
+    statusMessageId: session.statusMessageId,
+  });
   await runSerializedSessionOperation(
     session,
     `${hookName}_retire`,
@@ -228,6 +234,13 @@ export function scheduleSessionCleanup(
   const expectedGeneration = session.generation;
   const expectedOwner = session.ownerSessionKey;
 
+  logger.info(`[${hookName}] scheduled status message cleanup`, {
+    contextKey,
+    delayMs,
+    generation: expectedGeneration,
+    ownerSessionKey: expectedOwner,
+  });
+
   if (session.clearTimer) {
     clearTimeout(session.clearTimer);
   }
@@ -247,6 +260,12 @@ export function scheduleSessionCleanup(
       clearTimeout(session.maxDisplayTimer);
       session.maxDisplayTimer = undefined;
     }
+
+    logger.info(`[${hookName}] executing scheduled status message cleanup`, {
+      contextKey,
+      generation: expectedGeneration,
+      statusMessageId: session.statusMessageId,
+    });
 
     clearStatusMessage(session, hookName, getToken)
       .catch((err) => {
@@ -281,7 +300,12 @@ export async function clearStatusMessage(
     if (!session.statusMessageId) return;
 
     const msgId = session.statusMessageId;
-    logger.debug(`[${hookName}] deleting status message ${msgId}.`);
+    logger.info(`[${hookName}] deleting status message ${msgId}.`, {
+      contextKey: session.contextKey,
+      channelId: session.channelId,
+      generation: session.generation,
+      messageId: msgId,
+    });
 
     await deleteStatusMessageWithRecovery(session, msgId, hookName, getToken);
     if (session.statusMessageId === msgId) {
@@ -428,7 +452,11 @@ export async function updateStatusMessage(
       session.statusCreateNonce = undefined;
       session.statusMessageId = result.messageId;
       session.contentDeliveryUncertain = isRetryingUncertainCreate;
-      logger.debug(`created status message ${session.statusMessageId}.`);
+      logger.info(`created status message ${session.statusMessageId}.`, {
+        contextKey: session.contextKey,
+        channelId: session.channelId,
+        generation: session.generation,
+      });
 
       if (maxDisplayMs && maxDisplayMs > 0) {
         startMaxDisplayTimer(
