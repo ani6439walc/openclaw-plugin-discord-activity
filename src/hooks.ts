@@ -47,6 +47,10 @@ import {
   finishPendingHindsightRecalls,
   parseHindsightRecallEvent,
 } from "./hindsight-status.js";
+import {
+  mergeStatusDisplayStates,
+  renderStatusContentWithState,
+} from "./render.js";
 
 function isTerminalToolStatus(status: ToolEntry["status"]): boolean {
   return (
@@ -174,6 +178,81 @@ export function createHookHandlers(deps: HookDeps) {
       status,
       ...(durationMs === undefined ? {} : { durationMs }),
     });
+  }
+  function renderedContent(
+    session: SessionEntry,
+    history: readonly ToolEntry[],
+  ): string {
+    return renderStatusContentWithState(
+      history,
+      true,
+      config.maxStatusMessageLength,
+      mergeStatusDisplayStates(
+        session.confirmedDisplayState,
+        session.monotonicSafetyFloor,
+      ),
+    ).content;
+  }
+
+  function renderedFailureChanged(
+    session: SessionEntry,
+    event: AgentEndEvent,
+  ): boolean {
+    if (event.success !== false && !event.error) return false;
+    const current = session.toolHistory.find(
+      (entry) => entry.toolCallId === "agent" && entry.toolName === "agent",
+    );
+    const candidate: ToolEntry = {
+      ...(current ?? {
+        toolCallId: "agent",
+        toolName: "agent",
+        params: {},
+      }),
+      status: "error",
+      durationMs: event.durationMs,
+      error: event.error,
+    };
+    const candidateHistory = session.toolHistory.filter(
+      (entry) => entry.toolCallId !== "agent" || entry.toolName !== "agent",
+    );
+    candidateHistory.push(candidate);
+    toolHistoryManager.trim(candidateHistory);
+    return (
+      session.contentDeliveryUncertain === true ||
+      session.lastRenderedContent !== renderedContent(session, candidateHistory)
+    );
+  }
+
+  function confirmedFinalRendered(session: SessionEntry): boolean {
+    return (
+      session.contentDeliveryUncertain !== true &&
+      session.lastRenderedContent !== undefined &&
+      session.lastRenderedContent ===
+      renderedContent(session, session.toolHistory)
+    );
+  }
+
+  function recordMainAgentFailure(
+    session: SessionEntry,
+    event: AgentEndEvent,
+  ): void {
+    const failureEntry: ToolEntry = {
+      toolCallId: "agent",
+      toolName: "agent",
+      params: {},
+      status: "error",
+      durationMs: event.durationMs,
+      error: event.error,
+    };
+    if (
+      !toolHistoryManager.updateEntry(
+        session.toolHistory,
+        failureEntry.toolCallId,
+        failureEntry,
+      )
+    ) {
+      toolHistoryManager.addEntry(session.toolHistory, failureEntry);
+    }
   }
 
   function logHookEvent(
@@ -469,7 +548,13 @@ export function createHookHandlers(deps: HookDeps) {
       startedAtMs: observedAtMs,
     });
 
-    await updateSessionStatus(session, false);
+    const update = updateSessionStatus(session, false);
+    update.catch((err: unknown) => {
+      logger.warn("before_tool_call: status update failed.", {
+        contextKey: session.contextKey,
+        error: String(err),
+      });
+    });
   }
 
   async function onAfterToolCall(event: AfterToolCallEvent, ctx: ToolContext) {
@@ -575,7 +660,14 @@ export function createHookHandlers(deps: HookDeps) {
           durationMs: nextDurationMs,
         });
       }
-      await updateSessionStatus(session, false);
+      try {
+        await updateSessionStatus(session, false);
+      } catch (err) {
+        logger.warn("after_tool_call: status update failed.", {
+          contextKey: session.contextKey,
+          error: String(err),
+        });
+      }
     }
   }
 
@@ -690,25 +782,27 @@ export function createHookHandlers(deps: HookDeps) {
         finishCompactionEntry(session, "error");
       }
 
-      if (event.success === false || event.error) {
-        const failureEntry: ToolEntry = {
-          toolCallId: "agent",
-          toolName: "agent",
-          params: {},
-          status: "error",
-          durationMs: event.durationMs,
-          error: event.error,
-        };
-        if (
-          !toolHistoryManager.updateEntry(
-            session.toolHistory,
-            failureEntry.toolCallId,
-            failureEntry,
-          )
-        ) {
-          toolHistoryManager.addEntry(session.toolHistory, failureEntry);
+      const hasFailure = event.success === false || Boolean(event.error);
+      if (session.finalized && session.pendingOp) {
+        try {
+          await session.pendingOp;
+        } catch (err) {
+          logger.warn("agent_end: pending status update failed.", {
+            contextKey,
+            error: String(err),
+          });
+        }
+        if (!store.isCurrentSession(session) || !bindSessionRun(session, ctx.runId)) {
+          return;
         }
       }
+      const failureVisibleChange = hasFailure
+        ? renderedFailureChanged(session, event)
+        : false;
+      if (hasFailure && (!session.finalized || failureVisibleChange)) {
+        recordMainAgentFailure(session, event);
+      }
+
 
       logger.info("agent_end: finalizing session", {
         contextKey,
@@ -717,7 +811,24 @@ export function createHookHandlers(deps: HookDeps) {
         generation: session.generation,
         success: event.success,
         hasError: Boolean(event.error),
+        failureVisibleChange,
       });
+
+      if (
+        session.finalized &&
+        !failureVisibleChange &&
+        confirmedFinalRendered(session)
+      ) {
+        scheduleSessionCleanup(
+          contextKey,
+          session,
+          ctx.sessionKey,
+          AGENT_END_DELAY_MS,
+          "agent_end_delayed",
+          getToken,
+        );
+        return;
+      }
 
       await resolveAndFinalize(ctx, AGENT_END_DELAY_MS, "agent_end", session);
     }

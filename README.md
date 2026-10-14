@@ -128,7 +128,7 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 
 | Path                                | Responsibility                                                                                                                              |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/plugin.ts`                     | Plugin assembly: config resolution, token resolver, companion-plugin enablement checks, shared runtime state, and hook registration.        |
+| `src/plugin.ts`                     | Plugin assembly: config resolution, token resolver, shared runtime state, and hook registration.                                            |
 | `src/hooks.ts`                      | OpenClaw hook orchestration: session routing, tool lifecycle updates, pipeline status updates, orphan reconciliation, and finalization.     |
 | `src/session.ts`                    | Discord status lifecycle: serialized send/edit/delete, confirmed display state, uncertain-delivery safety floor, create nonce, and cleanup. |
 | `src/store.ts`                      | Active session and Discord context tracking.                                                                                                |
@@ -147,7 +147,7 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 
 ## Installation
 
-The pinned OpenClaw 2026.9.4 requires Node.js `>=24.16.0 <25 || >=26.1.0`.
+The pinned OpenClaw 2026.10.3 requires Node.js `>=24.16.0 <25 || >=26.1.0`.
 CI validates Node.js 24 and 26.
 
 Install the published plugin from [ClawHub](https://clawhub.ai/wei840222/plugins/discord-activity):
@@ -195,7 +195,7 @@ The plugin manifest activates on startup for the `discord` channel:
 
 Discord bot credentials are resolved through OpenClaw account/secret configuration by the plugin SDK. Keep Discord credentials in the OpenClaw Discord channel/account configuration or secret store; do not hard-code credentials in this plugin.
 
-This release targets OpenClaw/plugin SDK `2026.6.11`, declares `2026.6.11` as the minimum gateway version, and loads `openclaw/plugin-sdk/plugin-entry` plus `openclaw/plugin-sdk/runtime-env` directly. The integration suite verifies those entrypoints and version declarations together.
+This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as the minimum gateway version, and loads `openclaw/plugin-sdk/plugin-entry` plus `openclaw/plugin-sdk/runtime-env` directly. The integration suite verifies those entrypoints and version declarations together.
 
 ## Configuration
 

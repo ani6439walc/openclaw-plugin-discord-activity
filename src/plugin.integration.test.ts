@@ -1,28 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createPlugin } from "./plugin.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import plugin from "../index.js";
 import type { OpenClawPluginApi } from "../api.js";
 
 describe("plugin", () => {
   let mockApi: OpenClawPluginApi;
-  let consoleSpy: any;
 
   beforeEach(() => {
-    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
     mockApi = {
       on: vi.fn(),
       config: {
         channels: {
           discord: {
             token: "test-token",
-          },
-        },
-        plugins: {
-          entries: {
-            "skill-harness": {
-              enabled: true,
-              config: { agents: ["test-agent"] },
-            },
           },
         },
       },
@@ -32,22 +21,13 @@ describe("plugin", () => {
           registerAgentEventSubscription: vi.fn(),
         },
       },
-    };
+    } as unknown as OpenClawPluginApi;
   });
 
-  afterEach(() => {
-    consoleSpy.mockRestore();
-  });
-
-  it("should create plugin successfully", () => {
-    const plugin = createPlugin(mockApi);
-    expect(plugin).toBeDefined();
+  it("registers the default entry with the api passed to register", () => {
     expect(plugin.id).toBe("discord-activity");
     expect(typeof plugin.register).toBe("function");
-  });
 
-  it("should register event handlers", () => {
-    const plugin = createPlugin(mockApi);
     plugin.register(mockApi);
 
     expect(mockApi.on).toHaveBeenCalledTimes(8);
@@ -70,6 +50,7 @@ describe("plugin", () => {
     expect(mockApi.on).toHaveBeenCalledWith(
       "before_agent_reply",
       expect.any(Function),
+      { eligibleTriggers: ["user"] },
     );
     expect(mockApi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
     expect(mockApi.on).toHaveBeenCalledWith(
@@ -100,11 +81,14 @@ describe("plugin", () => {
     );
   });
 
-  it("registers core handlers without agent event subscriptions", () => {
+  it("fails registration when agent event subscription is missing", () => {
     mockApi.agent = undefined as never;
-    const plugin = createPlugin(mockApi);
 
-    expect(() => plugin.register(mockApi)).not.toThrow();
-    expect(mockApi.on).toHaveBeenCalledTimes(8);
+    expect(() => plugin.register(mockApi)).toThrow(TypeError);
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "before_agent_reply",
+      expect.any(Function),
+      { eligibleTriggers: ["user"] },
+    );
   });
 });

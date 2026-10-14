@@ -154,6 +154,152 @@ describe("main agent failure rendering", () => {
     expect(plainContent).toContain("error: provider timeout");
     expect(session?.clearTimer).toBeDefined();
   });
+  it("shows a failure that was recorded but absent from the finalized render", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "PATCH") return jsonResponse({ ok: true });
+      if (method === "DELETE") return new Response(null, { status: 204 });
+      return jsonResponse({ id: "status_1" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = createHookHandlers({
+      store: defaultStore,
+      orphans: createOrphanManager(),
+      getToken: () => "token",
+      config: resolveConfig({}),
+    });
+    const sessionKey = "discord:channel:123";
+
+    await handlers.onMessageReceived(
+      { messageId: "user_1", metadata: { to: "channel:123" } },
+      { channelId: "discord", sessionKey },
+    );
+    await handlers.onBeforeToolCall(
+      { toolCallId: "call_1", toolName: "bash", params: { command: "pwd" } },
+      { sessionKey, toolName: "bash", toolCallId: "call_1" },
+    );
+    await handlers.onMessageSending(
+      { to: "channel:123", content: "done" },
+      { channelId: "discord", sessionKey },
+    );
+    const session = defaultStore.sessions.get("discord:channel:123")!;
+    expect(stripAnsi(session.lastRenderedContent ?? "")).not.toContain(
+      "provider timeout",
+    );
+    const patchesBefore = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+    ).length;
+
+    await handlers.onAgentEnd(
+      { success: false, error: "provider timeout" },
+      { sessionKey },
+    );
+
+    expect(stripAnsi(session.lastRenderedContent ?? "")).toContain(
+      "error: provider timeout",
+    );
+    expect(
+      fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      ).length,
+    ).toBe(patchesBefore + 1);
+    expect(session.clearTimer).toBeDefined();
+  });
+
+  it("does not patch an identical failure that is already visible", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "PATCH") return jsonResponse({ ok: true });
+      if (method === "DELETE") return new Response(null, { status: 204 });
+      return jsonResponse({ id: "status_1" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = createHookHandlers({
+      store: defaultStore,
+      orphans: createOrphanManager(),
+      getToken: () => "token",
+      config: resolveConfig({}),
+    });
+    const sessionKey = "discord:channel:123";
+
+    await handlers.onMessageReceived(
+      { messageId: "user_1", metadata: { to: "channel:123" } },
+      { channelId: "discord", sessionKey },
+    );
+    await handlers.onAgentEnd(
+      { success: false, error: "provider timeout" },
+      { sessionKey },
+    );
+    const session = defaultStore.sessions.get("discord:channel:123")!;
+    const patchesBefore = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+    ).length;
+
+    await handlers.onAgentEnd(
+      { success: false, error: "provider timeout" },
+      { sessionKey },
+    );
+
+    expect(
+      fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      ).length,
+    ).toBe(patchesBefore);
+    expect(session.clearTimer).toBeDefined();
+  });
+
+  it("retries an identical failure when its create delivery is uncertain", async () => {
+    vi.useFakeTimers();
+    let failCreate = true;
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST" && failCreate) {
+        failCreate = false;
+        return jsonResponse({ id: " " }, 200);
+      }
+      if (method === "PATCH") return jsonResponse({ ok: true });
+      if (method === "DELETE") return new Response(null, { status: 204 });
+      return jsonResponse({ id: "status_1" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = createHookHandlers({
+      store: defaultStore,
+      orphans: createOrphanManager(),
+      getToken: () => "token",
+      config: resolveConfig({}),
+    });
+    const sessionKey = "discord:channel:123";
+
+    await handlers.onMessageReceived(
+      { messageId: "user_1", metadata: { to: "channel:123" } },
+      { channelId: "discord", sessionKey },
+    );
+    await handlers.onAgentEnd(
+      { success: false, error: "provider timeout" },
+      { sessionKey },
+    );
+    const session = defaultStore.sessions.get("discord:channel:123")!;
+    expect(session.contentDeliveryUncertain).toBe(true);
+    expect(session.statusMessageId).toBeUndefined();
+    const postsBefore = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+    ).length;
+
+    await handlers.onAgentEnd(
+      { success: false, error: "provider timeout" },
+      { sessionKey },
+    );
+
+    expect(
+      fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+      ).length,
+    ).toBe(postsBefore + 1);
+    expect(session.statusMessageId).toBe("status_1");
+    expect(session.contentDeliveryUncertain).toBe(false);
+  });
 
   it("ignores a late agent_end from a replaced run", async () => {
     vi.useFakeTimers();

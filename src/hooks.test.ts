@@ -173,6 +173,7 @@ describe("createHookHandlers", () => {
           },
           { ...parentContext, toolName: "bash" },
         );
+        await flushPromises();
         const parent = store.sessions.get(contextKey)!;
         const contextBefore = structuredClone(store.contexts.get(contextKey));
         const historyBefore = structuredClone(parent.toolHistory);
@@ -408,6 +409,7 @@ describe("createHookHandlers", () => {
         { toolCallId: "call_1", toolName: "bash", params: {} },
         { sessionKey: "agent:main:discord:direct:123", toolName: "bash" },
       );
+      await flushPromises();
 
       const session = store.sessions.get("discord:direct:123");
       expect(session?.toolHistory.map((t) => t.toolCallId)).toEqual(["call_1"]);
@@ -452,12 +454,85 @@ describe("createHookHandlers", () => {
         { toolCallId: "call_1", toolName: "bash", params: {} },
         { sessionKey, toolName: "bash", toolCallId: "call_1" },
       );
+      await flushPromises();
 
       const postBodies = getStatusPostBodies(fetchMock);
       expect(postBodies).toHaveLength(1);
       expect(postBodies[0]?.message_reference).toEqual({
         message_id: "user_msg_1",
       });
+    });
+    it("returns before a rejected Discord status update settles", async () => {
+      vi.useFakeTimers();
+      let rejectUpdate: (error: Error) => void = () => {};
+      const update = new Promise<Response>((_resolve, reject) => {
+        rejectUpdate = reject;
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => update),
+      );
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      await expect(
+        handlers.onBeforeToolCall(
+          { toolCallId: "call_1", toolName: "bash", params: {} },
+          {
+            sessionKey: "agent:main:discord:direct:123",
+            toolName: "bash",
+            toolCallId: "call_1",
+          },
+        ),
+      ).resolves.toBeUndefined();
+
+      rejectUpdate(new Error("discord unavailable"));
+      await vi.advanceTimersByTimeAsync(3000);
+      await flushPromises();
+      expect(
+        store.sessions.get("discord:direct:123")?.toolHistory,
+      ).toContainEqual(
+        expect.objectContaining({ toolCallId: "call_1", status: "pending" }),
+      );
+    });
+
+    it("does not stay pending while the Discord status update hangs", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise<Response>(() => {})),
+      );
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+          accountId: "default",
+        },
+      );
+
+      let settled = false;
+      const pending = handlers
+        .onBeforeToolCall(
+          { toolCallId: "call_1", toolName: "bash", params: {} },
+          {
+            sessionKey: "agent:main:discord:direct:123",
+            toolName: "bash",
+            toolCallId: "call_1",
+          },
+        )
+        .then(() => {
+          settled = true;
+        });
+
+      await flushPromises();
+      expect(settled).toBe(true);
+      await pending;
     });
 
     it.each([
@@ -1029,6 +1104,7 @@ describe("createHookHandlers", () => {
           toolCallId: "progress_2",
         },
       );
+      await flushPromises();
 
       const content = stripAnsi(
         store.sessions.get("discord:channel:123")?.lastRenderedContent ?? "",
@@ -1150,6 +1226,7 @@ describe("createHookHandlers", () => {
           toolCallId: "call_1",
         },
       );
+      await flushPromises();
 
       const session = store.sessions.get("discord:channel:123");
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
@@ -1767,6 +1844,52 @@ describe("createHookHandlers", () => {
         ),
       ).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+    it("does not patch again when agent_end follows a successful final render", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: { command: "ls" } },
+        { sessionKey, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onMessageSending(
+        { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey },
+      );
+      const patchesBefore = countCalls(
+        fetchMock,
+        "PATCH",
+        /\/channels\/dm_channel_123\/messages\/status_1$/,
+      );
+
+      await handlers.onAgentEnd({ success: true }, { sessionKey });
+
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(patchesBefore);
+      expect(
+        store.sessions.get("discord:direct:123")?.clearTimer,
+      ).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await flushPromises();
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
     });
 
     it("replaces a finalized session on a new inbound message from the same DM conversation", async () => {
