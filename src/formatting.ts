@@ -15,6 +15,7 @@ export function getToolIcon(name: string): string {
   }
   if (n.includes("web_fetch")) return "📥";
   if (n === "firecrawl_scrape") return "🕷️";
+  if (n === "steer" || n.includes("steer")) return "✨";
   if (n.includes("message")) return "✉️";
   if (n === "ask_user") return "❓";
 
@@ -187,6 +188,8 @@ export const TOOL_INTENT_KEYS = [
   "description",
   "summary",
   "objective",
+  "steer",
+  "message",
 ] as const;
 
 export type ToolIntent = {

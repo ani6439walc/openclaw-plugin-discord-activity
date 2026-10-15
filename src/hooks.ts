@@ -308,8 +308,10 @@ export function createHookHandlers(deps: HookDeps) {
       ownerSessionKey,
       generation: activeSession.generation + 1,
       runId: nextRunId,
+      activeRunIds: nextRunId ? new Set([nextRunId]) : new Set(),
       supersededRunIds: new Set([
         ...(activeSession.supersededRunIds ?? []),
+        ...(activeSession.activeRunIds ?? []),
         ...(activeSession.runId ? [activeSession.runId] : []),
       ]),
       finalized: false,
@@ -369,6 +371,9 @@ export function createHookHandlers(deps: HookDeps) {
       return false;
     }
     if (session.runId && session.runId !== runId) {
+      if (session.activeRunIds?.has(runId)) {
+        return true;
+      }
       logger.debug("skip hook for stale run.", {
         contextKey: session.contextKey,
         expectedRunId: session.runId,
@@ -381,7 +386,13 @@ export function createHookHandlers(deps: HookDeps) {
 
   function bindSessionRun(session: SessionEntry, runId: string | undefined) {
     if (!isSessionRunCurrent(session, runId)) return false;
-    if (runId) session.runId = runId;
+    if (runId) {
+      session.runId = runId;
+      if (!session.activeRunIds) {
+        session.activeRunIds = new Set();
+      }
+      session.activeRunIds.add(runId);
+    }
     return true;
   }
 
@@ -464,11 +475,48 @@ export function createHookHandlers(deps: HookDeps) {
 
     const activeSession = store.sessions.get(contextKey);
     if (activeSession) {
+      const steerText = (
+        (event.metadata?.body as string) ??
+        (event.metadata?.content as string) ??
+        event.content ??
+        ""
+      ).trim();
+
+      const isSteerMessage =
+        !activeSession.finalized &&
+        steerText.length > 0 &&
+        (activeSession.statusMessageId !== undefined ||
+          activeSession.toolHistory.length > 0);
+
+      if (isSteerMessage) {
+        if (ctx.runId) {
+          if (!activeSession.activeRunIds) {
+            activeSession.activeRunIds = new Set();
+          }
+          activeSession.activeRunIds.add(ctx.runId);
+        }
+        activeSession.channelId = actualChannelId;
+        activeSession.userMessageId = event.messageId;
+        activeSession.senderId = extractSenderId(event.metadata);
+        activeSession.accountId = ctx.accountId;
+
+        toolHistoryManager.addEntry(activeSession.toolHistory, {
+          toolCallId: `steer:${event.messageId ?? ctx.runId ?? Date.now()}`,
+          toolName: "steer",
+          params: { steer: steerText },
+          status: "completed",
+          startedAtMs: Date.now(),
+        });
+        await updateSessionStatus(activeSession, false);
+        return;
+      }
+
       if (
         activeSession.finalized ||
         (ctx.runId !== undefined &&
           activeSession.runId !== undefined &&
-          activeSession.runId !== ctx.runId) ||
+          activeSession.runId !== ctx.runId &&
+          !activeSession.activeRunIds?.has(ctx.runId)) ||
         (ctx.sessionKey && activeSession.ownerSessionKey !== ctx.sessionKey)
       ) {
         const nextOwnerSessionKey =
@@ -486,7 +534,13 @@ export function createHookHandlers(deps: HookDeps) {
       activeSession.userMessageId = event.messageId;
       activeSession.senderId = extractSenderId(event.metadata);
       activeSession.accountId = ctx.accountId;
-      if (ctx.runId) activeSession.runId = ctx.runId;
+      if (ctx.runId) {
+        activeSession.runId = ctx.runId;
+        if (!activeSession.activeRunIds) {
+          activeSession.activeRunIds = new Set();
+        }
+        activeSession.activeRunIds.add(ctx.runId);
+      }
     }
 
     store.getOrCreateSession(contextKey, ctx.sessionKey);
@@ -574,13 +628,20 @@ export function createHookHandlers(deps: HookDeps) {
     if (!bindToolEventRun(session, event.runId, ctx.runId)) return;
 
     if (session.finalized) {
-      logger.info("after_tool_call: skip finalized session.", {
-        sessionKey: ctx.sessionKey,
-        toolCallId: event.toolCallId,
-        runId: event.runId,
-        generation: session.generation,
+      const pendingEntry = findDedupedToolEntry(session.toolHistory, {
+        toolCallId: event.toolCallId ?? "",
+        toolName: event.toolName,
+        params: event.params,
       });
-      return;
+      if (!pendingEntry || pendingEntry.status !== "pending") {
+        logger.info("after_tool_call: skip finalized session.", {
+          sessionKey: ctx.sessionKey,
+          toolCallId: event.toolCallId,
+          runId: event.runId,
+          generation: session.generation,
+        });
+        return;
+      }
     }
 
     if (!event.toolCallId) return;
@@ -699,12 +760,15 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return undefined;
     if (!bindSessionRun(session, ctx.runId)) return undefined;
     if (session.finalized) return undefined;
-    logger.info("message_sending: finalizing session", {
-      contextKey,
-      sessionKey,
-      runId: ctx.runId,
-      generation: session.generation,
-    });
+    logger.info(
+      "message_sending: updating session status on outbound message",
+      {
+        contextKey,
+        sessionKey,
+        runId: ctx.runId,
+        generation: session.generation,
+      },
+    );
     finishPendingHindsightRecalls(session.toolHistory);
     finishPendingSkillHarness(session.toolHistory);
     session.finalized = true;
@@ -732,9 +796,39 @@ export function createHookHandlers(deps: HookDeps) {
       if (session.runId === ctx.runId) return { handled: false };
       if (!session.runId && !session.finalized) {
         session.runId = ctx.runId;
+        if (!session.activeRunIds) session.activeRunIds = new Set();
+        session.activeRunIds.add(ctx.runId);
         return { handled: false };
       }
-      if (!session.finalized) return { handled: false };
+      if (!session.finalized) {
+        if (session.activeRunIds?.has(ctx.runId)) {
+          logger.info(
+            "before_agent_reply: adopting active steer/continuation run",
+            {
+              contextKey,
+              sessionKey: ctx.sessionKey,
+              previousRunId: session.runId,
+              nextRunId: ctx.runId,
+              generation: session.generation,
+            },
+          );
+          session.runId = ctx.runId;
+
+          const steerText = event.cleanedBody?.trim();
+          if (steerText) {
+            toolHistoryManager.addEntry(session.toolHistory, {
+              toolCallId: `steer:${ctx.runId ?? Date.now()}`,
+              toolName: "steer",
+              params: { steer: steerText },
+              status: "completed",
+              startedAtMs: Date.now(),
+            });
+            await updateSessionStatus(session, false);
+          }
+          return { handled: false };
+        }
+        return { handled: false };
+      }
 
       logger.info("before_agent_reply: triggering run replacement", {
         contextKey,

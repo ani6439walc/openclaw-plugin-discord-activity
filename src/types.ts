@@ -40,6 +40,7 @@ export type SessionEntry = {
   ownerSessionKey: string;
   generation: number;
   runId?: string;
+  activeRunIds?: Set<string>;
   supersededRunIds?: Set<string>;
   statusMessageId?: string;
   statusCreateNonce?: string;
@@ -104,6 +105,7 @@ export type StatefulStatusRenderResult = {
 export type MessageReceivedEvent = {
   metadata?: Record<string, unknown>;
   messageId?: string;
+  content?: string;
 };
 
 export type MessageContext = {

@@ -535,6 +535,105 @@ describe("createHookHandlers", () => {
       await pending;
     });
 
+    it("handles steer message while session is active without retiring card or resetting tool history", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_turn1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "bash",
+          params: { command: "sleep 10" },
+          runId: "run_turn1",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "call_1",
+          runId: "run_turn1",
+        },
+      );
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession).toBeDefined();
+      expect(activeSession?.statusMessageId).toBe("status_1");
+      expect(activeSession?.toolHistory).toHaveLength(1);
+      const postCountBeforeSteer = countChannelMessagePosts(fetchMock);
+
+      await handlers.onMessageReceived(
+        {
+          messageId: "user_msg_2",
+          content: "我想改用另一個檔案來測試...",
+          metadata: { to: "user:123" },
+        },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_turn2",
+        },
+      );
+
+      expect(store.sessions.get("discord:direct:123")).toBe(activeSession);
+      expect(activeSession?.generation).toBe(1);
+      expect(countCalls(fetchMock, "DELETE", /messages/)).toBe(0);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountBeforeSteer);
+
+      expect(activeSession?.toolHistory).toHaveLength(2);
+      const steerEntry = activeSession?.toolHistory[1];
+      expect(steerEntry?.toolName).toBe("steer");
+      expect(steerEntry?.params).toEqual({
+        steer: "我想改用另一個檔案來測試...",
+      });
+      expect(steerEntry?.status).toBe("completed");
+
+      expect(activeSession?.activeRunIds?.has("run_turn1")).toBe(true);
+      expect(activeSession?.activeRunIds?.has("run_turn2")).toBe(true);
+
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "bash",
+          params: {},
+          durationMs: 1000,
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "call_1",
+          runId: "run_turn1",
+        },
+      );
+      expect(activeSession?.toolHistory[0].status).toBe("completed");
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call_2",
+          toolName: "read",
+          params: { path: "test.txt" },
+          runId: "run_turn2",
+        },
+        {
+          sessionKey,
+          toolName: "read",
+          toolCallId: "call_2",
+          runId: "run_turn2",
+        },
+      );
+      expect(activeSession?.toolHistory).toHaveLength(3);
+      expect(activeSession?.toolHistory[2].toolName).toBe("read");
+    });
+
     it.each([
       {
         replyMode: "all",
