@@ -632,6 +632,116 @@ describe("createHookHandlers", () => {
       );
       expect(activeSession?.toolHistory).toHaveLength(3);
       expect(activeSession?.toolHistory[2].toolName).toBe("read");
+
+      // Verify onBeforeAgentReply deduplicates matching steer text
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "我想改用另一個檔案來測試..." },
+        { sessionKey, runId: "run_turn2" },
+      );
+      // Tool history length remains 3 (no duplicate steer line added)
+      expect(activeSession?.toolHistory).toHaveLength(3);
+
+      // Verify older admitted run (run_turn1) does not finalize or cleanup shared session
+      await handlers.onMessageSending(
+        { to: "user:123", content: "part 1" },
+        { channelId: "discord", sessionKey, runId: "run_turn1" },
+      );
+      expect(activeSession?.finalized).toBe(false);
+
+      await handlers.onAgentEnd(
+        { success: true },
+        { channelId: "discord", sessionKey, runId: "run_turn1" },
+      );
+      expect(activeSession?.finalized).toBe(false);
+
+      // Current run (run_turn2) finalizes session on completion
+      await handlers.onMessageSending(
+        { to: "user:123", content: "part 2" },
+        { channelId: "discord", sessionKey, runId: "run_turn2" },
+      );
+      expect(activeSession?.finalized).toBe(true);
+    });
+
+    it("preserves active card on body-less inbound messages during an ongoing run", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId: "run_1" },
+        { sessionKey, toolName: "bash", toolCallId: "call_1", runId: "run_1" },
+      );
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession?.statusMessageId).toBe("status_1");
+      const postCountBefore = countChannelMessagePosts(fetchMock);
+
+      // Inbound event with no body and new runId (e.g. image attachment)
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_2", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_2",
+        },
+      );
+
+      // Card is preserved without being deleted or replaced
+      expect(store.sessions.get("discord:direct:123")).toBe(activeSession);
+      expect(activeSession?.generation).toBe(1);
+      expect(countCalls(fetchMock, "DELETE", /messages/)).toBe(0);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountBefore);
+      expect(activeSession?.activeRunIds?.has("run_2")).toBe(true);
+
+      // No empty steer tool entry was pushed
+      expect(activeSession?.toolHistory).toHaveLength(1);
+    });
+
+    it("replaces generation on owner switch even when inbound message carries text", async () => {
+      const sessionKey = "agent:main:discord:direct:123";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_1",
+        },
+      );
+
+      const firstSession = store.sessions.get("discord:direct:123");
+      expect(firstSession?.generation).toBe(1);
+
+      // Message from different owner arrives with text
+      const otherOwnerSessionKey = "agent:other:discord:direct:123";
+      await handlers.onMessageReceived(
+        {
+          messageId: "user_msg_2",
+          content: "new owner text",
+          metadata: { to: "user:123" },
+        },
+        {
+          channelId: "discord",
+          sessionKey: otherOwnerSessionKey,
+          accountId: "default",
+          runId: "run_2",
+        },
+      );
+
+      const replacement = store.sessions.get("discord:direct:123");
+      expect(replacement).not.toBe(firstSession);
+      expect(replacement?.generation).toBe(2);
+      expect(replacement?.ownerSessionKey).toBe(otherOwnerSessionKey);
     });
 
     it.each([

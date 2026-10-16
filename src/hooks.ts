@@ -387,7 +387,9 @@ export function createHookHandlers(deps: HookDeps) {
   function bindSessionRun(session: SessionEntry, runId: string | undefined) {
     if (!isSessionRunCurrent(session, runId)) return false;
     if (runId) {
-      session.runId = runId;
+      if (!session.runId) {
+        session.runId = runId;
+      }
       if (!session.activeRunIds) {
         session.activeRunIds = new Set();
       }
@@ -475,6 +477,17 @@ export function createHookHandlers(deps: HookDeps) {
 
     const activeSession = store.sessions.get(contextKey);
     if (activeSession) {
+      if (ctx.sessionKey && activeSession.ownerSessionKey !== ctx.sessionKey) {
+        const nextOwnerSessionKey = ctx.sessionKey;
+        await replaceActivityGeneration(
+          activeSession,
+          nextOwnerSessionKey,
+          ctx.runId,
+          "message_received_owner_switch",
+        );
+        return;
+      }
+
       const steerText = (
         (event.metadata?.body as string) ??
         (event.metadata?.content as string) ??
@@ -482,13 +495,12 @@ export function createHookHandlers(deps: HookDeps) {
         ""
       ).trim();
 
-      const isSteerMessage =
+      const isPreservedActiveTurn =
         !activeSession.finalized &&
-        steerText.length > 0 &&
         (activeSession.statusMessageId !== undefined ||
-          activeSession.toolHistory.length > 0);
+          (steerText.length > 0 && activeSession.toolHistory.length > 0));
 
-      if (isSteerMessage) {
+      if (isPreservedActiveTurn) {
         if (ctx.runId) {
           if (!activeSession.activeRunIds) {
             activeSession.activeRunIds = new Set();
@@ -500,14 +512,22 @@ export function createHookHandlers(deps: HookDeps) {
         activeSession.senderId = extractSenderId(event.metadata);
         activeSession.accountId = ctx.accountId;
 
-        toolHistoryManager.addEntry(activeSession.toolHistory, {
-          toolCallId: `steer:${event.messageId ?? ctx.runId ?? Date.now()}`,
-          toolName: "steer",
-          params: { steer: steerText },
-          status: "completed",
-          startedAtMs: Date.now(),
-        });
-        await updateSessionStatus(activeSession, false);
+        if (steerText) {
+          const hasMatchingSteer = activeSession.toolHistory.some(
+            (entry) =>
+              entry.toolName === "steer" && entry.params?.steer === steerText,
+          );
+          if (!hasMatchingSteer) {
+            toolHistoryManager.addEntry(activeSession.toolHistory, {
+              toolCallId: `steer:${event.messageId ?? ctx.runId ?? Date.now()}`,
+              toolName: "steer",
+              params: { steer: steerText },
+              status: "completed",
+              startedAtMs: Date.now(),
+            });
+            await updateSessionStatus(activeSession, false);
+          }
+        }
         return;
       }
 
@@ -516,8 +536,7 @@ export function createHookHandlers(deps: HookDeps) {
         (ctx.runId !== undefined &&
           activeSession.runId !== undefined &&
           activeSession.runId !== ctx.runId &&
-          !activeSession.activeRunIds?.has(ctx.runId)) ||
-        (ctx.sessionKey && activeSession.ownerSessionKey !== ctx.sessionKey)
+          !activeSession.activeRunIds?.has(ctx.runId))
       ) {
         const nextOwnerSessionKey =
           ctx.sessionKey ?? activeSession.ownerSessionKey;
@@ -760,6 +779,18 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session) return undefined;
     if (!bindSessionRun(session, ctx.runId)) return undefined;
     if (session.finalized) return undefined;
+    if (session.runId && ctx.runId && session.runId !== ctx.runId) {
+      logger.debug(
+        "message_sending: skip finalization from older admitted run",
+        {
+          contextKey,
+          sessionKey,
+          currentRunId: session.runId,
+          incomingRunId: ctx.runId,
+        },
+      );
+      return undefined;
+    }
     logger.info(
       "message_sending: updating session status on outbound message",
       {
@@ -816,14 +847,20 @@ export function createHookHandlers(deps: HookDeps) {
 
           const steerText = event.cleanedBody?.trim();
           if (steerText) {
-            toolHistoryManager.addEntry(session.toolHistory, {
-              toolCallId: `steer:${ctx.runId ?? Date.now()}`,
-              toolName: "steer",
-              params: { steer: steerText },
-              status: "completed",
-              startedAtMs: Date.now(),
-            });
-            await updateSessionStatus(session, false);
+            const hasMatchingSteer = session.toolHistory.some(
+              (entry) =>
+                entry.toolName === "steer" && entry.params?.steer === steerText,
+            );
+            if (!hasMatchingSteer) {
+              toolHistoryManager.addEntry(session.toolHistory, {
+                toolCallId: `steer:${ctx.runId ?? Date.now()}`,
+                toolName: "steer",
+                params: { steer: steerText },
+                status: "completed",
+                startedAtMs: Date.now(),
+              });
+              await updateSessionStatus(session, false);
+            }
           }
           return { handled: false };
         }
@@ -869,6 +906,14 @@ export function createHookHandlers(deps: HookDeps) {
     if (contextKey) {
       const session = await store.resolveSession(contextKey, ctx.sessionKey);
       if (!session || !bindSessionRun(session, ctx.runId)) return;
+      if (session.runId && ctx.runId && session.runId !== ctx.runId) {
+        logger.debug("agent_end: skip older admitted run cleanup", {
+          contextKey,
+          currentRunId: session.runId,
+          incomingRunId: ctx.runId,
+        });
+        return;
+      }
       finishPendingHindsightRecalls(session.toolHistory);
       finishPendingSkillHarness(session.toolHistory);
       if (compactionWasActiveAtDispatch) {
