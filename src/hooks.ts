@@ -336,6 +336,7 @@ export function createHookHandlers(deps: HookDeps) {
         ...(activeSession.runId ? [activeSession.runId] : []),
       ]),
       finalized: false,
+      steeredRunIds: new Set(),
       toolHistory: [],
     };
 
@@ -539,10 +540,13 @@ export function createHookHandlers(deps: HookDeps) {
         activeSession.accountId = ctx.accountId;
 
         if (steerText) {
-          const hasMatchingSteer = activeSession.toolHistory.some(
-            (entry) =>
-              entry.toolName === "steer" && entry.params?.steer === steerText,
-          );
+          const hasMatchingSteer =
+            (ctx.runId !== undefined &&
+              activeSession.steeredRunIds?.has(ctx.runId)) ||
+            activeSession.toolHistory.some(
+              (entry) =>
+                entry.toolName === "steer" && entry.params?.steer === steerText,
+            );
           if (!hasMatchingSteer) {
             toolHistoryManager.addEntry(activeSession.toolHistory, {
               toolCallId: `steer:${event.messageId ?? ctx.runId ?? Date.now()}`,
@@ -551,6 +555,12 @@ export function createHookHandlers(deps: HookDeps) {
               status: "completed",
               startedAtMs: Date.now(),
             });
+            if (ctx.runId) {
+              if (!activeSession.steeredRunIds) {
+                activeSession.steeredRunIds = new Set();
+              }
+              activeSession.steeredRunIds.add(ctx.runId);
+            }
             await updateSessionStatus(activeSession, false);
           }
         }
@@ -873,14 +883,14 @@ export function createHookHandlers(deps: HookDeps) {
 
           const steerText = event.cleanedBody?.trim();
           if (steerText) {
-            const hasMatchingSteer = session.toolHistory.some(
-              (entry) =>
-                entry.toolName === "steer" &&
-                (entry.params?.steer === steerText ||
-                  (ctx.runId &&
-                    entry.toolCallId.includes(ctx.runId) &&
-                    entry.params?.steer)),
-            );
+            const hasMatchingSteer =
+              (ctx.runId !== undefined &&
+                session.steeredRunIds?.has(ctx.runId)) ||
+              session.toolHistory.some(
+                (entry) =>
+                  entry.toolName === "steer" &&
+                  entry.params?.steer === steerText,
+              );
             if (!hasMatchingSteer) {
               toolHistoryManager.addEntry(session.toolHistory, {
                 toolCallId: `steer:${ctx.runId ?? Date.now()}`,
@@ -889,6 +899,12 @@ export function createHookHandlers(deps: HookDeps) {
                 status: "completed",
                 startedAtMs: Date.now(),
               });
+              if (ctx.runId) {
+                if (!session.steeredRunIds) {
+                  session.steeredRunIds = new Set();
+                }
+                session.steeredRunIds.add(ctx.runId);
+              }
               await updateSessionStatus(session, false);
             }
           }

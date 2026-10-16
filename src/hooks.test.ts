@@ -715,6 +715,15 @@ describe("createHookHandlers", () => {
         toolName: "steer",
         params: { steer: "[image]" },
       });
+
+      // Verify onBeforeAgentReply adopts run_2 and does not duplicate steer row even if reply text differs
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "看看這張" },
+        { sessionKey, runId: "run_2" },
+      );
+      expect(activeSession?.runId).toBe("run_2");
+      expect(activeSession?.toolHistory).toHaveLength(2);
+      expect(activeSession?.toolHistory[1].params?.steer).toBe("[image]");
     });
 
     it("preserves active card on body-less inbound messages for already-admitted run", async () => {

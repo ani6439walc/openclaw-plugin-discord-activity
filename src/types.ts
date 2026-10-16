@@ -42,6 +42,7 @@ export type SessionEntry = {
   runId?: string;
   activeRunIds?: Set<string>;
   supersededRunIds?: Set<string>;
+  steeredRunIds?: Set<string>;
   statusMessageId?: string;
   statusCreateNonce?: string;
   lastRenderedContent?: string;
