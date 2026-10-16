@@ -100,6 +100,27 @@ function stableParamsKey(params: unknown): string {
   return JSON.stringify(stableValue(params ?? {}));
 }
 
+function extractInboundSteerText(event: MessageReceivedEvent): string {
+  const text = (
+    (event.metadata?.body as string) ??
+    (event.metadata?.content as string) ??
+    event.content ??
+    ""
+  ).trim();
+  if (text) return text;
+
+  const mediaList =
+    ((event as Record<string, unknown>).media as unknown[]) ??
+    (event.metadata?.media as unknown[]) ??
+    (event.metadata?.attachments as unknown[]);
+  if (Array.isArray(mediaList) && mediaList.length > 0) {
+    const first = mediaList[0] as Record<string, unknown> | undefined;
+    const kind = typeof first?.kind === "string" ? first.kind : "image";
+    return `[${kind}]`;
+  }
+  return "";
+}
+
 function isDuplicateCodexOpenClawToolEntry(
   existing: ToolDedupeIdentity,
   incoming: ToolDedupeIdentity,
@@ -488,17 +509,22 @@ export function createHookHandlers(deps: HookDeps) {
         return;
       }
 
-      const steerText = (
-        (event.metadata?.body as string) ??
-        (event.metadata?.content as string) ??
-        event.content ??
-        ""
-      ).trim();
+      const steerText = extractInboundSteerText(event);
+
+      const isAlreadyAdmittedRun = Boolean(
+        ctx.runId &&
+        (activeSession.runId === ctx.runId ||
+          activeSession.activeRunIds?.has(ctx.runId)),
+      );
+
+      const isSteerMessage =
+        !activeSession.finalized &&
+        steerText.length > 0 &&
+        (activeSession.statusMessageId !== undefined ||
+          activeSession.toolHistory.length > 0);
 
       const isPreservedActiveTurn =
-        !activeSession.finalized &&
-        (activeSession.statusMessageId !== undefined ||
-          (steerText.length > 0 && activeSession.toolHistory.length > 0));
+        !activeSession.finalized && (isAlreadyAdmittedRun || isSteerMessage);
 
       if (isPreservedActiveTurn) {
         if (ctx.runId) {
@@ -849,7 +875,11 @@ export function createHookHandlers(deps: HookDeps) {
           if (steerText) {
             const hasMatchingSteer = session.toolHistory.some(
               (entry) =>
-                entry.toolName === "steer" && entry.params?.steer === steerText,
+                entry.toolName === "steer" &&
+                (entry.params?.steer === steerText ||
+                  (ctx.runId &&
+                    entry.toolCallId.includes(ctx.runId) &&
+                    entry.params?.steer)),
             );
             if (!hasMatchingSteer) {
               toolHistoryManager.addEntry(session.toolHistory, {
