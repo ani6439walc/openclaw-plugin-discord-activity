@@ -2071,6 +2071,42 @@ describe("tool intent and title rendering", () => {
     expect(stripAnsi(result)).not.toContain("├─");
   });
 
+  it("renders steer tool entry with ✨ icon and » summary line in expanded mode", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "steer:123",
+        toolName: "steer",
+        params: {
+          steer: "我想改用另一個檔案來測試...",
+        },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContent(entries, true);
+    expect(stripAnsi(result)).toContain("✨ steer ▾ ✔");
+    expect(stripAnsi(result)).toContain("» 我想改用另一個檔案來測試...");
+    expect(result).toContain(`${YELLOW}» 我想改用另一個檔案來測試...${RESET}`);
+  });
+
+  it("renders steer tool entry with ✨ icon in collapsed mode", () => {
+    const entries: ToolEntry[] = [
+      {
+        toolCallId: "steer:123",
+        toolName: "steer",
+        params: {
+          steer: "我想改用另一個檔案來測試...",
+        },
+        status: "completed",
+      },
+    ];
+    const result = renderStatusContentWithState(entries, true, 2000, {
+      "tool:steer:123": "collapsed",
+    });
+    expect(stripAnsi(result.content)).toContain(
+      "✨ steer · 我想改用另一個檔案來測試... ▸ ✔",
+    );
+  });
+
   it("supports params.title in progress_card as fallback when no steps or ariaLabel exist", () => {
     const entries: ToolEntry[] = [
       {

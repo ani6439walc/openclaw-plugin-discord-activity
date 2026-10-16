@@ -128,6 +128,8 @@ export function createSessionStore() {
       ownerSessionKey,
       generation: 1,
       runId: context.runId,
+      activeRunIds: context.runId ? new Set([context.runId]) : new Set(),
+      steeredRunIds: new Set(),
       lastRenderedContent: undefined,
       finalized: false,
       toolHistory: [],

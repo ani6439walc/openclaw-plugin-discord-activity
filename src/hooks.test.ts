@@ -535,6 +535,311 @@ describe("createHookHandlers", () => {
       await pending;
     });
 
+    it("handles steer message while session is active without retiring card or resetting tool history", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_turn1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "bash",
+          params: { command: "sleep 10" },
+          runId: "run_turn1",
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "call_1",
+          runId: "run_turn1",
+        },
+      );
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession).toBeDefined();
+      expect(activeSession?.statusMessageId).toBe("status_1");
+      expect(activeSession?.toolHistory).toHaveLength(1);
+      const postCountBeforeSteer = countChannelMessagePosts(fetchMock);
+
+      await handlers.onMessageReceived(
+        {
+          messageId: "user_msg_2",
+          content: "我想改用另一個檔案來測試...",
+          metadata: { to: "user:123" },
+        },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_turn2",
+        },
+      );
+
+      expect(store.sessions.get("discord:direct:123")).toBe(activeSession);
+      expect(activeSession?.generation).toBe(1);
+      expect(countCalls(fetchMock, "DELETE", /messages/)).toBe(0);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountBeforeSteer);
+
+      expect(activeSession?.toolHistory).toHaveLength(2);
+      const steerEntry = activeSession?.toolHistory[1];
+      expect(steerEntry?.toolName).toBe("steer");
+      expect(steerEntry?.params).toEqual({
+        steer: "我想改用另一個檔案來測試...",
+      });
+      expect(steerEntry?.status).toBe("completed");
+
+      expect(activeSession?.activeRunIds?.has("run_turn1")).toBe(true);
+      expect(activeSession?.activeRunIds?.has("run_turn2")).toBe(true);
+
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "call_1",
+          toolName: "bash",
+          params: {},
+          durationMs: 1000,
+        },
+        {
+          sessionKey,
+          toolName: "bash",
+          toolCallId: "call_1",
+          runId: "run_turn1",
+        },
+      );
+      expect(activeSession?.toolHistory[0].status).toBe("completed");
+
+      await handlers.onBeforeToolCall(
+        {
+          toolCallId: "call_2",
+          toolName: "read",
+          params: { path: "test.txt" },
+          runId: "run_turn2",
+        },
+        {
+          sessionKey,
+          toolName: "read",
+          toolCallId: "call_2",
+          runId: "run_turn2",
+        },
+      );
+      expect(activeSession?.toolHistory).toHaveLength(3);
+      expect(activeSession?.toolHistory[2].toolName).toBe("read");
+
+      // Verify onBeforeAgentReply deduplicates matching steer text
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "我想改用另一個檔案來測試..." },
+        { sessionKey, runId: "run_turn2" },
+      );
+      // Tool history length remains 3 (no duplicate steer line added)
+      expect(activeSession?.toolHistory).toHaveLength(3);
+
+      // Verify older admitted run (run_turn1) does not finalize or cleanup shared session
+      await handlers.onMessageSending(
+        { to: "user:123", content: "part 1" },
+        { channelId: "discord", sessionKey, runId: "run_turn1" },
+      );
+      expect(activeSession?.finalized).toBe(false);
+
+      await handlers.onAgentEnd(
+        { success: true },
+        { channelId: "discord", sessionKey, runId: "run_turn1" },
+      );
+      expect(activeSession?.finalized).toBe(false);
+
+      // Current run (run_turn2) finalizes session on completion
+      await handlers.onMessageSending(
+        { to: "user:123", content: "part 2" },
+        { channelId: "discord", sessionKey, runId: "run_turn2" },
+      );
+      expect(activeSession?.finalized).toBe(true);
+    });
+
+    it("preserves active card on media-only inbound messages (image attachment steer) during an ongoing run", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId: "run_1" },
+        { sessionKey, toolName: "bash", toolCallId: "call_1", runId: "run_1" },
+      );
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession?.statusMessageId).toBe("status_1");
+      const postCountBefore = countChannelMessagePosts(fetchMock);
+
+      // Inbound event with media attachments but no body text (e.g. image upload)
+      await handlers.onMessageReceived(
+        {
+          messageId: "user_msg_2",
+          metadata: {
+            to: "user:123",
+            attachments: [{ id: "att_1", url: "https://discord.gg/image.png" }],
+          },
+        },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_2",
+        },
+      );
+
+      // Card is preserved without being deleted or replaced
+      expect(store.sessions.get("discord:direct:123")).toBe(activeSession);
+      expect(activeSession?.generation).toBe(1);
+      expect(countCalls(fetchMock, "DELETE", /messages/)).toBe(0);
+      expect(countChannelMessagePosts(fetchMock)).toBe(postCountBefore);
+      expect(activeSession?.activeRunIds?.has("run_2")).toBe(true);
+
+      // Steer tool entry was pushed with [image]
+      expect(activeSession?.toolHistory).toHaveLength(2);
+      expect(activeSession?.toolHistory[1]).toMatchObject({
+        toolName: "steer",
+        params: { steer: "[image]" },
+      });
+
+      // Verify onBeforeAgentReply adopts run_2 and does not duplicate steer row even if reply text differs
+      await handlers.onBeforeAgentReply(
+        { cleanedBody: "看看這張" },
+        { sessionKey, runId: "run_2" },
+      );
+      expect(activeSession?.runId).toBe("run_2");
+      expect(activeSession?.toolHistory).toHaveLength(2);
+      expect(activeSession?.toolHistory[1].params?.steer).toBe("[image]");
+    });
+
+    it("preserves active card on body-less inbound messages for already-admitted run", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId: "run_1" },
+        { sessionKey, toolName: "bash", toolCallId: "call_1", runId: "run_1" },
+      );
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession?.statusMessageId).toBe("status_1");
+
+      // Follow-up body-less event for the SAME admitted run
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_2", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_1",
+        },
+      );
+
+      // Card is preserved without replacing generation
+      expect(store.sessions.get("discord:direct:123")).toBe(activeSession);
+      expect(activeSession?.generation).toBe(1);
+      expect(activeSession?.toolHistory).toHaveLength(1);
+    });
+
+    it("replaces generation on body-less inbound event with new unadmitted runId", async () => {
+      const sessionKey = "agent:main:discord:direct:123";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_1",
+        },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId: "run_1" },
+        { sessionKey, toolName: "bash", toolCallId: "call_1", runId: "run_1" },
+      );
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession?.generation).toBe(1);
+
+      // Body-less event with new unadmitted runId replaces generation
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_2", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_2",
+        },
+      );
+
+      const replacement = store.sessions.get("discord:direct:123");
+      expect(replacement).not.toBe(activeSession);
+      expect(replacement?.generation).toBe(2);
+      expect(replacement?.runId).toBe("run_2");
+    });
+
+    it("replaces generation on owner switch even when inbound message carries text", async () => {
+      const sessionKey = "agent:main:discord:direct:123";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        {
+          channelId: "discord",
+          sessionKey,
+          accountId: "default",
+          runId: "run_1",
+        },
+      );
+
+      const firstSession = store.sessions.get("discord:direct:123");
+      expect(firstSession?.generation).toBe(1);
+
+      // Message from different owner arrives with text
+      const otherOwnerSessionKey = "agent:other:discord:direct:123";
+      await handlers.onMessageReceived(
+        {
+          messageId: "user_msg_2",
+          content: "new owner text",
+          metadata: { to: "user:123" },
+        },
+        {
+          channelId: "discord",
+          sessionKey: otherOwnerSessionKey,
+          accountId: "default",
+          runId: "run_2",
+        },
+      );
+
+      const replacement = store.sessions.get("discord:direct:123");
+      expect(replacement).not.toBe(firstSession);
+      expect(replacement?.generation).toBe(2);
+      expect(replacement?.ownerSessionKey).toBe(otherOwnerSessionKey);
+    });
+
     it.each([
       {
         replyMode: "all",
