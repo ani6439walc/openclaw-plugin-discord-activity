@@ -169,8 +169,8 @@ importers:
   .:
     dependencies:
       openclaw:
-        specifier: 2026.10.3
-        version: 2026.10.3(undici@8.10.2)
+        specifier: 2026.10.4
+        version: 2026.10.4(undici@8.10.2)
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -640,8 +640,8 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@openclaw/ai@2026.10.3':
-    resolution: {integrity: sha512-nPB0z/GMTyQayVu1JSDOml+orERUBzg9zo+2f4UxLLpDLJe0ERHrOPQQ3tGV+fDu/jATN9EAfXJPRMNUs1168g==}
+  '@openclaw/ai@2026.10.4':
+    resolution: {integrity: sha512-MrRkq0PzuK2O7v40k4dxt/GrRnpVD3P3ql5gVysNDu0fAFYD9lQ6LXZJiLQE7jBI44QpDzSxJn9oqJzxuroEuA==}
     engines: {node: '>=22.19.0'}
 
   '@openclaw/fs-safe-darwin-arm64@0.24.2':
@@ -1987,8 +1987,8 @@ packages:
       zod:
         optional: true
 
-  openclaw@2026.10.3:
-    resolution: {integrity: sha512-ncl6LntMlf76K39LFhVrDXQTbaGNAG5j52f7PL5P8vIn0knWmCrvfAe9DHMslFq+47HeOWBH2CBYQH8zEb+UAA==}
+  openclaw@2026.10.4:
+    resolution: {integrity: sha512-+FH0StZF1tlTazM7JJGY6JePeJmhFNSRByi2Q3jXPRiLO7o4dJh2xa9Vy4Dk8Cd2ic8B7Zkf5NfEaCCWUkgqnQ==}
     engines: {node: '>=24.16.0 <25 || >=26.1.0'}
     hasBin: true
     bundledDependencies:
@@ -2768,57 +2768,83 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@koromix/koffi-android-arm64@3.3.1': {}
+  '@koromix/koffi-android-arm64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-android-x64@3.3.1': {}
+  '@koromix/koffi-android-x64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-darwin-arm64@3.3.1': {}
+  '@koromix/koffi-darwin-arm64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-darwin-x64@3.3.1': {}
+  '@koromix/koffi-darwin-x64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-freebsd-arm64@3.3.1': {}
+  '@koromix/koffi-freebsd-arm64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-freebsd-ia32@3.3.1': {}
+  '@koromix/koffi-freebsd-ia32@3.3.1':
+    optional: true
 
-  '@koromix/koffi-freebsd-x64@3.3.1': {}
+  '@koromix/koffi-freebsd-x64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-linux-arm64@3.3.1': {}
+  '@koromix/koffi-linux-arm64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-linux-arm@3.3.1': {}
+  '@koromix/koffi-linux-arm@3.3.1':
+    optional: true
 
-  '@koromix/koffi-linux-ia32@3.3.1': {}
+  '@koromix/koffi-linux-ia32@3.3.1':
+    optional: true
 
-  '@koromix/koffi-linux-loong64@3.3.1': {}
+  '@koromix/koffi-linux-loong64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-linux-ppc64@3.3.1': {}
+  '@koromix/koffi-linux-ppc64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-linux-riscv64@3.3.1': {}
+  '@koromix/koffi-linux-riscv64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-linux-x64@3.3.1': {}
+  '@koromix/koffi-linux-x64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-openbsd-arm64@3.3.1': {}
+  '@koromix/koffi-openbsd-arm64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-openbsd-ia32@3.3.1': {}
+  '@koromix/koffi-openbsd-ia32@3.3.1':
+    optional: true
 
-  '@koromix/koffi-openbsd-x64@3.3.1': {}
+  '@koromix/koffi-openbsd-x64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-win32-arm64@3.3.1': {}
+  '@koromix/koffi-win32-arm64@3.3.1':
+    optional: true
 
-  '@koromix/koffi-win32-ia32@3.3.1': {}
+  '@koromix/koffi-win32-ia32@3.3.1':
+    optional: true
 
-  '@koromix/koffi-win32-x64@3.3.1': {}
+  '@koromix/koffi-win32-x64@3.3.1':
+    optional: true
 
-  '@lydell/node-pty-darwin-arm64@1.2.0-beta.15': {}
+  '@lydell/node-pty-darwin-arm64@1.2.0-beta.15':
+    optional: true
 
-  '@lydell/node-pty-darwin-x64@1.2.0-beta.15': {}
+  '@lydell/node-pty-darwin-x64@1.2.0-beta.15':
+    optional: true
 
-  '@lydell/node-pty-linux-arm64@1.2.0-beta.15': {}
+  '@lydell/node-pty-linux-arm64@1.2.0-beta.15':
+    optional: true
 
-  '@lydell/node-pty-linux-x64@1.2.0-beta.15': {}
+  '@lydell/node-pty-linux-x64@1.2.0-beta.15':
+    optional: true
 
-  '@lydell/node-pty-win32-arm64@1.2.0-beta.15': {}
+  '@lydell/node-pty-win32-arm64@1.2.0-beta.15':
+    optional: true
 
-  '@lydell/node-pty-win32-x64@1.2.0-beta.15': {}
+  '@lydell/node-pty-win32-x64@1.2.0-beta.15':
+    optional: true
 
   '@lydell/node-pty@1.2.0-beta.15':
     optionalDependencies:
@@ -2870,7 +2896,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.2
     optional: true
 
-  '@openclaw/ai@2026.10.3(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)':
+  '@openclaw/ai@2026.10.4(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)':
     dependencies:
       '@anthropic-ai/sdk': 0.128.0(zod@4.6.5)
       '@google/genai': 2.24.0(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))
@@ -2894,19 +2920,26 @@ snapshots:
       - ws
       - zod
 
-  '@openclaw/fs-safe-darwin-arm64@0.24.2': {}
+  '@openclaw/fs-safe-darwin-arm64@0.24.2':
+    optional: true
 
-  '@openclaw/fs-safe-darwin-x64@0.24.2': {}
+  '@openclaw/fs-safe-darwin-x64@0.24.2':
+    optional: true
 
-  '@openclaw/fs-safe-linux-arm64-gnu@0.24.2': {}
+  '@openclaw/fs-safe-linux-arm64-gnu@0.24.2':
+    optional: true
 
-  '@openclaw/fs-safe-linux-arm64-musl@0.24.2': {}
+  '@openclaw/fs-safe-linux-arm64-musl@0.24.2':
+    optional: true
 
-  '@openclaw/fs-safe-linux-x64-gnu@0.24.2': {}
+  '@openclaw/fs-safe-linux-x64-gnu@0.24.2':
+    optional: true
 
-  '@openclaw/fs-safe-linux-x64-musl@0.24.2': {}
+  '@openclaw/fs-safe-linux-x64-musl@0.24.2':
+    optional: true
 
-  '@openclaw/fs-safe-win32-x64-msvc@0.24.2': {}
+  '@openclaw/fs-safe-win32-x64-msvc@0.24.2':
+    optional: true
 
   '@openclaw/fs-safe@0.24.2':
     optionalDependencies:
@@ -3017,17 +3050,23 @@ snapshots:
 
   '@tokenizer/token@0.3.0': {}
 
-  '@trycua/cua-driver-darwin-arm64@0.28.2': {}
+  '@trycua/cua-driver-darwin-arm64@0.28.2':
+    optional: true
 
-  '@trycua/cua-driver-darwin-x64@0.28.2': {}
+  '@trycua/cua-driver-darwin-x64@0.28.2':
+    optional: true
 
-  '@trycua/cua-driver-linux-arm64-gnu@0.28.2': {}
+  '@trycua/cua-driver-linux-arm64-gnu@0.28.2':
+    optional: true
 
-  '@trycua/cua-driver-linux-x64-gnu@0.28.2': {}
+  '@trycua/cua-driver-linux-x64-gnu@0.28.2':
+    optional: true
 
-  '@trycua/cua-driver-win32-arm64-msvc@0.28.2': {}
+  '@trycua/cua-driver-win32-arm64-msvc@0.28.2':
+    optional: true
 
-  '@trycua/cua-driver-win32-x64-msvc@0.28.2': {}
+  '@trycua/cua-driver-win32-x64-msvc@0.28.2':
+    optional: true
 
   '@trycua/cua-driver@0.28.2':
     dependencies:
@@ -3126,21 +3165,29 @@ snapshots:
 
   '@ubjs/core@0.31.0-3': {}
 
-  '@ubjs/node-darwin-arm64@0.31.0-3': {}
+  '@ubjs/node-darwin-arm64@0.31.0-3':
+    optional: true
 
-  '@ubjs/node-darwin-x64@0.31.0-3': {}
+  '@ubjs/node-darwin-x64@0.31.0-3':
+    optional: true
 
-  '@ubjs/node-linux-arm64-gnu@0.31.0-3': {}
+  '@ubjs/node-linux-arm64-gnu@0.31.0-3':
+    optional: true
 
-  '@ubjs/node-linux-arm64-musl@0.31.0-3': {}
+  '@ubjs/node-linux-arm64-musl@0.31.0-3':
+    optional: true
 
-  '@ubjs/node-linux-x64-gnu@0.31.0-3': {}
+  '@ubjs/node-linux-x64-gnu@0.31.0-3':
+    optional: true
 
-  '@ubjs/node-linux-x64-musl@0.31.0-3': {}
+  '@ubjs/node-linux-x64-musl@0.31.0-3':
+    optional: true
 
-  '@ubjs/node-win32-arm64-msvc@0.31.0-3': {}
+  '@ubjs/node-win32-arm64-msvc@0.31.0-3':
+    optional: true
 
-  '@ubjs/node-win32-x64-msvc@0.31.0-3': {}
+  '@ubjs/node-win32-x64-msvc@0.31.0-3':
+    optional: true
 
   '@ubjs/node@0.31.0-3':
     optionalDependencies:
@@ -3945,7 +3992,7 @@ snapshots:
       ws: 8.21.3
       zod: 4.6.5
 
-  openclaw@2026.10.3(undici@8.10.2):
+  openclaw@2026.10.4(undici@8.10.2):
     dependencies:
       '@agentclientprotocol/sdk': 1.5.0(zod@4.6.5)
       '@anthropic-ai/sdk': 0.128.0(zod@4.6.5)
@@ -3962,7 +4009,7 @@ snapshots:
       '@mistralai/mistralai': 2.7.0
       '@modelcontextprotocol/sdk': 1.31.0(zod@4.6.5)
       '@mozilla/readability': 0.6.0
-      '@openclaw/ai': 2026.10.3(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)
+      '@openclaw/ai': 2026.10.4(@modelcontextprotocol/sdk@1.31.0(zod@4.6.5))(undici@8.10.2)(ws@8.21.3)(zod@4.6.5)
       '@openclaw/fs-safe': 0.24.2
       '@silvia-odwyer/photon-node': 0.3.4
       '@trycua/cua-driver': 0.28.2
