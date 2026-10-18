@@ -49,6 +49,7 @@ function resetSessionState(session: SessionEntry) {
   session.compactionActive = false;
   session.compactionEpoch = 0;
   session.overflowRecoveryPending = false;
+  session.overflowRecoveryFailure = undefined;
 }
 
 function getSessionDisplayFloor(session: SessionEntry) {
@@ -327,6 +328,9 @@ function startMaxDisplayTimer(
     if (!current || current !== session) {
       return;
     }
+    if (session.compactionActive || session.overflowRecoveryPending) {
+      return;
+    }
 
     logger.warn(
       `status message was idle for maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
@@ -362,7 +366,12 @@ export async function updateStatusMessage(
     session.generation === expectedGeneration &&
     session.ownerSessionKey === expectedOwner;
 
-  if (
+  if (session.compactionActive || session.overflowRecoveryPending) {
+    if (session.maxDisplayTimer) {
+      clearTimeout(session.maxDisplayTimer);
+      session.maxDisplayTimer = undefined;
+    }
+  } else if (
     session.statusMessageId &&
     maxDisplayMs &&
     maxDisplayMs > 0 &&
@@ -455,7 +464,12 @@ export async function updateStatusMessage(
         generation: session.generation,
       });
 
-      if (maxDisplayMs && maxDisplayMs > 0) {
+      if (
+        maxDisplayMs &&
+        maxDisplayMs > 0 &&
+        !session.compactionActive &&
+        !session.overflowRecoveryPending
+      ) {
         startMaxDisplayTimer(
           session,
           session.contextKey,
