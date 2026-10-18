@@ -2063,6 +2063,592 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
+    it("defers finalization on context overflow agent_end when before_compaction arrives seconds later", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_delayed_compact";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 120, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error:
+            "Context overflow: prompt too large for the model. Try again with less input or a larger-context model.",
+        },
+        { sessionKey, runId },
+      );
+
+      // Simulate 8s session snapshot loading delay before before_compaction fires
+      await vi.advanceTimersByTimeAsync(8_000);
+      await flushPromises();
+
+      const pendingSession = store.sessions.get("discord:direct:123");
+      expect(pendingSession?.finalized).toBe(false);
+      expect(pendingSession?.overflowRecoveryPending).toBe(true);
+      expect(
+        pendingSession?.toolHistory.some(
+          (entry) => entry.toolCallId === "agent",
+        ),
+      ).toBe(false);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+
+      await handlers.onBeforeCompaction(
+        { messageCount: 150 },
+        { sessionKey, runId },
+      );
+      expect(pendingSession?.overflowRecoveryPending).toBe(false);
+      expect(pendingSession?.compactionActive).toBe(true);
+      expect(pendingSession?.clearTimer).toBeUndefined();
+      expect(stripAnsi(pendingSession?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await handlers.onAfterCompaction(
+        { messageCount: 25, compactedCount: 125 },
+        { sessionKey, runId },
+      );
+      expect(stripAnsi(pendingSession?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ✔ [3s]",
+      );
+
+      // Post-compaction retry attempt runs another tool and succeeds
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "read", params: {}, runId },
+        { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_2", toolName: "read", durationMs: 50, runId },
+        { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
+      );
+      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+
+      await vi.advanceTimersByTimeAsync(1_500);
+      await flushPromises();
+
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
+    it("finalizes and cleans up context overflow session if grace period expires without recovery", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_unrecovered";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 80, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Request size exceeds model context window",
+        },
+        { sessionKey, runId },
+      );
+
+      await vi.advanceTimersByTimeAsync(29_000);
+      await flushPromises();
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+
+      const patchBodiesBeforeTimeout = fetchMock.mock.calls
+        .filter(([input, init]) => {
+          const url = String(input);
+          const method = (init as RequestInit | undefined)?.method ?? "GET";
+          return (
+            method === "PATCH" &&
+            /\/channels\/dm_channel_123\/messages\/status_1$/.test(url)
+          );
+        })
+        .map(([, init]) =>
+          stripAnsi(
+            (
+              JSON.parse(
+                String((init as RequestInit | undefined)?.body ?? "{}"),
+              ) as StatusPostBody
+            ).content ?? "",
+          ),
+        );
+      expect(
+        patchBodiesBeforeTimeout.some((body) => body.includes("💥 agent")),
+      ).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flushPromises();
+
+      const patchBodiesAfterTimeout = fetchMock.mock.calls
+        .filter(([input, init]) => {
+          const url = String(input);
+          const method = (init as RequestInit | undefined)?.method ?? "GET";
+          return (
+            method === "PATCH" &&
+            /\/channels\/dm_channel_123\/messages\/status_1$/.test(url)
+          );
+        })
+        .map(([, init]) =>
+          stripAnsi(
+            (
+              JSON.parse(
+                String((init as RequestInit | undefined)?.body ?? "{}"),
+              ) as StatusPostBody
+            ).content ?? "",
+          ),
+        );
+      expect(patchBodiesAfterTimeout.at(-1)).toContain("💥 agent");
+      expect(patchBodiesAfterTimeout.at(-1)).toContain(
+        "Request size exceeds model context window",
+      );
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
+    it("renders deferred overflow failure and cleans up when message_sending arrives without recovery", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_message_sending_fallback";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 50, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.overflowRecoveryPending).toBe(true);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).not.toContain(
+        "💥 agent",
+      );
+
+      await handlers.onMessageSending(
+        { to: "user:123", content: "Context overflow error" },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      expect(session?.finalized).toBe(true);
+      expect(session?.overflowRecoveryPending).toBe(false);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "💥 agent",
+      );
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "Context overflow: prompt too large for the model.",
+      );
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await flushPromises();
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
+    it("suspends maxDisplayTimer during overflow recovery grace window and restores it after compaction", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const shortConfig = resolveConfig({ maxDisplaySeconds: 2 });
+      const shortHandlers = createHookHandlers({
+        store,
+        orphans,
+        getToken,
+        config: shortConfig,
+      });
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_short_max_display";
+
+      await shortHandlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await shortHandlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await shortHandlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 50, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await shortHandlers.onAgentEnd(
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.overflowRecoveryPending).toBe(true);
+      expect(session?.maxDisplayTimer).toBeUndefined();
+
+      // Advance 8s (> maxDisplaySeconds=2s) before before_compaction arrives
+      await vi.advanceTimersByTimeAsync(8_000);
+      await flushPromises();
+      expect(store.sessions.get("discord:direct:123")).toBe(session);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+
+      await shortHandlers.onBeforeCompaction(
+        { messageCount: 100 },
+        { sessionKey, runId },
+      );
+      expect(session?.maxDisplayTimer).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await shortHandlers.onAfterCompaction(
+        { messageCount: 20, compactedCount: 80 },
+        { sessionKey, runId },
+      );
+      expect(session?.maxDisplayTimer).toBeDefined();
+
+      // Normal idle timeout resumes after compaction completes
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flushPromises();
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
+    it("arms 30s grace timer and evicts session when context overflow occurs before any visible activity", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_before_activity";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.overflowRecoveryPending).toBe(true);
+      expect(session?.clearTimer).toBeDefined();
+      expect(countChannelMessagePosts(fetchMock)).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await flushPromises();
+
+      expect(countChannelMessagePosts(fetchMock)).toBe(0);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+      expect(store.contexts.has("discord:direct:123")).toBe(false);
+    });
+
+    it("cancels grace expiry deletion and eviction if before_compaction arrives while the expiry PATCH is in flight", async () => {
+      vi.useFakeTimers();
+      let holdNextPatch = false;
+      let releaseHeldPatch: (() => void) | undefined;
+      const heldPatchStarted = new Promise<void>((resolveStarted) => {
+        let statusCounter = 0;
+        const fetchMock = vi.fn(
+          async (input: string | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+
+            if (url.includes("/users/@me/channels") && method === "POST") {
+              return jsonResponse({ id: "dm_channel_123" });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.endsWith("/messages") &&
+              method === "POST"
+            ) {
+              statusCounter += 1;
+              return jsonResponse({ id: `status_${statusCounter}` });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "PATCH"
+            ) {
+              if (holdNextPatch) {
+                holdNextPatch = false;
+                resolveStarted();
+                await new Promise<void>((resolveRelease) => {
+                  releaseHeldPatch = resolveRelease;
+                });
+              }
+              return jsonResponse({ ok: true });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "DELETE"
+            ) {
+              return emptyResponse();
+            }
+            return jsonResponse({ ok: true });
+          },
+        );
+        vi.stubGlobal("fetch", fetchMock);
+      });
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_expiry_patch_race";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 40, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
+
+      // Hold the expiry failure PATCH when the 30s grace timer fires
+      holdNextPatch = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      await heldPatchStarted;
+
+      // Dispatch before_compaction while the expiry PATCH is still in flight
+      const beforeCompactionPromise = handlers.onBeforeCompaction(
+        { messageCount: 90 },
+        { sessionKey, runId },
+      );
+      await flushPromises();
+
+      // Release the held expiry PATCH
+      releaseHeldPatch?.();
+      await beforeCompactionPromise;
+      await flushPromises();
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session).toBeDefined();
+      expect(session?.compactionActive).toBe(true);
+      expect(session?.finalized).toBe(false);
+      expect(store.contexts.has("discord:direct:123")).toBe(true);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+    });
+
+    it("preserves resumed session, context, and compaction progress if before_compaction arrives while the expiry DELETE is in flight", async () => {
+      vi.useFakeTimers();
+      let holdNextDelete = false;
+      let releaseHeldDelete: (() => void) | undefined;
+      const heldDeleteStarted = new Promise<void>((resolveStarted) => {
+        let statusCounter = 0;
+        const fetchMock = vi.fn(
+          async (input: string | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+
+            if (url.includes("/users/@me/channels") && method === "POST") {
+              return jsonResponse({ id: "dm_channel_123" });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.endsWith("/messages") &&
+              method === "POST"
+            ) {
+              statusCounter += 1;
+              return jsonResponse({ id: `status_${statusCounter}` });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "PATCH"
+            ) {
+              return jsonResponse({ ok: true });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "DELETE"
+            ) {
+              if (holdNextDelete) {
+                holdNextDelete = false;
+                resolveStarted();
+                await new Promise<void>((resolveRelease) => {
+                  releaseHeldDelete = resolveRelease;
+                });
+              }
+              return emptyResponse();
+            }
+            return jsonResponse({ ok: true });
+          },
+        );
+        vi.stubGlobal("fetch", fetchMock);
+      });
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_expiry_delete_race";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 40, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
+
+      // Hold the expiry DELETE when the 30s grace timer fires
+      holdNextDelete = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      await heldDeleteStarted;
+
+      // Dispatch before_compaction while the expiry DELETE is still in flight
+      const beforeCompactionPromise = handlers.onBeforeCompaction(
+        { messageCount: 90 },
+        { sessionKey, runId },
+      );
+      await flushPromises();
+
+      // Release the held expiry DELETE
+      releaseHeldDelete?.();
+      await beforeCompactionPromise;
+      await flushPromises();
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session).toBeDefined();
+      expect(session?.compactionActive).toBe(true);
+      expect(session?.finalized).toBe(false);
+      expect(store.contexts.has("discord:direct:123")).toBe(true);
+      expect(session?.statusMessageId).toBe("status_2");
+      expect(countChannelMessagePosts(fetchMock)).toBe(2);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+    });
+
+    it("renders compaction progress even when before_compaction fires before any tool or pipeline activity", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_first_turn_compact";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      await handlers.onBeforeCompaction(
+        { messageCount: 80 },
+        { sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.compactionActive).toBe(true);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("does not finalize on before_agent_reply before any activity exists", async () => {
       const fetchMock = createDiscordFetchMock();
 

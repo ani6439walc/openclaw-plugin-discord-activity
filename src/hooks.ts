@@ -25,11 +25,15 @@ import {
   extractSenderId,
 } from "./parser.js";
 import {
+  clearStatusMessage,
   retireSession,
   scheduleSessionCleanup,
   updateStatusMessage,
 } from "./session.js";
-import { DEFAULT_AGENT_END_DELAY_MS } from "./constants.js";
+import {
+  DEFAULT_AGENT_END_DELAY_MS,
+  DEFAULT_OVERFLOW_RECOVERY_GRACE_MS,
+} from "./constants.js";
 import { ToolHistoryManager } from "./tool-history-manager.js";
 import {
   canonicalToolNameForDedupe,
@@ -51,6 +55,30 @@ import {
   mergeStatusDisplayStates,
   renderStatusContentWithState,
 } from "./render.js";
+
+const CONTEXT_OVERFLOW_SIGNAL_RE =
+  /\b(?:context|window|prompt|token|tokens|input|request|model)\b/i;
+const CONTEXT_OVERFLOW_ACTION_RE =
+  /\b(?:too\s+(?:large|long|many)|exceed(?:s|ed|ing)?|overflow|limit|maximum|max)\b/i;
+const CONTEXT_OVERFLOW_EXPLICIT_RE =
+  /\b(?:context[_ -]?overflow|context[_ -]?length[_ -]?exceeded|context[_ -]?window[_ -]?exceeded|prompt is too long|prompt too large|request_too_large|maximum context length|input is too long)\b/i;
+const CONTEXT_OVERFLOW_EXCLUSION_RE =
+  /\b(?:rate[_ -]?limit|tokens per min|tpm|rpm|quota|billing|compaction failed|auto-compaction failed|compaction timed out|reasoning is (?:mandatory|required)|requires reasoning)\b/i;
+
+function isContextOverflowAttemptError(error: string | undefined): boolean {
+  if (typeof error !== "string") return false;
+  const normalized = error.trim();
+  if (!normalized || CONTEXT_OVERFLOW_EXCLUSION_RE.test(normalized)) {
+    return false;
+  }
+  if (CONTEXT_OVERFLOW_EXPLICIT_RE.test(normalized)) {
+    return true;
+  }
+  return (
+    CONTEXT_OVERFLOW_SIGNAL_RE.test(normalized) &&
+    CONTEXT_OVERFLOW_ACTION_RE.test(normalized)
+  );
+}
 
 function isTerminalToolStatus(status: ToolEntry["status"]): boolean {
   return (
@@ -276,6 +304,21 @@ export function createHookHandlers(deps: HookDeps) {
     }
   }
 
+  function clearOverflowRecoveryState(session: SessionEntry): void {
+    session.overflowRecoveryPending = false;
+    session.overflowRecoveryFailure = undefined;
+  }
+
+  function consumeDeferredOverflowFailure(session: SessionEntry): boolean {
+    const deferredFailure = session.overflowRecoveryFailure;
+    session.overflowRecoveryFailure = undefined;
+    if (!deferredFailure) {
+      return false;
+    }
+    recordMainAgentFailure(session, deferredFailure);
+    return true;
+  }
+
   function logHookEvent(
     hookName: string,
     _event: unknown,
@@ -309,6 +352,127 @@ export function createHookHandlers(deps: HookDeps) {
     );
   }
 
+  function scheduleOverflowRecoveryGrace(
+    contextKey: string,
+    session: SessionEntry,
+    requestSessionKey: string | undefined,
+  ): void {
+    if (requestSessionKey && session.ownerSessionKey !== requestSessionKey) {
+      return;
+    }
+
+    const expectedGeneration = session.generation;
+    const expectedOwner = session.ownerSessionKey;
+    clearSessionTimer(session);
+    clearMaxDisplayTimer(session);
+
+    logger.info("[agent_end_overflow_grace] scheduled status message cleanup", {
+      contextKey,
+      delayMs: DEFAULT_OVERFLOW_RECOVERY_GRACE_MS,
+      generation: expectedGeneration,
+      ownerSessionKey: expectedOwner,
+    });
+
+    session.clearTimer = setTimeout(() => {
+      const expectedCompactionEpoch = session.compactionEpoch ?? 0;
+      const isUnrecoveredGraceTarget = () => {
+        const current = store.sessions.get(contextKey);
+        return (
+          current === session &&
+          current.generation === expectedGeneration &&
+          current.ownerSessionKey === expectedOwner &&
+          !session.compactionActive &&
+          (session.compactionEpoch ?? 0) === expectedCompactionEpoch
+        );
+      };
+
+      if (!isUnrecoveredGraceTarget() || !session.overflowRecoveryPending) {
+        return;
+      }
+
+      void (async () => {
+        if (session.pendingOp) {
+          try {
+            await session.pendingOp;
+          } catch (err) {
+            logger.warn(
+              "agent_end_overflow_grace: pending status update failed.",
+              {
+                contextKey,
+                error: String(err),
+              },
+            );
+          }
+          if (!isUnrecoveredGraceTarget() || !session.overflowRecoveryPending) {
+            return;
+          }
+        }
+
+        clearMaxDisplayTimer(session);
+        const hadDeferredFailure = consumeDeferredOverflowFailure(session);
+        clearOverflowRecoveryState(session);
+        session.finalized = true;
+
+        logger.info(
+          "[agent_end_overflow_grace] executing scheduled status message cleanup",
+          {
+            contextKey,
+            generation: expectedGeneration,
+            statusMessageId: session.statusMessageId,
+            hadDeferredFailure,
+          },
+        );
+
+        try {
+          if (session.statusMessageId && hadDeferredFailure) {
+            await updateSessionStatus(session, true);
+          }
+        } catch (err) {
+          logger.warn(
+            "failed to render failure status on agent_end_overflow_grace.",
+            {
+              contextKey,
+              error: String(err),
+            },
+          );
+        }
+
+        if (
+          !isUnrecoveredGraceTarget() ||
+          session.overflowRecoveryPending ||
+          !session.finalized
+        ) {
+          return;
+        }
+
+        try {
+          await clearStatusMessage(
+            session,
+            "agent_end_overflow_grace",
+            getToken,
+          );
+        } catch (err) {
+          logger.warn(
+            "failed to clear status message on agent_end_overflow_grace.",
+            {
+              contextKey,
+              error: String(err),
+            },
+          );
+        } finally {
+          if (isUnrecoveredGraceTarget() && !session.overflowRecoveryPending) {
+            store.clearSessionState(
+              contextKey,
+              session,
+              expectedGeneration,
+              expectedOwner,
+            );
+          }
+        }
+      })();
+    }, DEFAULT_OVERFLOW_RECOVERY_GRACE_MS);
+  }
+
   async function replaceActivityGeneration(
     activeSession: SessionEntry,
     nextOwnerSessionKey: string | undefined,
@@ -336,6 +500,8 @@ export function createHookHandlers(deps: HookDeps) {
         ...(activeSession.runId ? [activeSession.runId] : []),
       ]),
       finalized: false,
+      overflowRecoveryPending: false,
+      overflowRecoveryFailure: undefined,
       steeredRunIds: new Set(),
       toolHistory: [],
     };
@@ -648,6 +814,15 @@ export function createHookHandlers(deps: HookDeps) {
       return;
     }
 
+    if (session.overflowRecoveryPending) {
+      clearOverflowRecoveryState(session);
+      clearSessionTimer(session);
+    }
+    if (session.compactionActive) {
+      finishCompactionEntry(session, "completed");
+      session.compactionActive = false;
+    }
+
     if (!toolCallId) return;
     upsertToolEntry(toolHistoryManager, session.toolHistory, {
       toolCallId,
@@ -836,10 +1011,31 @@ export function createHookHandlers(deps: HookDeps) {
         generation: session.generation,
       },
     );
+    const wasOverflowRecoveryPending = session.overflowRecoveryPending === true;
+    const needsOverflowOrCompactionCleanup =
+      wasOverflowRecoveryPending || session.compactionActive === true;
+    session.overflowRecoveryPending = false;
+    if (wasOverflowRecoveryPending) {
+      consumeDeferredOverflowFailure(session);
+    }
+    if (session.compactionActive) {
+      session.compactionActive = false;
+      finishCompactionEntry(session, "completed");
+    }
     finishPendingHindsightRecalls(session.toolHistory);
     finishPendingSkillHarness(session.toolHistory);
     session.finalized = true;
     await updateSessionStatus(session, true);
+    if (needsOverflowOrCompactionCleanup) {
+      scheduleSessionCleanup(
+        contextKey,
+        session,
+        sessionKey,
+        DEFAULT_AGENT_END_DELAY_MS,
+        "message_sending_delayed",
+        getToken,
+      );
+    }
     return undefined;
   }
 
@@ -965,8 +1161,40 @@ export function createHookHandlers(deps: HookDeps) {
       if (compactionWasActiveAtDispatch) {
         session.compactionActive = false;
         finishCompactionEntry(session, "error");
+      } else if (isContextOverflowAttemptError(event.error)) {
+        if (session.compactionActive) {
+          return;
+        }
+        session.overflowRecoveryPending = true;
+        session.overflowRecoveryFailure = {
+          ...event,
+          success: false,
+        };
+        session.finalized = false;
+        clearMaxDisplayTimer(session);
+        logger.info(
+          "agent_end: deferring finalization for context overflow recovery",
+          {
+            contextKey,
+            sessionKey: ctx.sessionKey,
+            runId: ctx.runId,
+            generation: session.generation,
+          },
+        );
+        if (store.hasVisibleStatusState(session)) {
+          await updateSessionStatus(session, false);
+        }
+        if (
+          session.overflowRecoveryPending &&
+          !session.compactionActive &&
+          !session.finalized
+        ) {
+          scheduleOverflowRecoveryGrace(contextKey, session, ctx.sessionKey);
+        }
+        return;
       }
 
+      clearOverflowRecoveryState(session);
       const hasFailure = event.success === false || Boolean(event.error);
       if (session.finalized && session.pendingOp) {
         try {
@@ -1037,8 +1265,8 @@ export function createHookHandlers(deps: HookDeps) {
     if (!contextKey) return;
     const session = await store.resolveSession(contextKey, ctx.sessionKey);
     if (!session || !bindSessionRun(session, ctx.runId)) return;
-    if (!store.hasVisibleStatusState(session)) return;
 
+    clearOverflowRecoveryState(session);
     session.compactionActive = true;
     session.compactionEpoch = (session.compactionEpoch ?? 0) + 1;
     session.finalized = false;
@@ -1078,6 +1306,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!session.compactionActive) return;
 
     finishCompactionEntry(session, "completed");
+    clearOverflowRecoveryState(session);
     session.compactionActive = false;
     session.finalized = false;
     await updateSessionStatus(session, false);
@@ -1122,6 +1351,9 @@ export function createHookHandlers(deps: HookDeps) {
       }
       clearSessionTimer(session);
       await updateSessionStatus(session, false);
+      if (session.overflowRecoveryPending && !session.compactionActive) {
+        scheduleOverflowRecoveryGrace(contextKey, session, sessionKey);
+      }
     } catch (err) {
       logger.warn("hindsight_pipeline: failed to update activity status.", {
         sessionKey,
@@ -1167,6 +1399,9 @@ export function createHookHandlers(deps: HookDeps) {
       );
       toolHistoryManager.trim(session.toolHistory);
       await updateSessionStatus(session, false);
+      if (session.overflowRecoveryPending && !session.compactionActive) {
+        scheduleOverflowRecoveryGrace(contextKey, session, sessionKey);
+      }
     } catch (err) {
       logger.warn("skill_harness_pipeline: failed to update activity status.", {
         sessionKey,

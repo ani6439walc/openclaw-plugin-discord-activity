@@ -52,6 +52,8 @@ export type SessionEntry = {
   finalized?: boolean;
   compactionActive?: boolean;
   compactionEpoch?: number;
+  overflowRecoveryPending?: boolean;
+  overflowRecoveryFailure?: AgentEndEvent;
   toolHistory: ToolEntry[];
   pendingOp?: Promise<void>;
   clearTimer?: ReturnType<typeof setTimeout>;

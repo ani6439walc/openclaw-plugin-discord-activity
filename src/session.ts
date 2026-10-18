@@ -47,7 +47,8 @@ function resetSessionState(session: SessionEntry) {
   session.monotonicSafetyFloor = undefined;
   session.finalized = false;
   session.compactionActive = false;
-  session.compactionEpoch = 0;
+  session.overflowRecoveryPending = false;
+  session.overflowRecoveryFailure = undefined;
 }
 
 function getSessionDisplayFloor(session: SessionEntry) {
@@ -215,6 +216,17 @@ export async function retireSession(
   );
 }
 
+function hasSessionLifecycleResumed(
+  session: SessionEntry,
+  expectedCompactionEpoch: number,
+): boolean {
+  return (
+    session.compactionActive === true ||
+    session.overflowRecoveryPending === true ||
+    (session.compactionEpoch ?? 0) !== expectedCompactionEpoch
+  );
+}
+
 export function scheduleSessionCleanup(
   contextKey: string,
   session: SessionEntry,
@@ -252,6 +264,11 @@ export function scheduleSessionCleanup(
       return;
     }
 
+    const expectedCompactionEpoch = session.compactionEpoch ?? 0;
+    if (hasSessionLifecycleResumed(session, expectedCompactionEpoch)) {
+      return;
+    }
+
     if (session.maxDisplayTimer) {
       clearTimeout(session.maxDisplayTimer);
       session.maxDisplayTimer = undefined;
@@ -271,6 +288,9 @@ export function scheduleSessionCleanup(
         });
       })
       .finally(() => {
+        if (hasSessionLifecycleResumed(session, expectedCompactionEpoch)) {
+          return;
+        }
         defaultStore.clearSessionState(
           contextKey,
           session,
@@ -286,7 +306,12 @@ export async function clearStatusMessage(
   hookName: string,
   getToken: (accountId?: string) => string,
 ) {
+  const expectedCompactionEpoch = session.compactionEpoch ?? 0;
   await runSerializedSessionOperation(session, hookName, async () => {
+    if (hasSessionLifecycleResumed(session, expectedCompactionEpoch)) {
+      return;
+    }
+
     // Only clear the maxDisplayTimer, not the session cleanup timer
     if (session.maxDisplayTimer) {
       clearTimeout(session.maxDisplayTimer);
@@ -307,6 +332,12 @@ export async function clearStatusMessage(
     if (session.statusMessageId === msgId) {
       session.statusMessageId = undefined;
     }
+    if (hasSessionLifecycleResumed(session, expectedCompactionEpoch)) {
+      session.statusCreateNonce = undefined;
+      session.lastRenderedContent = undefined;
+      session.contentDeliveryUncertain = undefined;
+      return;
+    }
     resetSessionState(session);
   });
 }
@@ -326,6 +357,11 @@ function startMaxDisplayTimer(
     if (!current || current !== session) {
       return;
     }
+    if (session.compactionActive || session.overflowRecoveryPending) {
+      return;
+    }
+
+    const expectedCompactionEpoch = session.compactionEpoch ?? 0;
 
     logger.warn(
       `status message was idle for maxDisplayMs (${maxDisplayMs}ms), forcing cleanup.`,
@@ -340,6 +376,9 @@ function startMaxDisplayTimer(
         });
       })
       .finally(() => {
+        if (hasSessionLifecycleResumed(session, expectedCompactionEpoch)) {
+          return;
+        }
         defaultStore.clearSessionState(contextKey, session);
       });
   }, maxDisplayMs);
@@ -361,7 +400,12 @@ export async function updateStatusMessage(
     session.generation === expectedGeneration &&
     session.ownerSessionKey === expectedOwner;
 
-  if (
+  if (session.compactionActive || session.overflowRecoveryPending) {
+    if (session.maxDisplayTimer) {
+      clearTimeout(session.maxDisplayTimer);
+      session.maxDisplayTimer = undefined;
+    }
+  } else if (
     session.statusMessageId &&
     maxDisplayMs &&
     maxDisplayMs > 0 &&
@@ -454,7 +498,12 @@ export async function updateStatusMessage(
         generation: session.generation,
       });
 
-      if (maxDisplayMs && maxDisplayMs > 0) {
+      if (
+        maxDisplayMs &&
+        maxDisplayMs > 0 &&
+        !session.compactionActive &&
+        !session.overflowRecoveryPending
+      ) {
         startMaxDisplayTimer(
           session,
           session.contextKey,
