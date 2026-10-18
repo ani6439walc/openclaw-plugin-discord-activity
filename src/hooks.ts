@@ -63,7 +63,7 @@ const CONTEXT_OVERFLOW_ACTION_RE =
 const CONTEXT_OVERFLOW_EXPLICIT_RE =
   /\b(?:context[_ -]?overflow|context[_ -]?length[_ -]?exceeded|context[_ -]?window[_ -]?exceeded|prompt is too long|prompt too large|request_too_large|maximum context length|input is too long)\b/i;
 const CONTEXT_OVERFLOW_EXCLUSION_RE =
-  /\b(?:rate[_ -]?limit|tokens per min|tpm\b|rpm\b|quota|billing|compaction failed|auto-compaction failed|compaction timed out|reasoning is (?:mandatory|required)|requires reasoning)\b/i;
+  /\b(?:rate[_ -]?limit|tokens per min|tpm|rpm|quota|billing|compaction failed|auto-compaction failed|compaction timed out|reasoning is (?:mandatory|required)|requires reasoning)\b/i;
 
 function isContextOverflowAttemptError(error: string | undefined): boolean {
   if (!error) return false;
@@ -374,40 +374,84 @@ export function createHookHandlers(deps: HookDeps) {
     });
 
     session.clearTimer = setTimeout(() => {
-      const current = store.sessions.get(contextKey);
-      if (
-        !current ||
-        current !== session ||
-        current.generation !== expectedGeneration ||
-        current.ownerSessionKey !== expectedOwner ||
-        !session.overflowRecoveryPending ||
-        session.compactionActive
-      ) {
+      const expectedCompactionEpoch = session.compactionEpoch ?? 0;
+      const isUnrecoveredGraceTarget = () => {
+        const current = store.sessions.get(contextKey);
+        return (
+          current === session &&
+          current.generation === expectedGeneration &&
+          current.ownerSessionKey === expectedOwner &&
+          !session.compactionActive &&
+          (session.compactionEpoch ?? 0) === expectedCompactionEpoch
+        );
+      };
+
+      if (!isUnrecoveredGraceTarget() || !session.overflowRecoveryPending) {
         return;
       }
 
-      clearMaxDisplayTimer(session);
-      session.overflowRecoveryPending = false;
-      const hadDeferredFailure = consumeDeferredOverflowFailure(session);
-      session.finalized = true;
-
-      logger.info(
-        "[agent_end_overflow_grace] executing scheduled status message cleanup",
-        {
-          contextKey,
-          generation: expectedGeneration,
-          statusMessageId: session.statusMessageId,
-          hadDeferredFailure,
-        },
-      );
-
-      (async () => {
-        if (session.statusMessageId && hadDeferredFailure) {
-          await updateSessionStatus(session, true);
+      void (async () => {
+        if (session.pendingOp) {
+          try {
+            await session.pendingOp;
+          } catch (err) {
+            logger.warn(
+              "agent_end_overflow_grace: pending status update failed.",
+              {
+                contextKey,
+                error: String(err),
+              },
+            );
+          }
+          if (!isUnrecoveredGraceTarget() || !session.overflowRecoveryPending) {
+            return;
+          }
         }
-        await clearStatusMessage(session, "agent_end_overflow_grace", getToken);
-      })()
-        .catch((err) => {
+
+        clearMaxDisplayTimer(session);
+        const hadDeferredFailure = consumeDeferredOverflowFailure(session);
+        clearOverflowRecoveryState(session);
+        session.finalized = true;
+
+        logger.info(
+          "[agent_end_overflow_grace] executing scheduled status message cleanup",
+          {
+            contextKey,
+            generation: expectedGeneration,
+            statusMessageId: session.statusMessageId,
+            hadDeferredFailure,
+          },
+        );
+
+        try {
+          if (session.statusMessageId && hadDeferredFailure) {
+            await updateSessionStatus(session, true);
+          }
+        } catch (err) {
+          logger.warn(
+            "failed to render failure status on agent_end_overflow_grace.",
+            {
+              contextKey,
+              error: String(err),
+            },
+          );
+        }
+
+        if (
+          !isUnrecoveredGraceTarget() ||
+          session.overflowRecoveryPending ||
+          !session.finalized
+        ) {
+          return;
+        }
+
+        try {
+          await clearStatusMessage(
+            session,
+            "agent_end_overflow_grace",
+            getToken,
+          );
+        } catch (err) {
           logger.warn(
             "failed to clear status message on agent_end_overflow_grace.",
             {
@@ -415,15 +459,23 @@ export function createHookHandlers(deps: HookDeps) {
               error: String(err),
             },
           );
-        })
-        .finally(() => {
-          store.clearSessionState(
-            contextKey,
-            session,
-            expectedGeneration,
-            expectedOwner,
-          );
-        });
+        } finally {
+          if (
+            store.sessions.get(contextKey) === session &&
+            session.generation === expectedGeneration &&
+            session.ownerSessionKey === expectedOwner &&
+            !session.compactionActive &&
+            !session.overflowRecoveryPending
+          ) {
+            store.clearSessionState(
+              contextKey,
+              session,
+              expectedGeneration,
+              expectedOwner,
+            );
+          }
+        }
+      })();
     }, DEFAULT_OVERFLOW_RECOVERY_GRACE_MS);
   }
 

@@ -2416,6 +2416,113 @@ describe("createHookHandlers", () => {
       expect(store.contexts.has("discord:direct:123")).toBe(false);
     });
 
+    it("cancels grace expiry deletion and eviction if before_compaction arrives while the expiry PATCH is in flight", async () => {
+      vi.useFakeTimers();
+      let holdNextPatch = false;
+      let releaseHeldPatch: (() => void) | undefined;
+      const heldPatchStarted = new Promise<void>((resolveStarted) => {
+        let statusCounter = 0;
+        const fetchMock = vi.fn(
+          async (input: string | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+
+            if (url.includes("/users/@me/channels") && method === "POST") {
+              return jsonResponse({ id: "dm_channel_123" });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.endsWith("/messages") &&
+              method === "POST"
+            ) {
+              statusCounter += 1;
+              return jsonResponse({ id: `status_${statusCounter}` });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "PATCH"
+            ) {
+              if (holdNextPatch) {
+                holdNextPatch = false;
+                resolveStarted();
+                await new Promise<void>((resolveRelease) => {
+                  releaseHeldPatch = resolveRelease;
+                });
+              }
+              return jsonResponse({ ok: true });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "DELETE"
+            ) {
+              return emptyResponse();
+            }
+            return jsonResponse({ ok: true });
+          },
+        );
+        vi.stubGlobal("fetch", fetchMock);
+      });
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_expiry_patch_race";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 40, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
+
+      // Hold the expiry failure PATCH when the 30s grace timer fires
+      holdNextPatch = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      await heldPatchStarted;
+
+      // Dispatch before_compaction while the expiry PATCH is still in flight
+      const beforeCompactionPromise = handlers.onBeforeCompaction(
+        { messageCount: 90 },
+        { sessionKey, runId },
+      );
+      await flushPromises();
+
+      // Release the held expiry PATCH
+      releaseHeldPatch?.();
+      await beforeCompactionPromise;
+      await flushPromises();
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session).toBeDefined();
+      expect(session?.compactionActive).toBe(true);
+      expect(session?.finalized).toBe(false);
+      expect(store.contexts.has("discord:direct:123")).toBe(true);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+    });
+
     it("renders compaction progress even when before_compaction fires before any tool or pipeline activity", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
