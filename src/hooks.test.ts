@@ -2523,6 +2523,108 @@ describe("createHookHandlers", () => {
       );
     });
 
+    it("preserves resumed session, context, and compaction progress if before_compaction arrives while the expiry DELETE is in flight", async () => {
+      vi.useFakeTimers();
+      let holdNextDelete = false;
+      let releaseHeldDelete: (() => void) | undefined;
+      const heldDeleteStarted = new Promise<void>((resolveStarted) => {
+        let statusCounter = 0;
+        const fetchMock = vi.fn(
+          async (input: string | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+
+            if (url.includes("/users/@me/channels") && method === "POST") {
+              return jsonResponse({ id: "dm_channel_123" });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.endsWith("/messages") &&
+              method === "POST"
+            ) {
+              statusCounter += 1;
+              return jsonResponse({ id: `status_${statusCounter}` });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "PATCH"
+            ) {
+              return jsonResponse({ ok: true });
+            }
+            if (
+              url.includes("/channels/") &&
+              url.includes("/messages/") &&
+              method === "DELETE"
+            ) {
+              if (holdNextDelete) {
+                holdNextDelete = false;
+                resolveStarted();
+                await new Promise<void>((resolveRelease) => {
+                  releaseHeldDelete = resolveRelease;
+                });
+              }
+              return emptyResponse();
+            }
+            return jsonResponse({ ok: true });
+          },
+        );
+        vi.stubGlobal("fetch", fetchMock);
+      });
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_expiry_delete_race";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 40, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
+
+      // Hold the expiry DELETE when the 30s grace timer fires
+      holdNextDelete = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      await heldDeleteStarted;
+
+      // Dispatch before_compaction while the expiry DELETE is still in flight
+      const beforeCompactionPromise = handlers.onBeforeCompaction(
+        { messageCount: 90 },
+        { sessionKey, runId },
+      );
+      await flushPromises();
+
+      // Release the held expiry DELETE
+      releaseHeldDelete?.();
+      await beforeCompactionPromise;
+      await flushPromises();
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session).toBeDefined();
+      expect(session?.compactionActive).toBe(true);
+      expect(session?.finalized).toBe(false);
+      expect(store.contexts.has("discord:direct:123")).toBe(true);
+      expect(session?.statusMessageId).toBe("status_2");
+      expect(countChannelMessagePosts(fetchMock)).toBe(2);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+    });
+
     it("renders compaction progress even when before_compaction fires before any tool or pipeline activity", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();

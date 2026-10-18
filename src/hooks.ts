@@ -66,7 +66,7 @@ const CONTEXT_OVERFLOW_EXCLUSION_RE =
   /\b(?:rate[_ -]?limit|tokens per min|tpm|rpm|quota|billing|compaction failed|auto-compaction failed|compaction timed out|reasoning is (?:mandatory|required)|requires reasoning)\b/i;
 
 function isContextOverflowAttemptError(error: string | undefined): boolean {
-  if (!error) return false;
+  if (typeof error !== "string") return false;
   const normalized = error.trim();
   if (!normalized || CONTEXT_OVERFLOW_EXCLUSION_RE.test(normalized)) {
     return false;
@@ -460,13 +460,7 @@ export function createHookHandlers(deps: HookDeps) {
             },
           );
         } finally {
-          if (
-            store.sessions.get(contextKey) === session &&
-            session.generation === expectedGeneration &&
-            session.ownerSessionKey === expectedOwner &&
-            !session.compactionActive &&
-            !session.overflowRecoveryPending
-          ) {
+          if (isUnrecoveredGraceTarget() && !session.overflowRecoveryPending) {
             store.clearSessionState(
               contextKey,
               session,
