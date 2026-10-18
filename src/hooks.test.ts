@@ -2063,6 +2063,167 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
+    it("defers finalization on context overflow agent_end when before_compaction arrives seconds later", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_delayed_compact";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_1", toolName: "bash", durationMs: 120, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error:
+            "Context overflow: prompt too large for the model. Try again with less input or a larger-context model.",
+        },
+        { sessionKey, runId },
+      );
+
+      // Simulate 8s session snapshot loading delay before before_compaction fires
+      await vi.advanceTimersByTimeAsync(8_000);
+      await flushPromises();
+
+      const pendingSession = store.sessions.get("discord:direct:123");
+      expect(pendingSession?.finalized).toBe(false);
+      expect(pendingSession?.overflowRecoveryPending).toBe(true);
+      expect(
+        pendingSession?.toolHistory.some(
+          (entry) => entry.toolCallId === "agent",
+        ),
+      ).toBe(false);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+
+      await handlers.onBeforeCompaction(
+        { messageCount: 150 },
+        { sessionKey, runId },
+      );
+      expect(pendingSession?.overflowRecoveryPending).toBe(false);
+      expect(pendingSession?.compactionActive).toBe(true);
+      expect(pendingSession?.clearTimer).toBeUndefined();
+      expect(stripAnsi(pendingSession?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await handlers.onAfterCompaction(
+        { messageCount: 25, compactedCount: 125 },
+        { sessionKey, runId },
+      );
+      expect(stripAnsi(pendingSession?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ✔ [3s]",
+      );
+
+      // Post-compaction retry attempt runs another tool and succeeds
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "read", params: {}, runId },
+        { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
+      );
+      await handlers.onAfterToolCall(
+        { toolCallId: "call_2", toolName: "read", durationMs: 50, runId },
+        { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
+      );
+      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+
+      await vi.advanceTimersByTimeAsync(1_500);
+      await flushPromises();
+
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
+    it("finalizes and cleans up context overflow session if grace period expires without recovery", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_overflow_unrecovered";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+
+      await handlers.onAgentEnd(
+        {
+          success: false,
+          error: "Request size exceeds model context window",
+        },
+        { sessionKey, runId },
+      );
+
+      await vi.advanceTimersByTimeAsync(29_000);
+      await flushPromises();
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flushPromises();
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+      expect(store.sessions.has("discord:direct:123")).toBe(false);
+    });
+
+    it("renders compaction progress even when before_compaction fires before any tool or pipeline activity", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_first_turn_compact";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId, accountId: "default" },
+      );
+
+      await handlers.onBeforeCompaction(
+        { messageCount: 80 },
+        { sessionKey, runId },
+      );
+
+      const session = store.sessions.get("discord:direct:123");
+      expect(session?.compactionActive).toBe(true);
+      expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
+        "🗜️ compaction ▾ ←",
+      );
+      expect(countChannelMessagePosts(fetchMock)).toBe(1);
+    });
+
     it("does not finalize on before_agent_reply before any activity exists", async () => {
       const fetchMock = createDiscordFetchMock();
 

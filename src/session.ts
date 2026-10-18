@@ -48,6 +48,7 @@ function resetSessionState(session: SessionEntry) {
   session.finalized = false;
   session.compactionActive = false;
   session.compactionEpoch = 0;
+  session.overflowRecoveryPending = false;
 }
 
 function getSessionDisplayFloor(session: SessionEntry) {
