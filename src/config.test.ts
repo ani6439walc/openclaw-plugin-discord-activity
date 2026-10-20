@@ -110,6 +110,41 @@ describe("resolveConfig", () => {
     });
   });
 
+  it("parses skillLearnedNotice model and promptAppend", () => {
+    expect(
+      resolveConfig({
+        skillLearnedNotice: {
+          model: " bifrost/gpt-6-luna ",
+          promptAppend: " 用中文寫摘要 ",
+        },
+      }),
+    ).toEqual({
+      ...DEFAULT_CONFIG,
+      skillLearnedNotice: {
+        model: "bifrost/gpt-6-luna",
+        promptAppend: "用中文寫摘要",
+      },
+    });
+    expect(resolveConfig({}).skillLearnedNotice).toBeUndefined();
+  });
+
+  it("drops invalid skillLearnedNotice fields one by one", () => {
+    expect(
+      resolveConfig({
+        skillLearnedNotice: { model: 42, promptAppend: "  " },
+        maxDisplaySeconds: 30,
+      }),
+    ).toEqual({
+      ...DEFAULT_CONFIG,
+      maxDisplaySeconds: 30,
+      skillLearnedNotice: {},
+    });
+    expect(
+      resolveConfig({ skillLearnedNotice: "bifrost/gpt-6-luna" })
+        .skillLearnedNotice,
+    ).toBeUndefined();
+  });
+
   it("accepts boundary-valid numeric values", () => {
     expect(
       resolveConfig({

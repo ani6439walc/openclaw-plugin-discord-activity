@@ -9,6 +9,12 @@ import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
 import { SKILL_HARNESS_EVENT_STREAM } from "./skill-harness-status.js";
 import { HINDSIGHT_MEMORY_EVENT_STREAM } from "./hindsight-memory-status.js";
+import {
+  createLearnedNoticeHandler,
+  LEARNED_NOTICE_HOOK_TIMEOUT_MS,
+} from "./learned-notice-hook.js";
+import { resolveAgentDir } from "openclaw/plugin-sdk/agent-scope-runtime";
+import { parseAgentSessionKey } from "openclaw/plugin-sdk/routing";
 
 export default definePluginEntry({
   id: "discord-activity",
@@ -33,6 +39,18 @@ export default definePluginEntry({
     api.on("before_tool_call", handlers.onBeforeToolCall);
     api.on("after_tool_call", handlers.onAfterToolCall);
     api.on("message_sending", handlers.onMessageSending);
+    api.on(
+      "message_sending",
+      createLearnedNoticeHandler({
+        resolveAgentDir: (agentId) => resolveAgentDir(api.config, agentId),
+        resolveAgentId: (sessionKey) =>
+          parseAgentSessionKey(sessionKey)?.agentId,
+        complete: (params) => api.runtime.llm.complete(params),
+        model: config.skillLearnedNotice?.model,
+        promptAppend: config.skillLearnedNotice?.promptAppend,
+      }),
+      { timeoutMs: LEARNED_NOTICE_HOOK_TIMEOUT_MS },
+    );
     api.on("before_agent_reply", handlers.onBeforeAgentReply, {
       eligibleTriggers: ["user"],
     });

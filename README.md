@@ -124,6 +124,52 @@ reports `recall outcome unavailable` instead of implying success. Prechecks that
 skip automatic recall produce no row. Older hosts without the optional agent
 event API continue to support the existing tool activity display.
 
+### Learned-skill notice
+
+After a background skill review changes a learned skill, OpenClaw sends
+`💾 Learned: ... Say "undo" to revert this skill change.` to the conversation.
+On Discord, a separate `message_sending` handler replaces that whole notice with
+a message written by `api.runtime.llm.complete`. The plugin has no message
+template: the model receives the original notice and, for created and updated
+skills, a diff of each skill, and writes the whole message. The built-in system
+prompt is language-neutral; it requires every skill name in backticks, what
+happened to each skill, what the assistant will now do differently, and a hint
+that the change can be undone, and it includes one example. Set language, tone,
+or emoji with `skillLearnedNotice.promptAppend`, for example:
+
+```json
+"skillLearnedNotice": {
+  "model": "bifrost/gpt-6-luna",
+  "promptAppend": "Write the message in Traditional Chinese as used in Taiwan and begin it with one emoji that fits the change."
+}
+```
+
+The diff comes from the live skill under `<agentDir>/workshop-skills/<name>/`
+and the archived version the change most likely started from. The notice carries
+no version id, so the baseline is the newest archived version, extended back
+through versions written within ten minutes of each other, and ignored when the
+newest is more than an hour old. Without a session agent or a baseline, the model
+still rewrites the notice from its original text alone.
+
+Skill files are read only inside the workshop tree. The real agent directory plus
+a `workshop-skills` entry that is not a link is the one trusted anchor; every
+path component from there down to the skill or archive version must be a real
+directory and is resolved from that anchor, never from a re-canonicalized child,
+files are opened without following symlinks, and each open file is checked
+through `/proc/self/fd` to still lie inside its skill directory; hard links are
+refused. Any violation drops that skill's diff, and the notice is rewritten from
+its original text alone. Without `/proc` (non-Linux hosts), diffs are never sent.
+
+If the model call fails, or its reply is empty, longer than 1500 characters, or
+missing any skill name, the original notice is sent unchanged.
+
+The message is never cancelled, and undo still works because OpenClaw queues its
+own undo instruction separately. Other text, including replies that only quote the
+prefix, is unchanged. Control UI sessions never send this notice through
+`message_sending`, so they keep the original sentence. The handler's budget is 60
+seconds; override it with `plugins.entries.discord-activity.hooks.timeouts.message_sending`.
+Skill contents and message text are not logged.
+
 ## Architecture
 
 The repository is a small TypeScript plugin with focused runtime modules and colocated tests. The main runtime hotspot is `src/hooks.ts`; keep new behavior in smaller helpers when possible instead of growing hook orchestration unnecessarily.
@@ -143,6 +189,7 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 | `src/discord-api.ts`                | Discord REST calls, mutation outcome classification, idempotent create nonce, bounded retries, and DM channel resolution.                   |
 | `src/discord-message-operations.ts` | Token-gated send/edit/delete outcomes around the Discord API layer, and DM fallback.                                                        |
 | `src/tool-history-manager.ts`       | Tool-history add/update/replace/trim helpers and subagent group operations.                                                                 |
+| `src/learned-notice*.ts`            | Learned-skill notice parsing, workshop skill diff, and LLM rewrite handler.                                                                 |
 | `src/config.ts`                     | Zod-backed plugin config parsing and defaults.                                                                                              |
 | `src/types.ts`                      | Shared event, session, store, and tool-entry types.                                                                                         |
 | `api.ts`, `index.ts`, `token.ts`    | Plugin SDK bridge, exported plugin entrypoint, and Discord token resolution.                                                                |
@@ -201,13 +248,15 @@ This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as th
 
 ## Configuration
 
-| Property                 | Type     | Default | Description                                                                                                                                                  |
-| ------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `maxToolHistoryLength`   | `number` | `30`    | Maximum number of tool entries retained in memory before trimming.                                                                                           |
-| `maxStatusMessageLength` | `number` | `1700`  | Maximum rendered status length; allowed range is 100–1700.                                                                                                   |
-| `maxDisplaySeconds`      | `number` | `180`   | Maximum idle time after status activity before force cleanup.                                                                                                |
-| `orphanTtlSeconds`       | `number` | `300`   | Time to keep orphaned tool calls while waiting for a session link.                                                                                           |
-| `replyMode`              | `string` | `all`   | `all` replies wherever a source message exists; `direct` replies only in canonical private-message sessions, while channel/group statuses remain standalone. |
+| Property                          | Type     | Default | Description                                                                                                                                                                                                                                                             |
+| --------------------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxToolHistoryLength`            | `number` | `30`    | Maximum number of tool entries retained in memory before trimming.                                                                                                                                                                                                      |
+| `maxStatusMessageLength`          | `number` | `1700`  | Maximum rendered status length; allowed range is 100–1700.                                                                                                                                                                                                              |
+| `maxDisplaySeconds`               | `number` | `180`   | Maximum idle time after status activity before force cleanup.                                                                                                                                                                                                           |
+| `orphanTtlSeconds`                | `number` | `300`   | Time to keep orphaned tool calls while waiting for a session link.                                                                                                                                                                                                      |
+| `replyMode`                       | `string` | `all`   | `all` replies wherever a source message exists; `direct` replies only in canonical private-message sessions, while channel/group statuses remain standalone.                                                                                                            |
+| `skillLearnedNotice.model`        | `string` | unset   | Model ref that writes the learned-skill notice, for example `bifrost/gpt-6-luna`. Unset uses the default agent model. Setting it requires `plugins.entries.discord-activity.llm.allowModelOverride: true` and, when present, an `llm.allowedModels` entry for that ref. |
+| `skillLearnedNotice.promptAppend` | `string` | unset   | Extra instructions appended to the notice system prompt. The built-in prompt does not set a language, so use this for language, tone, and emoji.                                                                                                                        |
 
 Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `skill-harness` and Hindsight group.
 
