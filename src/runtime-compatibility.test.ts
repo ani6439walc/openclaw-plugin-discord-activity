@@ -48,6 +48,27 @@ describe("OpenClaw runtime compatibility", () => {
       );
       expect(logs[0]!.meta).toBeUndefined();
 
+      // Fields that cannot be serialized never break logging.
+      const circular: Record<string, unknown> = {};
+      circular.self = circular;
+      logger.warn("circular fields", circular);
+      expect(logs.at(-1)!.msg).toBe(
+        `${LOG_PREFIX} circular fields [unserializable log fields]`,
+      );
+      const hostile = new Proxy(
+        {},
+        {
+          ownKeys() {
+            throw new Error("no keys");
+          },
+        },
+      );
+      logger.warn("hostile fields", hostile);
+      expect(logs.at(-1)!.msg).toBe(
+        `${LOG_PREFIX} hostile fields [unserializable log fields]`,
+      );
+      logs.length = 1;
+
       // Does not duplicate prefix if already prefixed
       logger.warn(`${LOG_PREFIX} already prefixed`);
       expect(logs).toHaveLength(2);

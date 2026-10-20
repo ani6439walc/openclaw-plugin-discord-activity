@@ -724,6 +724,87 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
+    it("keeps the DM channel when a steer arrives while the status card POST is in flight", async () => {
+      vi.useFakeTimers();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_dm_race";
+      let releasePost: (() => void) | undefined;
+      let postStarted = false;
+      const fetchMock = vi.fn(
+        async (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          const method = init?.method ?? "GET";
+          if (url.includes("/users/@me/channels") && method === "POST") {
+            return jsonResponse({ id: "dm_channel_123" });
+          }
+          if (url.endsWith("/messages") && method === "POST") {
+            postStarted = true;
+            await new Promise<void>((resolve) => {
+              releasePost = resolve;
+            });
+            return jsonResponse({ id: "status_1" });
+          }
+          if (method === "DELETE") return emptyResponse();
+          return jsonResponse({ ok: true });
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, accountId: "default", runId },
+      );
+      const firstTool = handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      for (let i = 0; i < 20 && !postStarted; i++) await flushPromises();
+      expect(postStarted).toBe(true);
+
+      // The steer lands while the create POST to the DM channel is still pending.
+      // Its status refresh queues behind the pending create, so do not await it yet.
+      const steer = handlers.onMessageReceived(
+        {
+          messageId: "user_msg_2",
+          content: "also dispatch gate",
+          metadata: { to: "user:123" },
+        },
+        { channelId: "discord", sessionKey, accountId: "default", runId },
+      );
+      releasePost!();
+      await Promise.all([firstTool, steer]);
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession?.statusMessageId).toBe("status_1");
+      expect(activeSession?.channelId).toBe("dm_channel_123");
+
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "read", params: {}, runId },
+        { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
+      );
+      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+      await vi.advanceTimersByTimeAsync(1500);
+      await flushPromises();
+
+      expect(countCalls(fetchMock, "PATCH", /\/channels\/123\//)).toBe(0);
+      expect(countCalls(fetchMock, "DELETE", /\/channels\/123\//)).toBe(0);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBeGreaterThan(0);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+    });
+
     it("preserves active card on media-only inbound messages (image attachment steer) during an ongoing run", async () => {
       const fetchMock = createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";

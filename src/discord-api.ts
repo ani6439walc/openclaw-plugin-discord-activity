@@ -121,6 +121,8 @@ export type DiscordMutationResult = {
 
 export type SendMessageResult = DiscordMutationResult & {
   messageId?: string;
+  /** Channel the message was actually posted to, e.g. a resolved DM channel. */
+  channelId?: string;
 };
 
 export function createMessageNonce(): string {
@@ -178,6 +180,7 @@ export async function sendMessageWithResult(
     return {
       outcome: "applied",
       messageId: data.id,
+      channelId,
       status: res.status,
       reason: "created",
     };

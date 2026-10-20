@@ -50,11 +50,12 @@ export interface ExternalApiLogger {
  * status would be dropped; append them to the message instead.
  */
 function withMeta(message: string, meta?: Record<string, unknown>): string {
-  if (!meta || Object.keys(meta).length === 0) return message;
+  if (!meta) return message;
   try {
+    if (Object.keys(meta).length === 0) return message;
     return `${message} ${JSON.stringify(meta)}`;
   } catch {
-    return message;
+    return `${message} [unserializable log fields]`;
   }
 }
 
