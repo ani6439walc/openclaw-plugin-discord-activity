@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildSystemPrompt,
+  collapseRepetition,
   createLearnedNoticeHandler,
   normalizeNoticeReply,
   type LearnedNoticeCompletion,
@@ -246,6 +247,17 @@ describe("createLearnedNoticeHandler", () => {
 });
 
 describe("normalizeNoticeReply", () => {
+  it("keeps one copy when the model writes the message twice", () => {
+    const once =
+      "🔍 已更新 `dual-remote-pr`：現在會用合成資料重現問題，確認回歸測試在舊版失敗、新版通過。若想恢復舊版，可以說「undo」。";
+    expect(normalizeNoticeReply(`${once}${once}`, ["dual-remote-pr"])).toBe(
+      once,
+    );
+    expect(normalizeNoticeReply(`${once}\n\n${once}`, ["dual-remote-pr"])).toBe(
+      once,
+    );
+  });
+
   it("strips fences and surrounding quotes", () => {
     expect(
       normalizeNoticeReply('```\n"🔧 Updated `alpha`."\n```', ["alpha"]),
@@ -278,5 +290,23 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("backticks");
     expect(prompt).toContain("undo");
     expect(prompt).toContain("Example output:");
+  });
+});
+
+describe("collapseRepetition", () => {
+  it("collapses any number of identical blocks, ignoring whitespace between them", () => {
+    expect(collapseRepetition("Updated `a`. Updated `a`. Updated `a`.")).toBe(
+      "Updated `a`.",
+    );
+    expect(collapseRepetition("A b.\nA b.")).toBe("A b.");
+  });
+
+  it("leaves text that is not an exact repetition unchanged", () => {
+    const distinct = "Updated `a`: now checks tags. Updated `b`: now retries.";
+    expect(collapseRepetition(distinct)).toBe(distinct);
+    expect(collapseRepetition("Updated `a`. Updated `a`")).toBe(
+      "Updated `a`. Updated `a`",
+    );
+    expect(collapseRepetition("")).toBe("");
   });
 });
