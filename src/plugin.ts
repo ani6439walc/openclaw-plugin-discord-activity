@@ -13,7 +13,11 @@ import {
   createLearnedNoticeHandler,
   LEARNED_NOTICE_HOOK_TIMEOUT_MS,
 } from "./learned-notice-hook.js";
-import { resolveAgentDir } from "openclaw/plugin-sdk/agent-scope-runtime";
+import {
+  resolveAgentConfig,
+  resolveAgentDir,
+} from "openclaw/plugin-sdk/agent-scope-runtime";
+import { resolveLearnedNoticeModel } from "./learned-notice-model.js";
 import { parseAgentSessionKey } from "openclaw/plugin-sdk/routing";
 
 export default definePluginEntry({
@@ -46,7 +50,14 @@ export default definePluginEntry({
         resolveAgentId: (sessionKey) =>
           parseAgentSessionKey(sessionKey)?.agentId,
         complete: (params) => api.runtime.llm.complete(params),
-        model: config.skillLearnedNotice?.model,
+        resolveModel: (agentId) =>
+          resolveLearnedNoticeModel({
+            configured: config.skillLearnedNotice?.model,
+            cfg: api.config,
+            agentId,
+            resolveAgentConfig,
+          }),
+        thinking: config.skillLearnedNotice?.thinking,
         promptAppend: config.skillLearnedNotice?.promptAppend,
       }),
       { timeoutMs: LEARNED_NOTICE_HOOK_TIMEOUT_MS },

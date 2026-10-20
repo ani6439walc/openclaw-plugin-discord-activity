@@ -1,4 +1,5 @@
 import { logger } from "../api.js";
+import type { ThinkingLevel } from "./config.js";
 import { parseLearnedNotice, type LearnedChange } from "./learned-notice.js";
 import { loadSkillDiff } from "./learned-notice-diff.js";
 import type { MessageContext, MessageSendingEvent } from "./types.js";
@@ -37,7 +38,7 @@ Original notice: 💾 Learned: updated \`deploy-staging\` (tightened the rollbac
 Example output:
 🔧 Updated \`deploy-staging\` to check that the image tag matches the release before deploying. Say "undo" if you want the old version back.`;
 
-/** Base instructions plus operator-supplied text such as the language and tone. */
+/** Base instructions plus operator-supplied text such as the message language. */
 export function buildSystemPrompt(extra?: string): string {
   const appended = extra?.trim();
   return appended ? `${BASE_SYSTEM_PROMPT}\n\n${appended}` : BASE_SYSTEM_PROMPT;
@@ -45,6 +46,7 @@ export function buildSystemPrompt(extra?: string): string {
 
 export type LearnedNoticeCompletion = (params: {
   model?: string;
+  reasoning?: ThinkingLevel;
   messages: [{ role: "user"; content: string }];
   systemPrompt: string;
   purpose: string;
@@ -59,9 +61,11 @@ export type LearnedNoticeDeps = {
   /** Agent id encoded in a session key, or undefined when it has none. */
   resolveAgentId: (sessionKey: string) => string | undefined;
   complete: LearnedNoticeCompletion;
-  /** Model ref for the rewrite; undefined uses the host's default agent model. */
-  model?: string;
-  /** Appended to the system prompt, e.g. the language and tone of the message. */
+  /** Model ref for the rewrite of an agent's notice; undefined lets the host choose its default. */
+  resolveModel?: (agentId: string | undefined) => string | undefined;
+  /** Thinking level for the rewrite; undefined sends none, so the host and model decide. */
+  thinking?: ThinkingLevel;
+  /** Appended to the system prompt, e.g. the language of the message. */
   promptAppend?: string;
   now?: () => number;
 };
@@ -196,8 +200,10 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
       }
     }
     try {
+      const model = deps.resolveModel?.(agentId);
       const result = await deps.complete({
-        ...(deps.model ? { model: deps.model } : {}),
+        ...(model ? { model } : {}),
+        ...(deps.thinking ? { reasoning: deps.thinking } : {}),
         messages: [
           { role: "user", content: buildPrompt(event.content, diffs) },
         ],
