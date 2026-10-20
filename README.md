@@ -151,8 +151,10 @@ through versions written within ten minutes of each other, and ignored when the
 newest is more than an hour old. Without a session agent or a baseline, the model
 still rewrites the notice from its original text alone.
 
-Skill files are read only inside the workshop tree. Every path component from
-`workshop-skills` down to the skill or archive version must be a real directory,
+Skill files are read only inside the workshop tree. The real agent directory plus
+a `workshop-skills` entry that is not a link is the one trusted anchor; every
+path component from there down to the skill or archive version must be a real
+directory and is resolved from that anchor, never from a re-canonicalized child,
 files are opened without following symlinks, and each open file is checked
 through `/proc/self/fd` to still lie inside its skill directory; hard links are
 refused. Any violation drops that skill's diff, and the notice is rewritten from

@@ -163,6 +163,63 @@ describe("createLearnedNoticeHandler", () => {
     }
   });
 
+  it.each([
+    ["the workshop root", "root"],
+    ["the archive after its listing", "archive"],
+  ])(
+    "keeps outside files out of the prompt when %s is a symlink",
+    async (_label, target) => {
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), "learned-out-"));
+      const marker = "SYNTHETIC_OUTSIDE_MARKER";
+      const skillsRoot = path.join(agentDir, "workshop-skills");
+      const versionsDir = path.join(skillsRoot, ".archive", "alpha");
+      try {
+        if (target === "root") {
+          await fs.mkdir(path.join(outside, "alpha"), { recursive: true });
+          await fs.writeFile(path.join(outside, "alpha", "SKILL.md"), marker);
+          await fs.rm(skillsRoot, { recursive: true });
+          await fs.symlink(outside, skillsRoot);
+        } else {
+          await fs.mkdir(path.join(outside, RECENT_VERSION), {
+            recursive: true,
+          });
+          await fs.writeFile(
+            path.join(outside, RECENT_VERSION, "SKILL.md"),
+            marker,
+          );
+          const realReaddir = fs.readdir;
+          vi.spyOn(fs, "readdir").mockImplementation(
+            async (...args: unknown[]) => {
+              const entries = await (
+                realReaddir as (...a: unknown[]) => unknown
+              )(...args);
+              if (String(args[0]) === versionsDir) {
+                await fs.rename(versionsDir, `${versionsDir}-moved`);
+                await fs.symlink(outside, versionsDir);
+              }
+              return entries as never;
+            },
+          );
+        }
+        // A created notice reads the live tree with no baseline, so the root case is exercised.
+        const verb = target === "root" ? "created" : "updated";
+        complete.mockResolvedValue({ text: "Changed `alpha`." });
+        expect(
+          await handler()(
+            { to: "c", content: notice(`${verb} \`alpha\` (tweak)`) },
+            discordCtx,
+          ),
+        ).toEqual({ content: "Changed `alpha`." });
+        const prompt = complete.mock.calls[0]![0].messages[0].content;
+        expect(prompt).not.toContain(marker);
+        expect(prompt).not.toContain("```diff");
+      } finally {
+        vi.restoreAllMocks();
+        await fs.rm(outside, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("still rewrites without diffs when the agent directory cannot be resolved", async () => {
     complete.mockResolvedValue({ text: "`alpha` and `beta` changed." });
     const run = createLearnedNoticeHandler({

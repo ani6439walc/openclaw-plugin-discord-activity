@@ -346,4 +346,48 @@ describe("workshop containment", () => {
       readSkillFiles(path.join(skillsRoot(), "linked", "references")),
     ).rejects.toBeInstanceOf(UnsafeSkillPathError);
   });
+
+  it("rejects a symlinked workshop root", async () => {
+    await fs.rm(skillsRoot(), { recursive: true });
+    await write(path.join(outside, "alpha", "SKILL.md"), "outside skill\n");
+    await fs.symlink(outside, skillsRoot());
+    await expect(
+      loadSkillDiff({
+        agentDir,
+        skillName: "alpha",
+        created: true,
+        nowMs: now,
+      }),
+    ).rejects.toBeInstanceOf(UnsafeSkillPathError);
+  });
+
+  it("rejects an archive directory swapped for a symlink after the version listing", async () => {
+    const version = versionId("2026-10-20T11:59:00.000Z");
+    const versionsDir = path.join(skillsRoot(), ".archive", "alpha");
+    await write(path.join(skillsRoot(), "alpha", "SKILL.md"), "safe live\n");
+    await write(path.join(versionsDir, version, "SKILL.md"), "safe archive\n");
+    await write(
+      path.join(outside, "versions", version, "SKILL.md"),
+      "SYNTHETIC_OUTSIDE_ARCHIVE_MARKER\n",
+    );
+    const realReaddir = fs.readdir;
+    vi.spyOn(fs, "readdir").mockImplementation(async (...args: unknown[]) => {
+      const entries = await (realReaddir as (...a: unknown[]) => unknown)(
+        ...args,
+      );
+      if (String(args[0]) === versionsDir) {
+        await fs.rename(versionsDir, `${versionsDir}-moved`);
+        await fs.symlink(path.join(outside, "versions"), versionsDir);
+      }
+      return entries as never;
+    });
+    await expect(
+      loadSkillDiff({
+        agentDir,
+        skillName: "alpha",
+        created: false,
+        nowMs: now,
+      }),
+    ).rejects.toBeInstanceOf(UnsafeSkillPathError);
+  });
 });

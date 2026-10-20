@@ -100,20 +100,33 @@ function isInside(root: string, target: string): boolean {
 }
 
 /**
- * Walks `segments` below the real path of `root`, refusing any component that is not a real
- * directory. Returns undefined when a component does not exist.
+ * The one trusted anchor for a diff: the real agent directory plus a `workshop-skills` entry
+ * that is itself a real directory, not a link. Everything else is resolved beneath it and never
+ * re-canonicalized, so a link swapped in later cannot become a new boundary.
  */
-export async function resolveContainedDir(
-  root: string,
-  segments: readonly string[],
+export async function resolveWorkshopAnchor(
+  agentDir: string,
 ): Promise<string | undefined> {
-  let current: string;
+  let agentReal: string;
   try {
-    current = await fs.realpath(root);
+    agentReal = await fs.realpath(agentDir);
   } catch (error) {
     if (errnoCode(error) === "ENOENT") return undefined;
     throw error;
   }
+  return resolveContainedDir(agentReal, [WORKSHOP_SKILLS_DIR]);
+}
+
+/**
+ * Walks `segments` below `anchor` without resolving `anchor` again, refusing any component that
+ * is not a real directory. `anchor` must already be a validated real path. Returns undefined
+ * when a component does not exist.
+ */
+export async function resolveContainedDir(
+  anchor: string,
+  segments: readonly string[],
+): Promise<string | undefined> {
+  let current = anchor;
   for (const segment of segments) {
     current = path.join(current, segment);
     let stat;
@@ -356,24 +369,28 @@ export type SkillDiffRequest = {
 export async function loadSkillDiff(
   request: SkillDiffRequest,
 ): Promise<string | undefined> {
-  const skillsRoot = path.join(request.agentDir, WORKSHOP_SKILLS_DIR);
-  const liveDir = await resolveContainedDir(skillsRoot, [request.skillName]);
+  const anchor = await resolveWorkshopAnchor(request.agentDir);
+  if (!anchor) return undefined;
+  const liveDir = await resolveContainedDir(anchor, [request.skillName]);
   if (!liveDir) return undefined;
   const after = await readSkillFiles(liveDir);
   if (after.size === 0) return undefined;
   let before: SkillFiles = new Map();
   if (!request.created) {
-    const versionsDir = await resolveContainedDir(skillsRoot, [
-      WORKSHOP_ARCHIVE_DIR,
-      request.skillName,
-    ]);
+    const archivePath = [WORKSHOP_ARCHIVE_DIR, request.skillName];
+    const versionsDir = await resolveContainedDir(anchor, archivePath);
     if (!versionsDir) return undefined;
     const baseline = selectBaselineVersion(
       await listArchiveVersions(versionsDir),
       request.nowMs,
     );
     if (!baseline) return undefined;
-    const baselineDir = await resolveContainedDir(versionsDir, [baseline.id]);
+    // Resolve the baseline from the workshop anchor again, not from `versionsDir`, so a link
+    // swapped in after the listing is refused instead of becoming the new root.
+    const baselineDir = await resolveContainedDir(anchor, [
+      ...archivePath,
+      baseline.id,
+    ]);
     if (!baselineDir) return undefined;
     before = await readSkillFiles(baselineDir);
   }
