@@ -470,19 +470,35 @@ function renderGroupNestedTool(entry: ToolEntry, prefix: string): string[] {
   ];
 }
 
+/** Every non-blank error a group's entries carry, in history order, including both sources. */
 function collectGroupErrorMessages(group: readonly ToolEntry[]): string[] {
   const messages: string[] = [];
   for (const entry of group) {
-    const paramError = entry.params?.error;
-    const message =
-      typeof paramError === "string" && paramError.trim()
-        ? paramError
-        : entry.status === "error"
-          ? entry.error
-          : undefined;
-    if (message && !messages.includes(message)) messages.push(message);
+    const candidates = [
+      entry.params?.error,
+      entry.status === "error" ? entry.error : undefined,
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        messages.push(candidate);
+      }
+    }
   }
   return messages;
+}
+
+/** Red error lines, one per message as displayed, so messages that render alike appear once. */
+function renderDistinctErrorLines(messages: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const message of messages) {
+    const rendered = renderGroupFields(formatDisplayFields({ error: message }));
+    const key = rendered.join("\n");
+    if (rendered.length === 0 || seen.has(key)) continue;
+    seen.add(key);
+    lines.push(...rendered);
+  }
+  return lines;
 }
 
 function renderGroupDetails(
@@ -562,13 +578,13 @@ function renderSubagentGroup(
   );
   // A failed group shows only its error text: the header's ✘ already says it failed, and the
   // phases and partial results that led there are noise.
-  const failureMessages =
-    parentSuffix === "✘" ? collectGroupErrorMessages(group) : [];
+  const failureLines =
+    parentSuffix === "✘"
+      ? renderDistinctErrorLines(collectGroupErrorMessages(group))
+      : [];
   const bodyLines =
-    failureMessages.length > 0
-      ? failureMessages.flatMap((error) =>
-          renderGroupFields(formatDisplayFields({ error })),
-        )
+    failureLines.length > 0
+      ? failureLines
       : renderGroupDetails(
           prefix,
           group,

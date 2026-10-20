@@ -1580,6 +1580,73 @@ describe("renderStatusContent", () => {
     },
   );
 
+  it("shows both error sources of one failed entry when they differ", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:topic-triage",
+            toolName: "skill-harness:topic-triage",
+            params: { error: "checker returned nothing" },
+            status: "error",
+            error: "upstream timeout",
+          },
+        ],
+        true,
+      ),
+    );
+    expect(result).toContain(
+      "💡 skill-harness ▾ ✘\n" +
+        "     checker returned nothing\n" +
+        "     upstream timeout\n",
+    );
+  });
+
+  it("treats whitespace-only errors as no error text and keeps the details", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:topic-triage",
+            toolName: "skill-harness:topic-triage",
+            params: { error: "   ", topic: "weight" },
+            status: "error",
+            error: "  ",
+          },
+        ],
+        true,
+      ),
+    );
+    expect(result).toContain("💡 skill-harness ▾ ✘\n    ⊹ topic-triage ✘");
+    expect(result).toContain("⊹ topic: weight");
+  });
+
+  it("shows errors that display identically only once", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:a",
+            toolName: "skill-harness:a",
+            params: {},
+            status: "error",
+            error: "timeout",
+          },
+          {
+            toolCallId: "skill-harness:b",
+            toolName: "skill-harness:b",
+            params: {},
+            status: "error",
+            error: "timeout ",
+          },
+        ],
+        true,
+      ),
+    );
+    expect(result.match(/timeout/g)).toHaveLength(1);
+    expect(result).toContain("💡 skill-harness ▾ ✘\n     timeout\n");
+  });
+
   it("keeps the details of a failed group that carries no error text", () => {
     const result = stripAnsi(
       renderStatusContent(
