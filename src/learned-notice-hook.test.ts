@@ -142,6 +142,27 @@ describe("createLearnedNoticeHandler", () => {
     ).toBeUndefined();
   });
 
+  it("never sends files outside the workshop when a skill root is a symlink", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "learned-out-"));
+    try {
+      await fs.writeFile(path.join(outside, "private-marker.txt"), "secret\n");
+      await fs.symlink(outside, path.join(agentDir, "workshop-skills", "beta"));
+      complete.mockResolvedValue({ text: "Created `beta`." });
+      expect(
+        await handler()(
+          { to: "c", content: notice("created `beta` (new)") },
+          discordCtx,
+        ),
+      ).toEqual({ content: "Created `beta`." });
+      const prompt = complete.mock.calls[0]![0].messages[0].content;
+      expect(prompt).not.toContain("private-marker");
+      expect(prompt).not.toContain("secret");
+      expect(prompt).not.toContain("```diff");
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it("still rewrites without diffs when the agent directory cannot be resolved", async () => {
     complete.mockResolvedValue({ text: "`alpha` and `beta` changed." });
     const run = createLearnedNoticeHandler({

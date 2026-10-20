@@ -1,3 +1,4 @@
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -79,33 +80,141 @@ export function selectBaselineVersion(
   return baseline;
 }
 
-/** Regular files under `dir`, keyed by `/`-separated path; dot entries and links are skipped. */
+/**
+ * A skill path that leaves the workshop tree: a symlinked directory, a file replaced by a link,
+ * or a hard link. Skill contents are sent to the model, so any such path drops the whole diff.
+ */
+export class UnsafeSkillPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsafeSkillPathError";
+  }
+}
+
+function errnoCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException | null)?.code;
+}
+
+function isInside(root: string, target: string): boolean {
+  return target === root || target.startsWith(`${root}${path.sep}`);
+}
+
+/**
+ * Walks `segments` below the real path of `root`, refusing any component that is not a real
+ * directory. Returns undefined when a component does not exist.
+ */
+export async function resolveContainedDir(
+  root: string,
+  segments: readonly string[],
+): Promise<string | undefined> {
+  let current: string;
+  try {
+    current = await fs.realpath(root);
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return undefined;
+    throw error;
+  }
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    let stat;
+    try {
+      stat = await fs.lstat(current);
+    } catch (error) {
+      if (errnoCode(error) === "ENOENT") return undefined;
+      throw error;
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new UnsafeSkillPathError("skill path component is not a directory");
+    }
+  }
+  return current;
+}
+
+/**
+ * Opens without following a final symlink, then confirms through the open descriptor that the
+ * file still lives under `rootReal`, which also catches a parent directory swapped for a link
+ * after enumeration. Resolving the descriptor needs `/proc`; without it the read fails closed.
+ */
+async function readContainedFile(
+  rootReal: string,
+  absolute: string,
+): Promise<string | undefined> {
+  let handle;
+  try {
+    handle = await fs.open(
+      absolute,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+    );
+  } catch (error) {
+    // A file removed after the listing is simply not part of the snapshot.
+    if (errnoCode(error) === "ENOENT") return undefined;
+    if (errnoCode(error) === "ELOOP") {
+      throw new UnsafeSkillPathError("skill file was replaced by a link");
+    }
+    throw error;
+  }
+  try {
+    let opened: string;
+    try {
+      opened = await fs.readlink(`/proc/self/fd/${handle.fd}`);
+    } catch {
+      throw new UnsafeSkillPathError("cannot verify the opened skill file");
+    }
+    if (!isInside(rootReal, opened)) {
+      throw new UnsafeSkillPathError("skill file resolves outside the skill");
+    }
+    const stat = await handle.stat();
+    if (!stat.isFile()) return undefined;
+    if (stat.nlink > 1) {
+      throw new UnsafeSkillPathError("skill file is a hard link");
+    }
+    return stat.size > MAX_FILE_BYTES
+      ? `[file omitted: ${stat.size} bytes]`
+      : await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Regular files under `dir`, keyed by `/`-separated path; dot entries are skipped. Throws
+ * {@link UnsafeSkillPathError} when `dir` or any file read from it leaves the directory.
+ */
 export async function readSkillFiles(dir: string): Promise<SkillFiles> {
   const files: SkillFiles = new Map();
+  let dirStat;
+  try {
+    dirStat = await fs.lstat(dir);
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return files;
+    throw error;
+  }
+  if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) {
+    throw new UnsafeSkillPathError("skill directory is not a directory");
+  }
+  // Callers pass a path already resolved by resolveContainedDir, so any difference means a
+  // parent directory was swapped for a link after it was checked.
+  const dirReal = await fs.realpath(dir);
+  if (dirReal !== path.resolve(dir)) {
+    throw new UnsafeSkillPathError("skill directory resolves through a link");
+  }
   let entries;
   try {
-    entries = await fs.readdir(dir, { recursive: true, withFileTypes: true });
+    entries = await fs.readdir(dirReal, {
+      recursive: true,
+      withFileTypes: true,
+    });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return files;
+    if (errnoCode(error) === "ENOENT") return files;
     throw error;
   }
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     const absolute = path.join(entry.parentPath, entry.name);
-    const segments = path.relative(dir, absolute).split(path.sep);
+    const segments = path.relative(dirReal, absolute).split(path.sep);
     if (segments.some((segment) => segment.startsWith("."))) continue;
-    try {
-      const stat = await fs.stat(absolute);
-      files.set(
-        segments.join("/"),
-        stat.size > MAX_FILE_BYTES
-          ? `[file omitted: ${stat.size} bytes]`
-          : await fs.readFile(absolute, "utf8"),
-      );
-    } catch (error) {
-      // A file removed after the listing is simply not part of the snapshot.
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+    const content = await readContainedFile(dirReal, absolute);
+    if (content !== undefined) files.set(segments.join("/"), content);
   }
   return files;
 }
@@ -240,26 +349,33 @@ export type SkillDiffRequest = {
   nowMs: number;
 };
 
-/** Returns undefined when no trustworthy baseline exists or nothing changed. */
+/**
+ * Returns undefined when no trustworthy baseline exists or nothing changed. Throws
+ * {@link UnsafeSkillPathError} when the live skill or its archive leaves the workshop tree.
+ */
 export async function loadSkillDiff(
   request: SkillDiffRequest,
 ): Promise<string | undefined> {
   const skillsRoot = path.join(request.agentDir, WORKSHOP_SKILLS_DIR);
-  const after = await readSkillFiles(path.join(skillsRoot, request.skillName));
+  const liveDir = await resolveContainedDir(skillsRoot, [request.skillName]);
+  if (!liveDir) return undefined;
+  const after = await readSkillFiles(liveDir);
   if (after.size === 0) return undefined;
   let before: SkillFiles = new Map();
   if (!request.created) {
-    const versionsDir = path.join(
-      skillsRoot,
+    const versionsDir = await resolveContainedDir(skillsRoot, [
       WORKSHOP_ARCHIVE_DIR,
       request.skillName,
-    );
+    ]);
+    if (!versionsDir) return undefined;
     const baseline = selectBaselineVersion(
       await listArchiveVersions(versionsDir),
       request.nowMs,
     );
     if (!baseline) return undefined;
-    before = await readSkillFiles(path.join(versionsDir, baseline.id));
+    const baselineDir = await resolveContainedDir(versionsDir, [baseline.id]);
+    if (!baselineDir) return undefined;
+    before = await readSkillFiles(baselineDir);
   }
   return renderSkillDiff(before, after) || undefined;
 }

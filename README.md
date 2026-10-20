@@ -151,6 +151,13 @@ through versions written within ten minutes of each other, and ignored when the
 newest is more than an hour old. Without a session agent or a baseline, the model
 still rewrites the notice from its original text alone.
 
+Skill files are read only inside the workshop tree. Every path component from
+`workshop-skills` down to the skill or archive version must be a real directory,
+files are opened without following symlinks, and each open file is checked
+through `/proc/self/fd` to still lie inside its skill directory; hard links are
+refused. Any violation drops that skill's diff, and the notice is rewritten from
+its original text alone. Without `/proc` (non-Linux hosts), diffs are never sent.
+
 If the model call fails, or its reply is empty, longer than 1500 characters, or
 missing any skill name, the original notice is sent unchanged.
 

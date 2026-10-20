@@ -8,6 +8,7 @@ import {
   readSkillFiles,
   renderSkillDiff,
   selectBaselineVersion,
+  UnsafeSkillPathError,
 } from "./learned-notice-diff.js";
 
 const MINUTE = 60_000;
@@ -132,27 +133,29 @@ describe("skill files on disk", () => {
   it("skips a file removed after the directory listing", async () => {
     await write("alpha/SKILL.md", "body\n");
     await write("alpha/references/gone.md", "temp\n");
-    const realStat = fs.stat;
-    const stat = vi.spyOn(fs, "stat").mockImplementation(async (target) => {
-      if (String(target).endsWith("gone.md")) {
-        throw Object.assign(new Error("gone"), { code: "ENOENT" });
-      }
-      return realStat(target);
-    });
+    const realOpen = fs.open;
+    const open = vi
+      .spyOn(fs, "open")
+      .mockImplementation(async (target, ...rest) => {
+        if (String(target).endsWith("gone.md")) {
+          throw Object.assign(new Error("gone"), { code: "ENOENT" });
+        }
+        return realOpen(target, ...rest);
+      });
     try {
       const files = await readSkillFiles(
         path.join(agentDir, "workshop-skills", "alpha"),
       );
       expect([...files.keys()]).toEqual(["SKILL.md"]);
     } finally {
-      stat.mockRestore();
+      open.mockRestore();
     }
   });
 
   it("still fails on other read errors", async () => {
     await write("alpha/SKILL.md", "body\n");
-    const stat = vi
-      .spyOn(fs, "stat")
+    const open = vi
+      .spyOn(fs, "open")
       .mockRejectedValue(
         Object.assign(new Error("denied"), { code: "EACCES" }),
       );
@@ -161,7 +164,7 @@ describe("skill files on disk", () => {
         readSkillFiles(path.join(agentDir, "workshop-skills", "alpha")),
       ).rejects.toThrow("denied");
     } finally {
-      stat.mockRestore();
+      open.mockRestore();
     }
   });
 
@@ -219,5 +222,128 @@ describe("skill files on disk", () => {
         nowMs: now,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("workshop containment", () => {
+  let agentDir: string;
+  let outside: string;
+  const now = at("2026-10-20T12:00:00.000Z");
+  const skillsRoot = () => path.join(agentDir, "workshop-skills");
+
+  async function write(target: string, content: string) {
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, content);
+  }
+
+  beforeEach(async () => {
+    agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "learned-contain-"));
+    outside = await fs.mkdtemp(path.join(os.tmpdir(), "learned-outside-"));
+    await write(path.join(outside, "private-marker.txt"), "secret\n");
+    await write(path.join(outside, "references", "a.md"), "secret ref\n");
+    await fs.mkdir(skillsRoot(), { recursive: true });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fs.rm(agentDir, { recursive: true, force: true });
+    await fs.rm(outside, { recursive: true, force: true });
+  });
+
+  it("rejects a symlinked live skill root", async () => {
+    await fs.symlink(outside, path.join(skillsRoot(), "alpha"));
+    await expect(
+      loadSkillDiff({
+        agentDir,
+        skillName: "alpha",
+        created: true,
+        nowMs: now,
+      }),
+    ).rejects.toBeInstanceOf(UnsafeSkillPathError);
+  });
+
+  it("rejects a symlinked archive ancestor", async () => {
+    await write(path.join(skillsRoot(), "alpha", "SKILL.md"), "live\n");
+    await write(
+      path.join(
+        outside,
+        "archive",
+        "alpha",
+        versionId("2026-10-20T11:59:00.000Z"),
+        "SKILL.md",
+      ),
+      "secret archive\n",
+    );
+    await fs.symlink(
+      path.join(outside, "archive"),
+      path.join(skillsRoot(), ".archive"),
+    );
+    await expect(
+      loadSkillDiff({
+        agentDir,
+        skillName: "alpha",
+        created: false,
+        nowMs: now,
+      }),
+    ).rejects.toBeInstanceOf(UnsafeSkillPathError);
+  });
+
+  it("rejects a file replaced by a symlink after enumeration", async () => {
+    const dir = path.join(skillsRoot(), "alpha");
+    await write(path.join(dir, "SKILL.md"), "live\n");
+    const realReaddir = fs.readdir;
+    vi.spyOn(fs, "readdir").mockImplementation(async (...args: unknown[]) => {
+      const entries = await (realReaddir as (...a: unknown[]) => unknown)(
+        ...args,
+      );
+      await fs.rm(path.join(dir, "SKILL.md"));
+      await fs.symlink(
+        path.join(outside, "private-marker.txt"),
+        path.join(dir, "SKILL.md"),
+      );
+      return entries as never;
+    });
+    await expect(readSkillFiles(dir)).rejects.toBeInstanceOf(
+      UnsafeSkillPathError,
+    );
+  });
+
+  it("rejects a parent directory swapped for a symlink after enumeration", async () => {
+    const dir = path.join(skillsRoot(), "alpha");
+    await write(path.join(dir, "references", "a.md"), "live ref\n");
+    const realReaddir = fs.readdir;
+    vi.spyOn(fs, "readdir").mockImplementation(async (...args: unknown[]) => {
+      const entries = await (realReaddir as (...a: unknown[]) => unknown)(
+        ...args,
+      );
+      await fs.rm(path.join(dir, "references"), { recursive: true });
+      await fs.symlink(
+        path.join(outside, "references"),
+        path.join(dir, "references"),
+      );
+      return entries as never;
+    });
+    await expect(readSkillFiles(dir)).rejects.toBeInstanceOf(
+      UnsafeSkillPathError,
+    );
+  });
+
+  it("rejects a hard link to a file outside the skill", async () => {
+    const dir = path.join(skillsRoot(), "alpha");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.link(
+      path.join(outside, "private-marker.txt"),
+      path.join(dir, "SKILL.md"),
+    );
+    await expect(readSkillFiles(dir)).rejects.toBeInstanceOf(
+      UnsafeSkillPathError,
+    );
+  });
+
+  it("rejects a directory reached through a symlinked parent", async () => {
+    await fs.symlink(outside, path.join(skillsRoot(), "linked"));
+    await expect(
+      readSkillFiles(path.join(skillsRoot(), "linked", "references")),
+    ).rejects.toBeInstanceOf(UnsafeSkillPathError);
   });
 });
