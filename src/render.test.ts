@@ -891,22 +891,24 @@ describe("ANSI internal group contract", () => {
         "    ⊹ memory_search ✔ [100ms]",
         "      ⊹ limit: 5 · query: hello",
         "    ⊹ memory_write ✘",
-        "      ⊹ permission denied",
+        "      ø permission denied",
         "    ⊹ first line",
         "      second line",
-        "    ⊹ parent timeout",
+        "    ø parent timeout",
       ].join("\n"),
     );
     expect(stripAnsi(result)).not.toMatch(/[├└│]/);
     expect(result).toContain(
-      `${BOLD_CYAN}🧠 hindsight-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+      `${BOLD_BLUE}🧠 hindsight-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
     expect(result).toContain(
-      `${BLUE}⊹ memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,
+      `\n    ⊹ memory_search ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}\n`,
     );
-    expect(result).toContain(`${RED}⊹ ${RESET}${RED}permission denied${RESET}`);
-    expect(result).toContain(`${RED}⊹ ${RESET}${RED}parent timeout${RESET}`);
-    expect(result).toContain(`${BLUE}⊹ first line${RESET}`);
+    expect(result).toContain(`${RED}ø ${RESET}${RED}permission denied${RESET}`);
+    expect(result).toContain(`${RED}ø ${RESET}${RED}parent timeout${RESET}`);
+    // Group details use Discord's default text color: no escape before the mark or the text.
+    expect(result).toContain("\n    ⊹ first line\n      second line\n");
+    expect(result).toContain("\n      ⊹ limit: 5 · query: hello\n");
   });
 
   it("renders a main-agent failure with its concrete error", () => {
@@ -927,7 +929,7 @@ describe("ANSI internal group contract", () => {
       [
         "```ansi",
         `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`,
-        `    └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
+        `    ${RED}ø ${RESET}${RED}provider timeout${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -1111,7 +1113,7 @@ describe("group wall-clock duration", () => {
 
     expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ♻︎ [1.2s]");
     expect(result).toContain(
-      "⊹ qmd-keyword ✘\n      ⊹ QMD keyword index unavailable",
+      "⊹ qmd-keyword ✘\n      ø QMD keyword index unavailable",
     );
     expect(result).toContain("qmd-hybrid ✔ [800ms]");
     expect(result).toContain("confidence: 0.92 · intent: git-commit");
@@ -1148,7 +1150,7 @@ describe("group wall-clock duration", () => {
       false,
     );
     expect(rawResult).toContain(
-      `${BOLD_CYAN}💡 skill-harness${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+      `${BOLD_BLUE}💡 skill-harness${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
   });
 
@@ -1569,7 +1571,7 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
 
     expect(result).toContain("💡 skill-harness ▾ ✘");
-    expect(result).toContain(`⊹ ${phase} ✘\n      ⊹ ${error}`);
+    expect(result).toContain(`⊹ ${phase} ✘\n      ø ${error}`);
     expect(result.split(error)).toHaveLength(2);
   });
 
@@ -1594,10 +1596,10 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
 
     expect(result).toContain(
-      "⊹ topic-triage ✘\n      ⊹ topic checker returned no context",
+      "⊹ topic-triage ✘\n      ø topic checker returned no context",
     );
     expect(result).toContain(
-      "⊹ intent-classify ✘\n      ⊹ classifier returned no result",
+      "⊹ intent-classify ✘\n      ø classifier returned no result",
     );
     expect(result.match(/topic checker returned no context/g)).toHaveLength(1);
     expect(result.match(/classifier returned no result/g)).toHaveLength(1);
@@ -1822,7 +1824,7 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🧠 hindsight-memory ▾ ✘");
-    expect(stripAnsi(result)).toContain("    ⊹ timed out after 15000ms");
+    expect(stripAnsi(result)).toContain("    ø timed out after 15000ms");
     expect(result).toContain(`${RED}timed out after 15000ms${RESET}`);
   });
 

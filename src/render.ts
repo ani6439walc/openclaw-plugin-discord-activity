@@ -386,20 +386,27 @@ function findLastEntry(
 
 const GROUP_INDENT = "    ";
 const GROUP_MARK = "⊹";
+const GROUP_ERROR_MARK = "ø";
 /** The header's ←/✔/✘ already states these, so their values are shown without the key. */
 const UNLABELED_GROUP_KEYS = new Set(["status", "result", "error"]);
 
+/** Text in Discord's default color unless a style is given. */
+function paint(style: string | undefined, text: string): string {
+  return style ? ansiSpan(style, text) : text;
+}
+
 /**
- * skill-harness and hindsight-memory rows: no tree connectors, a ⊹ mark, and one color per
- * line (blue, or red for errors) so they read apart from ordinary tool parameters.
+ * skill-harness, hindsight-memory, and main-agent failure rows: no tree connectors, and a ⊹ mark
+ * plus text in Discord's default color, so the bold blue header stands above its details. Error
+ * rows use a red ø and red text.
  */
 function renderGroupFieldRow(
   row: readonly DisplayField[],
   indent = GROUP_INDENT,
 ): string[] {
-  const style = row.some((field) => field.key === "error")
-    ? ANSI.red
-    : ANSI.blue;
+  const isError = row.some((field) => field.key === "error");
+  const style = isError ? ANSI.red : undefined;
+  const mark = paint(style, `${isError ? GROUP_ERROR_MARK : GROUP_MARK} `);
   const label = (field: DisplayField) =>
     UNLABELED_GROUP_KEYS.has(field.key) ? "" : `${field.key}: `;
   const multiline =
@@ -407,8 +414,8 @@ function renderGroupFieldRow(
   if (multiline?.multilineLines) {
     const [first = "", ...rest] = multiline.multilineLines;
     const lines = [
-      `${indent}${ansiSpan(style, `${GROUP_MARK} ${label(multiline)}${first}`)}`,
-      ...rest.map((line) => `${indent}  ${ansiSpan(style, line)}`),
+      `${indent}${mark}${paint(style, `${label(multiline)}${first}`)}`,
+      ...rest.map((line) => `${indent}  ${paint(style, line)}`),
     ];
     if (multiline.omittedHint) {
       lines[lines.length - 1] += ansiSpan(
@@ -421,12 +428,12 @@ function renderGroupFieldRow(
   const text = row
     .map(
       (field) =>
-        `${ansiSpan(style, `${label(field)}${field.value}`)}${
+        `${paint(style, `${label(field)}${field.value}`)}${
           field.omittedHint ? ansiSpan(ANSI.lightGray, field.omittedHint) : ""
         }`,
     )
-    .join(ansiSpan(style, " · "));
-  return [`${indent}${ansiSpan(style, `${GROUP_MARK} `)}${text}`];
+    .join(paint(style, " · "));
+  return [`${indent}${mark}${text}`];
 }
 
 function renderGroupFields(
@@ -438,10 +445,8 @@ function renderGroupFields(
   );
 }
 
-function renderGroupNestedTool(entry: ToolEntry, prefix: string): string[] {
-  const name = sanitizeHeaderToken(
-    getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
-  );
+/** An entry's parameters plus its terminal error, unless the parameters already carry it. */
+function entryFieldsWithError(entry: ToolEntry): DisplayField[] {
   const fields = formatDisplayFields(entry.params);
   if (
     entry.status === "error" &&
@@ -450,9 +455,16 @@ function renderGroupNestedTool(entry: ToolEntry, prefix: string): string[] {
   ) {
     fields.push(...formatDisplayFields({ error: entry.error }));
   }
+  return fields;
+}
+
+function renderGroupNestedTool(entry: ToolEntry, prefix: string): string[] {
+  const name = sanitizeHeaderToken(
+    getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
+  );
   return [
-    `${GROUP_INDENT}${ansiSpan(ANSI.blue, `${GROUP_MARK} ${name}`)} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${formatHeaderDuration(entry)}`,
-    ...renderGroupFields(fields, `${GROUP_INDENT}  `),
+    `${GROUP_INDENT}${GROUP_MARK} ${name} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${formatHeaderDuration(entry)}`,
+    ...renderGroupFields(entryFieldsWithError(entry), `${GROUP_INDENT}  `),
   ];
 }
 
@@ -534,7 +546,7 @@ function renderSubagentGroup(
     header: {
       icon,
       name: sanitizeHeaderToken(prefix),
-      nameStyle: ANSI.boldCyan,
+      nameStyle: ANSI.boldBlue,
       status: parentSuffix,
       statusStyle: getStatusStyle(parentStatus),
       durationMs: groupDurationMs,
@@ -749,7 +761,8 @@ function createMainAgentFailureBlock(entry: ToolEntry): StatusBlock {
   return {
     key: "agent",
     header,
-    children: createEntryFieldNodes(entry),
+    children: [],
+    bodyLines: renderGroupFields(entryFieldsWithError(entry)),
     protected: true,
   };
 }
