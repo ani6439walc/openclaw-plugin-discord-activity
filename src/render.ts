@@ -386,7 +386,6 @@ function findLastEntry(
 
 const GROUP_INDENT = "    ";
 const GROUP_MARK = "⊹";
-const GROUP_ERROR_MARK = "ø";
 /** The header's ←/✔/✘ already states these, so their values are shown without the key. */
 const UNLABELED_GROUP_KEYS = new Set(["status", "result", "error"]);
 
@@ -398,7 +397,7 @@ function paint(style: string | undefined, text: string): string {
 /**
  * skill-harness, hindsight-memory, and main-agent failure rows: no tree connectors, and a ⊹ mark
  * plus text in Discord's default color, so the bold blue header stands above its details. Error
- * rows use a red ø and red text.
+ * rows have no mark: red text indented one column past where the mark would be.
  */
 function renderGroupFieldRow(
   row: readonly DisplayField[],
@@ -406,7 +405,8 @@ function renderGroupFieldRow(
 ): string[] {
   const isError = row.some((field) => field.key === "error");
   const style = isError ? ANSI.red : undefined;
-  const mark = paint(style, `${isError ? GROUP_ERROR_MARK : GROUP_MARK} `);
+  const mark = isError ? " " : `${GROUP_MARK} `;
+  const continuationIndent = isError ? " " : "  ";
   const label = (field: DisplayField) =>
     UNLABELED_GROUP_KEYS.has(field.key) ? "" : `${field.key}: `;
   const multiline =
@@ -415,7 +415,9 @@ function renderGroupFieldRow(
     const [first = "", ...rest] = multiline.multilineLines;
     const lines = [
       `${indent}${mark}${paint(style, `${label(multiline)}${first}`)}`,
-      ...rest.map((line) => `${indent}  ${paint(style, line)}`),
+      ...rest.map(
+        (line) => `${indent}${continuationIndent}${paint(style, line)}`,
+      ),
     ];
     if (multiline.omittedHint) {
       lines[lines.length - 1] += ansiSpan(
@@ -468,6 +470,59 @@ function renderGroupNestedTool(entry: ToolEntry, prefix: string): string[] {
   ];
 }
 
+function collectGroupErrorMessages(group: readonly ToolEntry[]): string[] {
+  const messages: string[] = [];
+  for (const entry of group) {
+    const paramError = entry.params?.error;
+    const message =
+      typeof paramError === "string" && paramError.trim()
+        ? paramError
+        : entry.status === "error"
+          ? entry.error
+          : undefined;
+    if (message && !messages.includes(message)) messages.push(message);
+  }
+  return messages;
+}
+
+function renderGroupDetails(
+  prefix: InternalGroupName,
+  group: readonly ToolEntry[],
+  realEntries: readonly ToolEntry[],
+  displayedTools: readonly ToolEntry[],
+  resultEntries: readonly ToolEntry[],
+  parentErrorEntry: ToolEntry | undefined,
+): string[] {
+  const bodyLines = displayedTools.flatMap((entry) =>
+    renderGroupNestedTool(entry, prefix),
+  );
+  for (const resultEntry of resultEntries) {
+    const resultFields =
+      prefix === "skill-harness"
+        ? getSkillHarnessResultFields(resultEntry)
+        : formatDisplayFields({ result: resultEntry.params?.text });
+    bodyLines.push(...renderGroupFields(resultFields));
+  }
+  if (realEntries.length === 0) {
+    for (const entry of group) {
+      bodyLines.push(...renderGroupFields(formatDisplayFields(entry.params)));
+    }
+  }
+  if (
+    parentErrorEntry?.error &&
+    !displayedTools.some((entry) => entry.error === parentErrorEntry.error) &&
+    !bodyLines.some((line) => line.includes(parentErrorEntry.error!))
+  ) {
+    bodyLines.push(
+      ...renderGroupFields(
+        formatDisplayFields({ error: parentErrorEntry.error }),
+      ),
+    );
+  }
+
+  return bodyLines;
+}
+
 function renderSubagentGroup(
   icon: string,
   prefix: InternalGroupName,
@@ -505,32 +560,23 @@ function renderSubagentGroup(
     (entry) =>
       entry.toolName === prefix && entry.status === "error" && entry.error,
   );
-  const bodyLines = displayedTools.flatMap((entry) =>
-    renderGroupNestedTool(entry, prefix),
-  );
-  for (const resultEntry of resultEntries) {
-    const resultFields =
-      prefix === "skill-harness"
-        ? getSkillHarnessResultFields(resultEntry)
-        : formatDisplayFields({ result: resultEntry.params?.text });
-    bodyLines.push(...renderGroupFields(resultFields));
-  }
-  if (realEntries.length === 0) {
-    for (const entry of group) {
-      bodyLines.push(...renderGroupFields(formatDisplayFields(entry.params)));
-    }
-  }
-  if (
-    parentErrorEntry?.error &&
-    !displayedTools.some((entry) => entry.error === parentErrorEntry.error) &&
-    !bodyLines.some((line) => line.includes(parentErrorEntry.error!))
-  ) {
-    bodyLines.push(
-      ...renderGroupFields(
-        formatDisplayFields({ error: parentErrorEntry.error }),
-      ),
-    );
-  }
+  // A failed group shows only its error text: the header's ✘ already says it failed, and the
+  // phases and partial results that led there are noise.
+  const failureMessages =
+    parentSuffix === "✘" ? collectGroupErrorMessages(group) : [];
+  const bodyLines =
+    failureMessages.length > 0
+      ? failureMessages.flatMap((error) =>
+          renderGroupFields(formatDisplayFields({ error })),
+        )
+      : renderGroupDetails(
+          prefix,
+          group,
+          realEntries,
+          displayedTools,
+          resultEntries,
+          parentErrorEntry,
+        );
 
   const parentStatus: ToolEntry["status"] =
     parentSuffix === "✘"
