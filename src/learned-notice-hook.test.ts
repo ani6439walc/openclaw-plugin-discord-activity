@@ -3,15 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildSystemPrompt,
   createLearnedNoticeHandler,
-  parseSummaryReply,
+  normalizeNoticeReply,
   type LearnedNoticeCompletion,
 } from "./learned-notice-hook.js";
 import type { MessageContext } from "./types.js";
 
 const NOW = Date.parse("2026-10-20T12:00:00.000Z");
 const RECENT_VERSION = "20261020T115900000Z-patch";
-const UNDO = "跟我說還原就可以改回去。";
 const notice = (body: string) =>
   `💾 Learned: ${body}. Say "undo" to revert this skill change.`;
 const discordCtx: MessageContext = {
@@ -70,61 +70,52 @@ describe("createLearnedNoticeHandler", () => {
         { channelId: "telegram", sessionKey: "agent:main:telegram:1" },
       ),
     ).toBeUndefined();
+    expect(complete).not.toHaveBeenCalled();
   });
 
-  it("uses the LLM summary of the skill diff", async () => {
-    complete.mockResolvedValue({ text: '{"alpha": "第二步會先檢查。"}' });
+  it("sends the model's whole message, built from the original notice and the diff", async () => {
+    const original = notice("updated `alpha` (tweak)");
+    complete.mockResolvedValue({
+      text: "Updated `alpha`: step 2 is now checked. Say undo to revert.",
+    });
     const result = await handler()(
-      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
+      { to: "channel:123", content: original },
       discordCtx,
     );
     expect(result).toEqual({
-      content: `已更新技能 \`alpha\`（第二步會先檢查）。${UNDO}`,
+      content: "Updated `alpha`: step 2 is now checked. Say undo to revert.",
     });
     const params = complete.mock.calls[0]![0];
     expect(params).not.toHaveProperty("model");
     const prompt = params.messages[0].content;
-    expect(prompt).toContain("## alpha (updated)");
+    expect(prompt).toContain(`Original notice: ${original}`);
+    expect(prompt).toContain("## alpha");
     expect(prompt).toContain("-step 2\n+step 2 checked");
   });
 
-  it("passes the configured summary model", async () => {
-    complete.mockResolvedValue({ text: '{"alpha": "會先檢查"}' });
-    await handler("bifrost/gpt-6-luna")(
-      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
-      discordCtx,
-    );
-    expect(complete.mock.calls[0]![0].model).toBe("bifrost/gpt-6-luna");
-  });
-
-  it("appends the configured prompt to the language-neutral base prompt", async () => {
-    complete.mockResolvedValue({ text: '{"alpha": "會先檢查"}' });
-    await handler()(
-      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
-      discordCtx,
-    );
-    await handler(undefined, "  用繁體中文撰寫摘要。 ")(
-      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
-      discordCtx,
-    );
-    const base = complete.mock.calls[0]![0].systemPrompt;
-    expect(base).not.toMatch(/Chinese|中文/);
-    expect(complete.mock.calls[1]![0].systemPrompt).toBe(
-      `${base}\n\n用繁體中文撰寫摘要。`,
+  it("still asks the model when no diff or session is available", async () => {
+    complete.mockResolvedValue({ text: "Archived `beta`. Say undo." });
+    expect(
+      await handler()(
+        { to: "c", content: notice("archived `beta` (unused)") },
+        { channelId: "discord" },
+      ),
+    ).toEqual({ content: "Archived `beta`. Say undo." });
+    expect(complete.mock.calls[0]![0].messages[0].content).not.toContain(
+      "```diff",
     );
   });
 
-  it("keeps original summaries for skills the LLM does not describe", async () => {
-    complete.mockResolvedValue({ text: '{"alpha": "會先檢查"}' });
-    const result = await handler()(
-      {
-        to: "channel:123",
-        content: notice("updated `alpha` (tweak); archived `beta` (unused)"),
-      },
+  it("passes the configured model and appends promptAppend to the system prompt", async () => {
+    complete.mockResolvedValue({ text: "`alpha` changed." });
+    await handler("bifrost/gpt-6-luna", "  Write in Traditional Chinese. ")(
+      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
       discordCtx,
     );
-    expect(result?.content).toBe(
-      `已更新技能 \`alpha\`（會先檢查）；已封存技能 \`beta\`（unused）。${UNDO}`,
+    const params = complete.mock.calls[0]![0];
+    expect(params.model).toBe("bifrost/gpt-6-luna");
+    expect(params.systemPrompt).toBe(
+      `${buildSystemPrompt()}\n\nWrite in Traditional Chinese.`,
     );
   });
 
@@ -137,64 +128,77 @@ describe("createLearnedNoticeHandler", () => {
         ),
     ],
     [
-      "the reply is not JSON",
-      () => complete.mockResolvedValue({ text: "sorry" }),
+      "the reply drops a skill name",
+      () => complete.mockResolvedValue({ text: "Something changed." }),
     ],
-  ])("falls back to the plain rewrite when %s", async (_label, arrange) => {
+    ["the reply is empty", () => complete.mockResolvedValue({ text: "  " })],
+  ])("sends the original notice when %s", async (_label, arrange) => {
     arrange();
-    const result = await handler()(
-      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
-      discordCtx,
-    );
-    expect(result).toEqual({
-      content: `已更新技能 \`alpha\`（tweak）。${UNDO}`,
-    });
-  });
-
-  it("skips the LLM when there is no session agent, no diff, or only archive actions", async () => {
-    const run = handler();
-    const plain = { content: `已更新技能 \`alpha\`（tweak）。${UNDO}` };
     expect(
-      await run(
-        { to: "c", content: notice("updated `alpha` (tweak)") },
-        { channelId: "discord" },
-      ),
-    ).toEqual(plain);
-    expect(
-      await run(
-        { to: "c", content: notice("updated `missing` (tweak)") },
+      await handler()(
+        { to: "channel:123", content: notice("updated `alpha` (tweak)") },
         discordCtx,
       ),
-    ).toEqual({ content: `已更新技能 \`missing\`（tweak）。${UNDO}` });
+    ).toBeUndefined();
+  });
+
+  it("still rewrites without diffs when the agent directory cannot be resolved", async () => {
+    complete.mockResolvedValue({ text: "`alpha` and `beta` changed." });
+    const run = createLearnedNoticeHandler({
+      resolveAgentDir: () => {
+        throw new Error("no agent dir");
+      },
+      resolveAgentId: () => "main",
+      complete,
+      now: () => NOW,
+    });
     expect(
-      await run({ to: "c", content: notice("archived `alpha`") }, discordCtx),
-    ).toEqual({ content: `已封存技能 \`alpha\`。${UNDO}` });
-    expect(complete).not.toHaveBeenCalled();
+      await run(
+        {
+          to: "c",
+          content: notice("updated `alpha` (a); updated `beta` (b)"),
+        },
+        discordCtx,
+      ),
+    ).toEqual({ content: "`alpha` and `beta` changed." });
+    expect(complete.mock.calls[0]![0].messages[0].content).not.toContain(
+      "```diff",
+    );
   });
 });
 
-describe("parseSummaryReply", () => {
-  it("extracts known skills from a fenced or chatty reply", () => {
+describe("normalizeNoticeReply", () => {
+  it("strips fences and surrounding quotes", () => {
     expect(
-      parseSummaryReply(
-        'Sure:\n```json\n{"alpha": " 會 `先` 檢查。 ", "beta": 3, "other": "x"}\n```',
-        ["alpha", "beta"],
-      ),
-    ).toEqual(new Map([["alpha", "會 先 檢查"]]));
+      normalizeNoticeReply('```\n"🔧 Updated `alpha`."\n```', ["alpha"]),
+    ).toBe("🔧 Updated `alpha`.");
   });
 
-  it("truncates by code point without splitting a surrogate pair", () => {
-    const value = `${"字".repeat(119)}😀😀`;
-    const summary = parseSummaryReply(JSON.stringify({ alpha: value }), [
-      "alpha",
-    ]).get("alpha")!;
-    expect(Array.from(summary)).toHaveLength(120);
-    expect(summary.endsWith("😀")).toBe(true);
-    expect(summary).not.toMatch(/[\uD800-\uDBFF]$/);
+  it("requires every skill name", () => {
+    expect(
+      normalizeNoticeReply("Updated `alpha`.", ["alpha", "beta"]),
+    ).toBeUndefined();
+    expect(
+      normalizeNoticeReply("Updated `alpha` and `beta`.", ["alpha", "beta"]),
+    ).toBe("Updated `alpha` and `beta`.");
   });
 
-  it("returns an empty map for unusable replies", () => {
-    expect(parseSummaryReply("[1]", ["alpha"]).size).toBe(0);
-    expect(parseSummaryReply("{oops}", ["alpha"]).size).toBe(0);
+  it("rejects replies over the length limit, counting code points", () => {
+    expect(
+      normalizeNoticeReply(`\`alpha\` ${"😀".repeat(1_500)}`, ["alpha"]),
+    ).toBeUndefined();
+    expect(
+      normalizeNoticeReply(`\`alpha\` ${"😀".repeat(1_400)}`, ["alpha"]),
+    ).toBeDefined();
+  });
+});
+
+describe("buildSystemPrompt", () => {
+  it("is language-neutral and lists the required parts with an example", () => {
+    const prompt = buildSystemPrompt();
+    expect(prompt).not.toMatch(/Chinese|中文/);
+    expect(prompt).toContain("backticks");
+    expect(prompt).toContain("undo");
+    expect(prompt).toContain("Example output:");
   });
 });

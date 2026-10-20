@@ -1,9 +1,5 @@
 import { logger } from "../api.js";
-import {
-  formatLearnedNotice,
-  parseLearnedNotice,
-  type LearnedChange,
-} from "./learned-notice.js";
+import { parseLearnedNotice, type LearnedChange } from "./learned-notice.js";
 import { loadSkillDiff } from "./learned-notice-diff.js";
 import type { MessageContext, MessageSendingEvent } from "./types.js";
 
@@ -11,16 +7,34 @@ import type { MessageContext, MessageSendingEvent } from "./types.js";
 export const LEARNED_NOTICE_HOOK_TIMEOUT_MS = 60_000;
 const LLM_TIMEOUT_MS = 45_000;
 const MAX_PROMPT_DIFF_CHARS = 24_000;
-const MAX_SUMMARY_CHARS = 120;
+/** Well under Discord's 2000-character message limit. */
+const MAX_NOTICE_CHARS = 1_500;
 
-const BASE_SYSTEM_PROMPT = [
-  "You describe changes to an AI assistant's learned skills for the person chatting with it.",
-  "For each skill, write one short phrase, at most 60 characters, saying what the assistant will now do differently.",
-  "Describe the practical effect, not file names or diff mechanics. No markdown, no trailing punctuation.",
-  'Reply with only a JSON object mapping each skill name to its phrase, e.g. {"deploy-staging": "checks the image tag before deploying"}.',
-].join("\n");
+const BASE_SYSTEM_PROMPT = `You rewrite a notice that tells the person chatting with an AI assistant that a background review changed the assistant's learned skills.
 
-/** Base instructions plus operator-supplied text such as the reply language. */
+The message you write must include:
+- every changed skill name, exactly as given, wrapped in backticks;
+- what happened to each skill (created, updated, archived, or restored);
+- for created or updated skills, a short description of what the assistant will now do differently, based on the diff; describe the practical effect, not file names or diff mechanics;
+- a closing hint that the person can ask to undo or revert the change.
+
+Keep it to one or two short sentences, in the same order as the original notice. Reply with only the message text: no quotes, no code fences, no preamble.
+
+Example input:
+Original notice: 💾 Learned: updated \`deploy-staging\` (tightened the rollback step). Say "undo" to revert this skill change.
+## deploy-staging (updated)
+\`\`\`diff
+*** SKILL.md
+ 1. Build the image.
++2. Check that the image tag matches the release before deploying.
+-2. Deploy.
++3. Deploy.
+\`\`\`
+
+Example output:
+Updated \`deploy-staging\`: it now checks that the image tag matches the release before deploying. Say "undo" if you want the old version back.`;
+
+/** Base instructions plus operator-supplied text such as the language and tone. */
 export function buildSystemPrompt(extra?: string): string {
   const appended = extra?.trim();
   return appended ? `${BASE_SYSTEM_PROMPT}\n\n${appended}` : BASE_SYSTEM_PROMPT;
@@ -42,9 +56,9 @@ export type LearnedNoticeDeps = {
   /** Agent id encoded in a session key, or undefined when it has none. */
   resolveAgentId: (sessionKey: string) => string | undefined;
   complete: LearnedNoticeCompletion;
-  /** Model ref for the summary; undefined uses the host's default agent model. */
+  /** Model ref for the rewrite; undefined uses the host's default agent model. */
   model?: string;
-  /** Appended to the system prompt, e.g. the language the summary should use. */
+  /** Appended to the system prompt, e.g. the language and tone of the message. */
   promptAppend?: string;
   now?: () => number;
 };
@@ -53,62 +67,72 @@ function isDiscordMessage(ctx: MessageContext): boolean {
   return ctx.channelId === "discord" || ctx.messageProvider === "discord";
 }
 
-export function parseSummaryReply(
+/**
+ * Accepts the model's message only when it names every changed skill and fits the limit;
+ * otherwise returns undefined so the original notice is sent unchanged.
+ */
+export function normalizeNoticeReply(
   text: string,
   skillNames: readonly string[],
-): Map<string, string> {
-  const summaries = new Map<string, string>();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) return summaries;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return summaries;
+): string | undefined {
+  const message = text
+    .trim()
+    .replace(/^```[a-z]*\n?|\n?```$/g, "")
+    .trim()
+    .replace(/^"([\s\S]*)"$/, "$1")
+    .trim();
+  if (!message || Array.from(message).length > MAX_NOTICE_CHARS) {
+    return undefined;
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return summaries;
-  }
-  const record = parsed as Record<string, unknown>;
-  for (const name of skillNames) {
-    const value = record[name];
-    if (typeof value !== "string") continue;
-    const cleaned = value
-      .replace(/\s+/g, " ")
-      .replaceAll("`", "")
-      .trim()
-      .replace(/[。.！!]+$/, "");
-    // Truncate by code point so a surrogate pair (emoji, rare CJK) is never split.
-    const summary = Array.from(cleaned).slice(0, MAX_SUMMARY_CHARS).join("");
-    if (summary) summaries.set(name, summary);
-  }
-  return summaries;
+  return skillNames.every((name) => message.includes(name))
+    ? message
+    : undefined;
 }
 
 function buildPrompt(
-  diffs: ReadonlyArray<{ change: LearnedChange; diff: string }>,
+  original: string,
+  diffs: ReadonlyMap<string, string>,
 ): string {
-  const budget = Math.floor(MAX_PROMPT_DIFF_CHARS / diffs.length);
-  return diffs
-    .map(({ change, diff }) => {
-      const body =
-        diff.length > budget ? `${diff.slice(0, budget)}\n… (truncated)` : diff;
-      return [
-        `## ${change.skillName} (${change.verb})`,
-        `Reviewer note: ${change.summary || "(none)"}`,
-        "```diff",
-        body,
-        "```",
-      ].join("\n");
-    })
-    .join("\n\n");
+  const budget = Math.floor(MAX_PROMPT_DIFF_CHARS / Math.max(diffs.size, 1));
+  const sections = [...diffs].map(([name, diff]) => {
+    const body =
+      diff.length > budget ? `${diff.slice(0, budget)}\n… (truncated)` : diff;
+    return [`## ${name}`, "```diff", body, "```"].join("\n");
+  });
+  return [`Original notice: ${original}`, ...sections].join("\n\n");
+}
+
+async function collectDiffs(
+  changes: readonly LearnedChange[],
+  agentDir: string,
+  nowMs: number,
+): Promise<Map<string, string>> {
+  const diffs = new Map<string, string>();
+  for (const change of changes) {
+    if (change.verb !== "created" && change.verb !== "updated") continue;
+    try {
+      const diff = await loadSkillDiff({
+        agentDir,
+        skillName: change.skillName,
+        created: change.verb === "created",
+        nowMs,
+      });
+      if (diff) diffs.set(change.skillName, diff);
+    } catch (error) {
+      logger.debug("learned notice: skill diff unavailable", {
+        skill: change.skillName,
+        error: error instanceof Error ? error.name : typeof error,
+      });
+    }
+  }
+  return diffs;
 }
 
 /**
- * Rewrites the background skill-review notice on Discord. Created and updated skills get an
- * LLM summary of their diff; anything that fails keeps the deterministic rewrite, and the
- * message is never cancelled. Undo still works because core queues its own system event.
+ * Rewrites the background skill-review notice on Discord. The model writes the whole message
+ * from the original notice and, where available, each skill's diff. Any failure sends the
+ * original notice unchanged; the message is never cancelled, and undo still works because core
+ * queues its own system event.
  */
 export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
   const now = deps.now ?? Date.now;
@@ -122,63 +146,57 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
     const changes = parseLearnedNotice(event.content);
     if (!changes) return undefined;
 
-    const fallback = formatLearnedNotice(changes);
-    const describable = changes.filter(
-      (change) => change.verb === "created" || change.verb === "updated",
-    );
     const agentId = ctx.sessionKey
       ? deps.resolveAgentId(ctx.sessionKey)
       : undefined;
-    if (describable.length === 0 || !agentId) return { content: fallback };
-
-    try {
-      const agentDir = deps.resolveAgentDir(agentId);
-      const nowMs = now();
-      const diffs: Array<{ change: LearnedChange; diff: string }> = [];
-      for (const change of describable) {
-        const diff = await loadSkillDiff({
-          agentDir,
-          skillName: change.skillName,
-          created: change.verb === "created",
-          nowMs,
-        });
-        if (diff) diffs.push({ change, diff });
-      }
-      if (diffs.length === 0) {
-        logger.debug("learned notice: no skill diff found", {
+    let diffs = new Map<string, string>();
+    if (agentId) {
+      try {
+        diffs = await collectDiffs(
+          changes,
+          deps.resolveAgentDir(agentId),
+          now(),
+        );
+      } catch (error) {
+        logger.debug("learned notice: skill diffs unavailable", {
           agentId,
-          skills: describable.length,
+          error: error instanceof Error ? error.name : typeof error,
         });
-        return { content: fallback };
       }
-
+    }
+    try {
       const result = await deps.complete({
         ...(deps.model ? { model: deps.model } : {}),
-        messages: [{ role: "user", content: buildPrompt(diffs) }],
+        messages: [
+          { role: "user", content: buildPrompt(event.content, diffs) },
+        ],
         systemPrompt,
         purpose: "discord-activity.learned-notice",
         maxTokens: 600,
         temperature: 0.2,
         signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       });
-      const summaries = parseSummaryReply(
+      const content = normalizeNoticeReply(
         result.text,
-        diffs.map(({ change }) => change.skillName),
+        changes.map((change) => change.skillName),
       );
-      if (summaries.size === 0) {
-        logger.warn("learned notice: summary reply was not usable", {
-          agentId,
-        });
-        return { content: fallback };
+      if (!content) {
+        logger.warn(
+          "learned notice: rewrite was not usable, sending original",
+          {
+            agentId,
+          },
+        );
+        return undefined;
       }
-      return { content: formatLearnedNotice(changes, summaries) };
+      return { content };
     } catch (error) {
-      logger.warn("learned notice: summary failed, using plain rewrite", {
+      logger.warn("learned notice: rewrite failed, sending original", {
         agentId,
         code: (error as { code?: unknown } | null)?.code,
         error: error instanceof Error ? error.name : typeof error,
       });
-      return { content: fallback };
+      return undefined;
     }
   };
 }

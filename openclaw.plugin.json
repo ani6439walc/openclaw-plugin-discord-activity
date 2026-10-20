@@ -45,17 +45,17 @@
       "skillLearnedNotice": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Summary settings for the rewritten background skill-review notice",
+        "description": "Settings for the LLM-written background skill-review notice",
         "properties": {
           "model": {
             "type": "string",
             "minLength": 1,
-            "description": "Model ref (provider/model) used to summarize learned-skill changes; omit to use the default agent model. Requires plugins.entries.discord-activity.llm.allowModelOverride"
+            "description": "Model ref (provider/model) that writes the learned-skill notice; omit to use the default agent model. Requires plugins.entries.discord-activity.llm.allowModelOverride"
           },
           "promptAppend": {
             "type": "string",
             "minLength": 1,
-            "description": "Extra instructions appended to the summary system prompt, for example the language or tone of the summary"
+            "description": "Extra instructions appended to the notice system prompt, for example the language, tone, or emoji of the message"
           }
         }
       }
