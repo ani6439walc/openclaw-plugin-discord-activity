@@ -9,8 +9,8 @@ allowBuilds:
 packageExtensions:
   openclaw:
     dependencies:
-      "@openclaw/proxyline": "0.3.12"
+      "@openclaw/proxyline": "0.4.0"
 minimumReleaseAgeExclude:
-  - openclaw@2026.10.4
-  - "@openclaw/ai@2026.10.4"
+  - openclaw@2026.10.5
+  - "@openclaw/ai@2026.10.5"
   - zod@4.6.5
