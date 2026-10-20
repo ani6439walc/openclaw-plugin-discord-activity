@@ -133,15 +133,17 @@ On Discord, a separate `message_sending` handler replaces that whole notice with
 a message written by `api.runtime.llm.complete`. The plugin has no message
 template: the model receives the original notice and, for created and updated
 skills, a diff of each skill, and writes the whole message. The built-in system
-prompt is language-neutral; it requires every skill name in backticks, what
+prompt is language-neutral; it requires a leading emoji, every skill name in
+backticks followed directly by its description (no colon after the name), what
 happened to each skill, what the assistant will now do differently, and a hint
-that the change can be undone, and it includes one example. Set language, tone,
-or emoji with `skillLearnedNotice.promptAppend`, for example:
+that the change can be undone. It asks for exactly one version of the message and
+includes one example. Set the language with `skillLearnedNotice.promptAppend`,
+for example:
 
 ```json
 "skillLearnedNotice": {
   "model": "bifrost/gpt-6-luna",
-  "promptAppend": "Write the message in Traditional Chinese as used in Taiwan and begin it with one emoji that fits the change."
+  "promptAppend": "Write the message in Traditional Chinese as used in Taiwan."
 }
 ```
 
@@ -258,7 +260,7 @@ This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as th
 | `orphanTtlSeconds`                | `number` | `300`   | Time to keep orphaned tool calls while waiting for a session link.                                                                                                                                                                                                      |
 | `replyMode`                       | `string` | `all`   | `all` replies wherever a source message exists; `direct` replies only in canonical private-message sessions, while channel/group statuses remain standalone.                                                                                                            |
 | `skillLearnedNotice.model`        | `string` | unset   | Model ref that writes the learned-skill notice, for example `bifrost/gpt-6-luna`. Unset uses the default agent model. Setting it requires `plugins.entries.discord-activity.llm.allowModelOverride: true` and, when present, an `llm.allowedModels` entry for that ref. |
-| `skillLearnedNotice.promptAppend` | `string` | unset   | Extra instructions appended to the notice system prompt. The built-in prompt does not set a language, so use this for language, tone, and emoji.                                                                                                                        |
+| `skillLearnedNotice.promptAppend` | `string` | unset   | Extra instructions appended to the notice system prompt. The built-in prompt sets the format but no language, so use this for the language.                                                                                                                             |
 
 Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `skill-harness` and Hindsight group.
 

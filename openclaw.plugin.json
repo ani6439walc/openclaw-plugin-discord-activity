@@ -55,7 +55,7 @@
           "promptAppend": {
             "type": "string",
             "minLength": 1,
-            "description": "Extra instructions appended to the notice system prompt, for example the language, tone, or emoji of the message"
+            "description": "Extra instructions appended to the notice system prompt, for example the language of the message"
           }
         }
       }
