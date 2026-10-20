@@ -183,6 +183,16 @@ describe("parseSummaryReply", () => {
     ).toEqual(new Map([["alpha", "會 先 檢查"]]));
   });
 
+  it("truncates by code point without splitting a surrogate pair", () => {
+    const value = `${"字".repeat(119)}😀😀`;
+    const summary = parseSummaryReply(JSON.stringify({ alpha: value }), [
+      "alpha",
+    ]).get("alpha")!;
+    expect(Array.from(summary)).toHaveLength(120);
+    expect(summary.endsWith("😀")).toBe(true);
+    expect(summary).not.toMatch(/[\uD800-\uDBFF]$/);
+  });
+
   it("returns an empty map for unusable replies", () => {
     expect(parseSummaryReply("[1]", ["alpha"]).size).toBe(0);
     expect(parseSummaryReply("{oops}", ["alpha"]).size).toBe(0);

@@ -94,13 +94,18 @@ export async function readSkillFiles(dir: string): Promise<SkillFiles> {
     const absolute = path.join(entry.parentPath, entry.name);
     const segments = path.relative(dir, absolute).split(path.sep);
     if (segments.some((segment) => segment.startsWith("."))) continue;
-    const stat = await fs.stat(absolute);
-    files.set(
-      segments.join("/"),
-      stat.size > MAX_FILE_BYTES
-        ? `[file omitted: ${stat.size} bytes]`
-        : await fs.readFile(absolute, "utf8"),
-    );
+    try {
+      const stat = await fs.stat(absolute);
+      files.set(
+        segments.join("/"),
+        stat.size > MAX_FILE_BYTES
+          ? `[file omitted: ${stat.size} bytes]`
+          : await fs.readFile(absolute, "utf8"),
+      );
+    } catch (error) {
+      // A file removed after the listing is simply not part of the snapshot.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
   return files;
 }

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   listArchiveVersions,
   loadSkillDiff,
@@ -127,6 +127,42 @@ describe("skill files on disk", () => {
       path.join(agentDir, "workshop-skills", "alpha"),
     );
     expect([...files.keys()].sort()).toEqual(["SKILL.md", "references/a.md"]);
+  });
+
+  it("skips a file removed after the directory listing", async () => {
+    await write("alpha/SKILL.md", "body\n");
+    await write("alpha/references/gone.md", "temp\n");
+    const realStat = fs.stat;
+    const stat = vi.spyOn(fs, "stat").mockImplementation(async (target) => {
+      if (String(target).endsWith("gone.md")) {
+        throw Object.assign(new Error("gone"), { code: "ENOENT" });
+      }
+      return realStat(target);
+    });
+    try {
+      const files = await readSkillFiles(
+        path.join(agentDir, "workshop-skills", "alpha"),
+      );
+      expect([...files.keys()]).toEqual(["SKILL.md"]);
+    } finally {
+      stat.mockRestore();
+    }
+  });
+
+  it("still fails on other read errors", async () => {
+    await write("alpha/SKILL.md", "body\n");
+    const stat = vi
+      .spyOn(fs, "stat")
+      .mockRejectedValue(
+        Object.assign(new Error("denied"), { code: "EACCES" }),
+      );
+    try {
+      await expect(
+        readSkillFiles(path.join(agentDir, "workshop-skills", "alpha")),
+      ).rejects.toThrow("denied");
+    } finally {
+      stat.mockRestore();
+    }
   });
 
   it("diffs an updated skill against the burst baseline", async () => {

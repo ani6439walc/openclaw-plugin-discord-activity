@@ -74,12 +74,13 @@ export function parseSummaryReply(
   for (const name of skillNames) {
     const value = record[name];
     if (typeof value !== "string") continue;
-    const summary = value
+    const cleaned = value
       .replace(/\s+/g, " ")
       .replaceAll("`", "")
       .trim()
-      .replace(/[。.！!]+$/, "")
-      .slice(0, MAX_SUMMARY_CHARS);
+      .replace(/[。.！!]+$/, "");
+    // Truncate by code point so a surrogate pair (emoji, rare CJK) is never split.
+    const summary = Array.from(cleaned).slice(0, MAX_SUMMARY_CHARS).join("");
     if (summary) summaries.set(name, summary);
   }
   return summaries;
