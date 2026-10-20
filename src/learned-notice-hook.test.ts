@@ -291,6 +291,19 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("undo");
     expect(prompt).toContain("Example output:");
   });
+
+  it("asks for a leading emoji, no colon after the skill name, and a single version", () => {
+    const prompt = buildSystemPrompt();
+    expect(prompt).toContain(
+      "one emoji that fits the change, at the very start",
+    );
+    expect(prompt).toContain(
+      "Put no colon or other punctuation right after the skill name.",
+    );
+    expect(prompt).toContain("Write exactly one version of the message");
+    // The example output follows the same format it asks for.
+    expect(prompt).toMatch(/Example output:\n🔧 Updated `deploy-staging` to /u);
+  });
 });
 
 describe("collapseRepetition", () => {

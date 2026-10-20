@@ -13,12 +13,15 @@ const MAX_NOTICE_CHARS = 1_500;
 const BASE_SYSTEM_PROMPT = `You rewrite a notice that tells the person chatting with an AI assistant that a background review changed the assistant's learned skills.
 
 The message you write must include:
+- one emoji that fits the change, at the very start;
 - every changed skill name, exactly as given, wrapped in backticks;
 - what happened to each skill (created, updated, archived, or restored);
 - for created or updated skills, a short description of what the assistant will now do differently, based on the diff; describe the practical effect, not file names or diff mechanics;
 - a closing hint that the person can ask to undo or revert the change.
 
-Keep it to one or two short sentences, in the same order as the original notice, and write the message exactly once. Reply with only the message text: no quotes, no code fences, no preamble.
+For each skill, write the action, then the skill name in backticks, then a space and the description. Put no colon or other punctuation right after the skill name.
+
+Keep it to one or two short sentences, in the same order as the original notice. Write exactly one version of the message: never offer alternatives or repeat it. Reply with only the message text: no quotes, no code fences, no preamble.
 
 Example input:
 Original notice: 💾 Learned: updated \`deploy-staging\` (tightened the rollback step). Say "undo" to revert this skill change.
@@ -32,7 +35,7 @@ Original notice: 💾 Learned: updated \`deploy-staging\` (tightened the rollbac
 \`\`\`
 
 Example output:
-Updated \`deploy-staging\`: it now checks that the image tag matches the release before deploying. Say "undo" if you want the old version back.`;
+🔧 Updated \`deploy-staging\` to check that the image tag matches the release before deploying. Say "undo" if you want the old version back.`;
 
 /** Base instructions plus operator-supplied text such as the language and tone. */
 export function buildSystemPrompt(extra?: string): string {
