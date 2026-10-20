@@ -65,7 +65,7 @@
               "max",
               "ultra"
             ],
-            "description": "Thinking level for the notice rewrite; omit to send none so the host and model decide. A level the selected model does not support makes the call fail, and the original notice is sent"
+            "description": "Requested thinking level for the notice rewrite; omit to send none so the host and model decide. The host and provider may map or clamp the request to what the selected model supports (for example down to off), without an error. Only an actual completion failure logs a warning and sends the original notice"
           },
           "promptAppend": {
             "type": "string",
