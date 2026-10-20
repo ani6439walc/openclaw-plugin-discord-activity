@@ -45,24 +45,37 @@ export interface ExternalApiLogger {
   error?: (message: string, ...args: unknown[]) => void;
 }
 
+/**
+ * OpenClaw's plugin logger takes a single message string, so structured fields such as HTTP
+ * status would be dropped; append them to the message instead.
+ */
+function withMeta(message: string, meta?: Record<string, unknown>): string {
+  if (!meta || Object.keys(meta).length === 0) return message;
+  try {
+    return `${message} ${JSON.stringify(meta)}`;
+  } catch {
+    return message;
+  }
+}
+
 export function setApiLogger(apiLogger: ExternalApiLogger): void {
   const defaultLogger = createSubsystemLogger("plugins");
   backendLogger = {
     trace: (msg, meta) =>
       apiLogger.trace
-        ? apiLogger.trace(msg, meta)
+        ? apiLogger.trace(withMeta(msg, meta))
         : defaultLogger.trace(msg, meta),
     debug: (msg, meta) =>
       apiLogger.debug
-        ? apiLogger.debug(msg, meta)
+        ? apiLogger.debug(withMeta(msg, meta))
         : defaultLogger.debug(msg, meta),
     info: (msg, meta) =>
       apiLogger.info
-        ? apiLogger.info(msg, meta)
+        ? apiLogger.info(withMeta(msg, meta))
         : defaultLogger.info(msg, meta),
     warn: (msg, meta) =>
       apiLogger.warn
-        ? apiLogger.warn(msg, meta)
+        ? apiLogger.warn(withMeta(msg, meta))
         : defaultLogger.warn(msg, meta),
   };
 }

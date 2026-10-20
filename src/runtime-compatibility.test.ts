@@ -42,8 +42,11 @@ describe("OpenClaw runtime compatibility", () => {
       logger.info("testing info log", { testKey: "testVal" });
       expect(logs).toHaveLength(1);
       expect(logs[0]!.level).toBe("info");
-      expect(logs[0]!.msg).toBe(`${LOG_PREFIX} testing info log`);
-      expect(logs[0]!.meta).toEqual({ testKey: "testVal" });
+      // OpenClaw's plugin logger takes one string, so structured fields ride in the message.
+      expect(logs[0]!.msg).toBe(
+        `${LOG_PREFIX} testing info log {"testKey":"testVal"}`,
+      );
+      expect(logs[0]!.meta).toBeUndefined();
 
       // Does not duplicate prefix if already prefixed
       logger.warn(`${LOG_PREFIX} already prefixed`);
