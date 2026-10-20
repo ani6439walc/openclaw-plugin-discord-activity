@@ -528,6 +528,16 @@ export function createHookHandlers(deps: HookDeps) {
     return replacement;
   }
 
+  /**
+   * Inbound DM messages are addressed to the user id, while the status card lives in the DM
+   * channel resolved when it was sent. Once a card exists, keep the channel it was created in so
+   * edits and deletes still reach it.
+   */
+  function adoptInboundChannel(session: SessionEntry, actualChannelId: string) {
+    if (session.statusMessageId !== undefined) return;
+    session.channelId = actualChannelId;
+  }
+
   function shouldSkipSession(
     ctx: { sessionKey?: string },
     hookName: string,
@@ -700,7 +710,7 @@ export function createHookHandlers(deps: HookDeps) {
           }
           activeSession.activeRunIds.add(ctx.runId);
         }
-        activeSession.channelId = actualChannelId;
+        adoptInboundChannel(activeSession, actualChannelId);
         activeSession.userMessageId = event.messageId;
         activeSession.senderId = extractSenderId(event.metadata);
         activeSession.accountId = ctx.accountId;
@@ -751,7 +761,7 @@ export function createHookHandlers(deps: HookDeps) {
         return;
       }
 
-      activeSession.channelId = actualChannelId;
+      adoptInboundChannel(activeSession, actualChannelId);
       activeSession.userMessageId = event.messageId;
       activeSession.senderId = extractSenderId(event.metadata);
       activeSession.accountId = ctx.accountId;

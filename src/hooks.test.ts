@@ -662,6 +662,68 @@ describe("createHookHandlers", () => {
       expect(activeSession?.finalized).toBe(true);
     });
 
+    it("keeps editing and deleting the DM status card after a steer message", async () => {
+      vi.useFakeTimers();
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      const runId = "run_dm";
+
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, accountId: "default", runId },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_1", toolName: "bash", params: {}, runId },
+        { sessionKey, runId, toolName: "bash", toolCallId: "call_1" },
+      );
+      await flushPromises();
+
+      const activeSession = store.sessions.get("discord:direct:123");
+      expect(activeSession?.statusMessageId).toBe("status_1");
+      expect(activeSession?.channelId).toBe("dm_channel_123");
+
+      // A steer in a DM arrives addressed to the user, not the DM channel.
+      await handlers.onMessageReceived(
+        {
+          messageId: "user_msg_2",
+          content: "also dispatch gate",
+          metadata: { to: "user:123" },
+        },
+        { channelId: "discord", sessionKey, accountId: "default", runId },
+      );
+      await handlers.onBeforeToolCall(
+        { toolCallId: "call_2", toolName: "read", params: {}, runId },
+        { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
+      );
+      await flushPromises();
+
+      expect(activeSession?.channelId).toBe("dm_channel_123");
+      expect(activeSession?.toolHistory.map((entry) => entry.toolName)).toEqual(
+        ["bash", "steer", "read"],
+      );
+
+      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+      await vi.advanceTimersByTimeAsync(1500);
+      await flushPromises();
+
+      expect(countCalls(fetchMock, "PATCH", /\/channels\/123\//)).toBe(0);
+      expect(countCalls(fetchMock, "DELETE", /\/channels\/123\//)).toBe(0);
+      expect(
+        countCalls(
+          fetchMock,
+          "PATCH",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBeGreaterThan(0);
+      expect(
+        countCalls(
+          fetchMock,
+          "DELETE",
+          /\/channels\/dm_channel_123\/messages\/status_1$/,
+        ),
+      ).toBe(1);
+    });
+
     it("preserves active card on media-only inbound messages (image attachment steer) during an ongoing run", async () => {
       const fetchMock = createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";
