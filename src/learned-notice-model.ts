@@ -10,7 +10,8 @@ type AgentConfigReader = (
  * explicit utility model of the agent (`agents.entries.<id>.utilityModel`, then
  * `agents.defaults.utilityModel`). An empty utility model disables utility routing and an unset
  * one means core's automatic choice, which plugins cannot resolve; both return undefined so the
- * host uses the agent's default model.
+ * host picks the model. The completion is not bound to the notice's agent, so that is the host's
+ * default model (its ambient owner agent), not necessarily the notice agent's own default.
  */
 export function resolveLearnedNoticeModel(params: {
   configured?: string;

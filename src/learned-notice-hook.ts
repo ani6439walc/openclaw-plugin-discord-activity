@@ -59,7 +59,7 @@ export type LearnedNoticeDeps = {
   /** Agent id encoded in a session key, or undefined when it has none. */
   resolveAgentId: (sessionKey: string) => string | undefined;
   complete: LearnedNoticeCompletion;
-  /** Model ref for the rewrite of an agent's notice; undefined uses the host's default model. */
+  /** Model ref for the rewrite of an agent's notice; undefined lets the host choose its default. */
   resolveModel?: (agentId: string | undefined) => string | undefined;
   /** Appended to the system prompt, e.g. the language of the message. */
   promptAppend?: string;
