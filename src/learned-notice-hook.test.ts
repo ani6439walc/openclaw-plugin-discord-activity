@@ -36,7 +36,7 @@ describe("createLearnedNoticeHandler", () => {
       resolveAgentDir: () => agentDir,
       resolveAgentId: (sessionKey) => sessionKey.split(":")[1],
       complete,
-      model,
+      resolveModel: model ? () => model : undefined,
       promptAppend,
       now: () => NOW,
     });
@@ -118,6 +118,40 @@ describe("createLearnedNoticeHandler", () => {
     expect(params.systemPrompt).toBe(
       `${buildSystemPrompt()}\n\nWrite in Traditional Chinese.`,
     );
+  });
+
+  it("resolves the model for the notice's agent", async () => {
+    complete.mockResolvedValue({ text: "`alpha` changed." });
+    const resolveModel = vi.fn(() => "bifrost/gpt-6-luna");
+    await createLearnedNoticeHandler({
+      resolveAgentDir: () => agentDir,
+      resolveAgentId: (sessionKey) => sessionKey.split(":")[1],
+      complete,
+      resolveModel,
+      now: () => NOW,
+    })(
+      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
+      discordCtx,
+    );
+    expect(resolveModel).toHaveBeenCalledWith("main");
+    expect(complete.mock.calls[0]![0].model).toBe("bifrost/gpt-6-luna");
+  });
+
+  it("sends the original notice when resolving the model throws", async () => {
+    const result = await createLearnedNoticeHandler({
+      resolveAgentDir: () => agentDir,
+      resolveAgentId: (sessionKey) => sessionKey.split(":")[1],
+      complete,
+      resolveModel: () => {
+        throw new Error("bad config");
+      },
+      now: () => NOW,
+    })(
+      { to: "channel:123", content: notice("updated `alpha` (tweak)") },
+      discordCtx,
+    );
+    expect(result).toBeUndefined();
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it.each([

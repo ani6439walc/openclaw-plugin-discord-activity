@@ -50,7 +50,7 @@
           "model": {
             "type": "string",
             "minLength": 1,
-            "description": "Model ref (provider/model) that writes the learned-skill notice; omit to use the default agent model. Requires plugins.entries.discord-activity.llm.allowModelOverride"
+            "description": "Model ref (provider/model) that writes the learned-skill notice; omit to fall back to the agent's explicit utilityModel, then the default agent model. A resolved model requires plugins.entries.discord-activity.llm.allowModelOverride"
           },
           "promptAppend": {
             "type": "string",
