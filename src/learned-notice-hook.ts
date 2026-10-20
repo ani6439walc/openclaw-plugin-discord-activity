@@ -37,7 +37,7 @@ Original notice: 💾 Learned: updated \`deploy-staging\` (tightened the rollbac
 Example output:
 🔧 Updated \`deploy-staging\` to check that the image tag matches the release before deploying. Say "undo" if you want the old version back.`;
 
-/** Base instructions plus operator-supplied text such as the language and tone. */
+/** Base instructions plus operator-supplied text such as the message language. */
 export function buildSystemPrompt(extra?: string): string {
   const appended = extra?.trim();
   return appended ? `${BASE_SYSTEM_PROMPT}\n\n${appended}` : BASE_SYSTEM_PROMPT;
@@ -61,7 +61,7 @@ export type LearnedNoticeDeps = {
   complete: LearnedNoticeCompletion;
   /** Model ref for the rewrite of an agent's notice; undefined uses the host's default model. */
   resolveModel?: (agentId: string | undefined) => string | undefined;
-  /** Appended to the system prompt, e.g. the language and tone of the message. */
+  /** Appended to the system prompt, e.g. the language of the message. */
   promptAppend?: string;
   now?: () => number;
 };
