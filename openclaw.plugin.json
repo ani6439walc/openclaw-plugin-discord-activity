@@ -52,6 +52,21 @@
             "minLength": 1,
             "description": "Model ref (provider/model) that writes the learned-skill notice; omit to fall back to the notice agent's explicit utilityModel, then the host's default model (not necessarily the notice agent's own). A resolved model requires plugins.entries.discord-activity.llm.allowModelOverride"
           },
+          "thinking": {
+            "type": "string",
+            "enum": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "adaptive",
+              "max",
+              "ultra"
+            ],
+            "description": "Thinking level for the notice rewrite; omit to send none so the host and model decide. A level the selected model does not support makes the call fail, and the original notice is sent"
+          },
           "promptAppend": {
             "type": "string",
             "minLength": 1,

@@ -1,4 +1,5 @@
 import { logger } from "../api.js";
+import type { ThinkingLevel } from "./config.js";
 import { parseLearnedNotice, type LearnedChange } from "./learned-notice.js";
 import { loadSkillDiff } from "./learned-notice-diff.js";
 import type { MessageContext, MessageSendingEvent } from "./types.js";
@@ -45,6 +46,7 @@ export function buildSystemPrompt(extra?: string): string {
 
 export type LearnedNoticeCompletion = (params: {
   model?: string;
+  reasoning?: ThinkingLevel;
   messages: [{ role: "user"; content: string }];
   systemPrompt: string;
   purpose: string;
@@ -61,6 +63,8 @@ export type LearnedNoticeDeps = {
   complete: LearnedNoticeCompletion;
   /** Model ref for the rewrite of an agent's notice; undefined lets the host choose its default. */
   resolveModel?: (agentId: string | undefined) => string | undefined;
+  /** Thinking level for the rewrite; undefined sends none, so the host and model decide. */
+  thinking?: ThinkingLevel;
   /** Appended to the system prompt, e.g. the language of the message. */
   promptAppend?: string;
   now?: () => number;
@@ -199,6 +203,7 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
       const model = deps.resolveModel?.(agentId);
       const result = await deps.complete({
         ...(model ? { model } : {}),
+        ...(deps.thinking ? { reasoning: deps.thinking } : {}),
         messages: [
           { role: "user", content: buildPrompt(event.content, diffs) },
         ],

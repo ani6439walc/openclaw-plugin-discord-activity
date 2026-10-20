@@ -22,6 +22,21 @@ const DEFAULT_CONFIG = {
 
 const OptionalText = z.string().trim().min(1).optional().catch(undefined);
 
+/** OpenClaw's canonical thinking levels; the host maps each to what the selected model supports. */
+export const THINKING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "adaptive",
+  "max",
+  "ultra",
+] as const;
+
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
 const DiscordActivityConfigSchema = z
   .object({
     maxToolHistoryLength: z
@@ -51,6 +66,7 @@ const DiscordActivityConfigSchema = z
       .object({
         model: OptionalText,
         promptAppend: OptionalText,
+        thinking: z.enum(THINKING_LEVELS).optional().catch(undefined),
       })
       .optional()
       .catch(undefined),

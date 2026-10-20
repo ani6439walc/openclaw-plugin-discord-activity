@@ -5,6 +5,7 @@ import {
   DEFAULT_MAX_TOOL_HISTORY_LENGTH,
   DEFAULT_ORPHAN_TTL_SECONDS,
   resolveConfig,
+  THINKING_LEVELS,
 } from "./config.js";
 
 const DEFAULT_CONFIG = {
@@ -126,6 +127,21 @@ describe("resolveConfig", () => {
       },
     });
     expect(resolveConfig({}).skillLearnedNotice).toBeUndefined();
+  });
+
+  it("accepts each thinking level and drops anything else", () => {
+    for (const level of THINKING_LEVELS) {
+      expect(
+        resolveConfig({ skillLearnedNotice: { thinking: level } }),
+      ).toEqual({ ...DEFAULT_CONFIG, skillLearnedNotice: { thinking: level } });
+    }
+    for (const bad of ["Low", "extreme", "", 3, null]) {
+      expect(
+        resolveConfig({
+          skillLearnedNotice: { thinking: bad, model: "bifrost/gpt-6-luna" },
+        }).skillLearnedNotice,
+      ).toEqual({ model: "bifrost/gpt-6-luna" });
+    }
   });
 
   it("drops invalid skillLearnedNotice fields one by one", () => {

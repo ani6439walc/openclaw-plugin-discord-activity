@@ -57,6 +57,7 @@ export default definePluginEntry({
             agentId,
             resolveAgentConfig,
           }),
+        thinking: config.skillLearnedNotice?.thinking,
         promptAppend: config.skillLearnedNotice?.promptAppend,
       }),
       { timeoutMs: LEARNED_NOTICE_HOOK_TIMEOUT_MS },
