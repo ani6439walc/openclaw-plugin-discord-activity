@@ -465,6 +465,11 @@ export async function updateStatusMessage(
         replyToId,
         createNonce,
       );
+      if (result.outcome === "applied" && result.channelId) {
+        // An inbound message during the POST may have rewritten channelId (DMs arrive addressed
+        // to the user id); the card lives where it was actually posted.
+        session.channelId = result.channelId;
+      }
 
       if (!isExpectedCurrentSession()) {
         if (result.outcome === "applied" && result.messageId) {

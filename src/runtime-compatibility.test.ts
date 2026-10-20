@@ -42,8 +42,32 @@ describe("OpenClaw runtime compatibility", () => {
       logger.info("testing info log", { testKey: "testVal" });
       expect(logs).toHaveLength(1);
       expect(logs[0]!.level).toBe("info");
-      expect(logs[0]!.msg).toBe(`${LOG_PREFIX} testing info log`);
-      expect(logs[0]!.meta).toEqual({ testKey: "testVal" });
+      // OpenClaw's plugin logger takes one string, so structured fields ride in the message.
+      expect(logs[0]!.msg).toBe(
+        `${LOG_PREFIX} testing info log {"testKey":"testVal"}`,
+      );
+      expect(logs[0]!.meta).toBeUndefined();
+
+      // Fields that cannot be serialized never break logging.
+      const circular: Record<string, unknown> = {};
+      circular.self = circular;
+      logger.warn("circular fields", circular);
+      expect(logs.at(-1)!.msg).toBe(
+        `${LOG_PREFIX} circular fields [unserializable log fields]`,
+      );
+      const hostile = new Proxy(
+        {},
+        {
+          ownKeys() {
+            throw new Error("no keys");
+          },
+        },
+      );
+      logger.warn("hostile fields", hostile);
+      expect(logs.at(-1)!.msg).toBe(
+        `${LOG_PREFIX} hostile fields [unserializable log fields]`,
+      );
+      logs.length = 1;
 
       // Does not duplicate prefix if already prefixed
       logger.warn(`${LOG_PREFIX} already prefixed`);

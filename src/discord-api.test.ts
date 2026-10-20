@@ -31,6 +31,7 @@ describe("sendMessageWithResult", () => {
     ).resolves.toEqual({
       outcome: "applied",
       messageId: "status_1",
+      channelId: "channel_1",
       status: 200,
       reason: "created",
     });
