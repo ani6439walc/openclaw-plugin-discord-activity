@@ -20,6 +20,8 @@ const DEFAULT_CONFIG = {
   replyMode: "all" as const,
 };
 
+const OptionalText = z.string().trim().min(1).optional().catch(undefined);
+
 const DiscordActivityConfigSchema = z
   .object({
     maxToolHistoryLength: z
@@ -45,6 +47,13 @@ const DiscordActivityConfigSchema = z
       .positive()
       .catch(DEFAULT_MAX_DISPLAY_SECONDS),
     replyMode: z.enum(["all", "direct"]).catch(DEFAULT_CONFIG.replyMode),
+    skillLearnedNotice: z
+      .object({
+        model: OptionalText,
+        promptAppend: OptionalText,
+      })
+      .optional()
+      .catch(undefined),
   })
   .catch(DEFAULT_CONFIG);
 

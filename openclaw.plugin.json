@@ -41,6 +41,23 @@
         "enum": ["all", "direct"],
         "default": "all",
         "description": "Whether status messages reply to all source messages when available or only in canonical private-message sessions; channel and group statuses remain standalone"
+      },
+      "skillLearnedNotice": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Summary settings for the rewritten background skill-review notice",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Model ref (provider/model) used to summarize learned-skill changes; omit to use the default agent model. Requires plugins.entries.discord-activity.llm.allowModelOverride"
+          },
+          "promptAppend": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Extra instructions appended to the summary system prompt, for example the language or tone of the summary"
+          }
+        }
       }
     }
   }
