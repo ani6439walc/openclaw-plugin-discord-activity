@@ -3058,7 +3058,8 @@ describe("createHookHandlers", () => {
       ).not.toHaveProperty("domain");
       const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
       expect(plainContent).toContain("💡 skill-harness ▾ ✔");
-      expect(plainContent).toContain("result: 1 skill selected: weather (.95)");
+      expect(plainContent).toContain("    ⊹ 1 skill selected: weather (.95)");
+      expect(plainContent).not.toContain("result:");
       expect(plainContent).not.toContain("keywords");
       expect(plainContent).not.toContain("domain");
       expect(plainContent).not.toContain("topic");
@@ -3116,7 +3117,8 @@ describe("createHookHandlers", () => {
       const rendered =
         store.sessions.get("discord:direct:123")?.lastRenderedContent;
       expect(stripAnsi(rendered ?? "")).toContain("💡 skill-harness ▾ ✘");
-      expect(stripAnsi(rendered ?? "")).toContain("error: classifier crashed");
+      expect(stripAnsi(rendered ?? "")).toContain("    ⊹ classifier crashed");
+      expect(rendered).toContain("\u001b[31mclassifier crashed\u001b[0m");
       expect(rendered?.match(/classifier crashed/g)).toHaveLength(1);
     });
 

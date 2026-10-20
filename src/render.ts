@@ -219,17 +219,6 @@ function createEntryFieldNodes(
   return nodes;
 }
 
-function createNestedToolNode(entry: ToolEntry, prefix: string): StatusNode {
-  const strippedName = sanitizeHeaderToken(
-    getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
-  );
-  return {
-    text: `${ansiSpan(ANSI.cyan, strippedName)} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${formatHeaderDuration(entry)}`,
-    continuationLines: [],
-    children: createEntryFieldNodes(entry),
-  };
-}
-
 export const SUBAGENT_GROUP_NAMES = [
   "skill-harness",
   "hindsight-memory",
@@ -395,6 +384,78 @@ function findLastEntry(
   }
 }
 
+const GROUP_INDENT = "    ";
+const GROUP_MARK = "⊹";
+/** The header's ←/✔/✘ already states these, so their values are shown without the key. */
+const UNLABELED_GROUP_KEYS = new Set(["status", "result", "error"]);
+
+/**
+ * skill-harness and hindsight-memory rows: no tree connectors, a ⊹ mark, and one color per
+ * line (blue, or red for errors) so they read apart from ordinary tool parameters.
+ */
+function renderGroupFieldRow(
+  row: readonly DisplayField[],
+  indent = GROUP_INDENT,
+): string[] {
+  const style = row.some((field) => field.key === "error")
+    ? ANSI.red
+    : ANSI.blue;
+  const label = (field: DisplayField) =>
+    UNLABELED_GROUP_KEYS.has(field.key) ? "" : `${field.key}: `;
+  const multiline =
+    row.length === 1 && row[0].multilineLines ? row[0] : undefined;
+  if (multiline?.multilineLines) {
+    const [first = "", ...rest] = multiline.multilineLines;
+    const lines = [
+      `${indent}${ansiSpan(style, `${GROUP_MARK} ${label(multiline)}${first}`)}`,
+      ...rest.map((line) => `${indent}  ${ansiSpan(style, line)}`),
+    ];
+    if (multiline.omittedHint) {
+      lines[lines.length - 1] += ansiSpan(
+        ANSI.lightGray,
+        multiline.omittedHint,
+      );
+    }
+    return lines;
+  }
+  const text = row
+    .map(
+      (field) =>
+        `${ansiSpan(style, `${label(field)}${field.value}`)}${
+          field.omittedHint ? ansiSpan(ANSI.lightGray, field.omittedHint) : ""
+        }`,
+    )
+    .join(ansiSpan(style, " · "));
+  return [`${indent}${ansiSpan(style, `${GROUP_MARK} `)}${text}`];
+}
+
+function renderGroupFields(
+  fields: readonly DisplayField[],
+  indent = GROUP_INDENT,
+): string[] {
+  return packMainFields(fields).flatMap((row) =>
+    renderGroupFieldRow(row, indent),
+  );
+}
+
+function renderGroupNestedTool(entry: ToolEntry, prefix: string): string[] {
+  const name = sanitizeHeaderToken(
+    getDisplayToolName(entry.toolName.slice(prefix.length + 1)),
+  );
+  const fields = formatDisplayFields(entry.params);
+  if (
+    entry.status === "error" &&
+    entry.error &&
+    entry.params?.error !== entry.error
+  ) {
+    fields.push(...formatDisplayFields({ error: entry.error }));
+  }
+  return [
+    `${GROUP_INDENT}${ansiSpan(ANSI.blue, `${GROUP_MARK} ${name}`)} ${ansiSpan(getStatusStyle(entry.status), getSubSuffix(entry.status))}${formatHeaderDuration(entry)}`,
+    ...renderGroupFields(fields, `${GROUP_INDENT}  `),
+  ];
+}
+
 function renderSubagentGroup(
   icon: string,
   prefix: InternalGroupName,
@@ -432,36 +493,31 @@ function renderSubagentGroup(
     (entry) =>
       entry.toolName === prefix && entry.status === "error" && entry.error,
   );
-  const nodes = displayedTools.map((entry) =>
-    createNestedToolNode(entry, prefix),
+  const bodyLines = displayedTools.flatMap((entry) =>
+    renderGroupNestedTool(entry, prefix),
   );
   for (const resultEntry of resultEntries) {
     const resultFields =
       prefix === "skill-harness"
         ? getSkillHarnessResultFields(resultEntry)
         : formatDisplayFields({ result: resultEntry.params?.text });
-    for (const row of packMainFields(resultFields)) {
-      nodes.push(createFieldNode(row));
-    }
+    bodyLines.push(...renderGroupFields(resultFields));
   }
   if (realEntries.length === 0) {
     for (const entry of group) {
-      const parentFields = formatDisplayFields(entry.params);
-      for (const row of packMainFields(parentFields)) {
-        nodes.push(createFieldNode(row));
-      }
+      bodyLines.push(...renderGroupFields(formatDisplayFields(entry.params)));
     }
   }
   if (
     parentErrorEntry?.error &&
     !displayedTools.some((entry) => entry.error === parentErrorEntry.error) &&
-    !nodes.some((node) => node.text?.includes(parentErrorEntry.error!))
+    !bodyLines.some((line) => line.includes(parentErrorEntry.error!))
   ) {
-    for (const row of packMainFields(
-      formatDisplayFields({ error: parentErrorEntry.error }),
-    )) {
-      nodes.push(createFieldNode(row));
-    }
+    bodyLines.push(
+      ...renderGroupFields(
+        formatDisplayFields({ error: parentErrorEntry.error }),
+      ),
+    );
   }
 
   const parentStatus: ToolEntry["status"] =
@@ -484,7 +540,8 @@ function renderSubagentGroup(
       durationMs: groupDurationMs,
       disclosure: true,
     },
-    children: nodes,
+    children: [],
+    bodyLines,
   };
 }
 
