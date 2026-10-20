@@ -18,7 +18,7 @@ The message you write must include:
 - for created or updated skills, a short description of what the assistant will now do differently, based on the diff; describe the practical effect, not file names or diff mechanics;
 - a closing hint that the person can ask to undo or revert the change.
 
-Keep it to one or two short sentences, in the same order as the original notice. Reply with only the message text: no quotes, no code fences, no preamble.
+Keep it to one or two short sentences, in the same order as the original notice, and write the message exactly once. Reply with only the message text: no quotes, no code fences, no preamble.
 
 Example input:
 Original notice: 💾 Learned: updated \`deploy-staging\` (tightened the rollback step). Say "undo" to revert this skill change.
@@ -68,6 +68,32 @@ function isDiscordMessage(ctx: MessageContext): boolean {
 }
 
 /**
+ * Models occasionally emit the whole message twice. When the reply, ignoring whitespace, is one
+ * block repeated, keep only the first copy; any other text is returned unchanged.
+ */
+export function collapseRepetition(message: string): string {
+  const chars = Array.from(message);
+  const compact = chars.filter((char) => !/\s/.test(char));
+  const length = compact.length;
+  for (let period = 1; period <= length / 2; period++) {
+    if (length % period !== 0) continue;
+    let repeats = true;
+    for (let i = period; i < length && repeats; i++) {
+      repeats = compact[i] === compact[i - period];
+    }
+    if (!repeats) continue;
+    // Cut the original text right after the first block's last non-space character.
+    let seen = 0;
+    for (const [index, char] of chars.entries()) {
+      if (/\s/.test(char)) continue;
+      seen++;
+      if (seen === period) return chars.slice(0, index + 1).join("");
+    }
+  }
+  return message;
+}
+
+/**
  * Accepts the model's message only when it names every changed skill and fits the limit;
  * otherwise returns undefined so the original notice is sent unchanged.
  */
@@ -75,12 +101,14 @@ export function normalizeNoticeReply(
   text: string,
   skillNames: readonly string[],
 ): string | undefined {
-  const message = text
-    .trim()
-    .replace(/^```[a-z]*\n?|\n?```$/g, "")
-    .trim()
-    .replace(/^"([\s\S]*)"$/, "$1")
-    .trim();
+  const message = collapseRepetition(
+    text
+      .trim()
+      .replace(/^```[a-z]*\n?|\n?```$/g, "")
+      .trim()
+      .replace(/^"([\s\S]*)"$/, "$1")
+      .trim(),
+  );
   if (!message || Array.from(message).length > MAX_NOTICE_CHARS) {
     return undefined;
   }
