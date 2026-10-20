@@ -1621,6 +1621,64 @@ describe("renderStatusContent", () => {
     expect(result).toContain("⊹ topic: weight");
   });
 
+  function expectNoBlankOrLeakedDetail(raw: string) {
+    const lines = stripAnsi(raw).split("\n").slice(1, -1);
+    expect(lines.filter((line) => line.trim() === "")).toEqual([]);
+    expect(raw).not.toContain("\u0000");
+    expect(raw).not.toContain("]0;title");
+  }
+
+  const invisibleErrors = [
+    ["an ANSI color only", "\u001b[31m"],
+    ["a NUL", "\u0000"],
+    ["an OSC title escape", "\u001b]0;title\u0007"],
+  ] as const;
+
+  it.each(invisibleErrors)(
+    "keeps a nested phase's details when its error is %s",
+    (_label, error) => {
+      const raw = renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:phase",
+            toolName: "skill-harness:phase",
+            params: { topic: "keep" },
+            status: "error",
+            error,
+          },
+        ],
+        true,
+      );
+      const result = stripAnsi(raw);
+      expect(result).toContain(
+        "💡 skill-harness ▾ ✘\n    ⊹ phase ✘\n      ⊹ topic: keep",
+      );
+      expectNoBlankOrLeakedDetail(raw);
+    },
+  );
+
+  it.each(invisibleErrors)(
+    "keeps a parent-only group's status when its error is %s",
+    (_label, error) => {
+      const raw = renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness",
+            toolName: "skill-harness",
+            params: { status: "selecting skills" },
+            status: "error",
+            error,
+          },
+        ],
+        true,
+      );
+      expect(stripAnsi(raw)).toContain(
+        "💡 skill-harness ▾ ✘\n    ⊹ selecting skills\n```",
+      );
+      expectNoBlankOrLeakedDetail(raw);
+    },
+  );
+
   it("shows errors that display identically only once", () => {
     const result = stripAnsi(
       renderStatusContent(

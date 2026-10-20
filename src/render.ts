@@ -435,11 +435,17 @@ function renderGroupFieldRow(
   return [`${indent}${mark}${text}`];
 }
 
+/** True when a field still shows something after sanitizing (not only control or escape codes). */
+function hasVisibleContent(field: DisplayField): boolean {
+  const text = field.multilineLines?.join("\n") ?? field.value;
+  return sanitizeVisibleText(text).trim() !== "";
+}
+
 function renderGroupFields(
   fields: readonly DisplayField[],
   indent = GROUP_INDENT,
 ): string[] {
-  return packMainFields(fields).flatMap((row) =>
+  return packMainFields(fields.filter(hasVisibleContent)).flatMap((row) =>
     renderGroupFieldRow(row, indent),
   );
 }
@@ -484,15 +490,19 @@ function collectGroupErrorMessages(group: readonly ToolEntry[]): string[] {
   return messages;
 }
 
-/** Red error lines, one per message as displayed, so messages that render alike appear once. */
+/**
+ * Red error lines, one per message as displayed. Messages whose visible text is empty after
+ * sanitizing (control or escape sequences only) are dropped, and messages that display alike
+ * appear once.
+ */
 function renderDistinctErrorLines(messages: readonly string[]): string[] {
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const message of messages) {
     const rendered = renderGroupFields(formatDisplayFields({ error: message }));
-    const key = rendered.join("\n");
-    if (rendered.length === 0 || seen.has(key)) continue;
-    seen.add(key);
+    const visible = sanitizeVisibleText(rendered.join("\n")).trim();
+    if (!visible || seen.has(visible)) continue;
+    seen.add(visible);
     lines.push(...rendered);
   }
   return lines;
