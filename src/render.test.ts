@@ -891,10 +891,10 @@ describe("ANSI internal group contract", () => {
         "    ⊹ memory_search ✔ [100ms]",
         "      ⊹ limit: 5 · query: hello",
         "    ⊹ memory_write ✘",
-        "       permission denied",
+        "        permission denied",
         "    ⊹ first line",
         "      second line",
-        "     parent timeout",
+        "      parent timeout",
       ].join("\n"),
     );
     expect(stripAnsi(result)).not.toMatch(/[├└│]/);
@@ -904,8 +904,8 @@ describe("ANSI internal group contract", () => {
     expect(result).toContain(
       `\n    ⊹ memory_search ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}\n`,
     );
-    expect(result).toContain(`\n       ${RED}permission denied${RESET}`);
-    expect(result).toContain(`\n     ${RED}parent timeout${RESET}`);
+    expect(result).toContain(`\n        ${RED}permission denied${RESET}`);
+    expect(result).toContain(`\n      ${RED}parent timeout${RESET}`);
     // Group details use Discord's default text color: no escape before the mark or the text.
     expect(result).toContain("\n    ⊹ first line\n      second line\n");
     expect(result).toContain("\n      ⊹ limit: 5 · query: hello\n");
@@ -929,7 +929,7 @@ describe("ANSI internal group contract", () => {
       [
         "```ansi",
         `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`,
-        `     ${RED}provider timeout${RESET}`,
+        `      ${RED}provider timeout${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -1113,7 +1113,7 @@ describe("group wall-clock duration", () => {
 
     expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ♻︎ [1.2s]");
     expect(result).toContain(
-      "⊹ qmd-keyword ✘\n       QMD keyword index unavailable",
+      "⊹ qmd-keyword ✘\n        QMD keyword index unavailable",
     );
     expect(result).toContain("qmd-hybrid ✔ [800ms]");
     expect(result).toContain("confidence: 0.92 · intent: git-commit");
@@ -1574,7 +1574,7 @@ describe("renderStatusContent", () => {
 
       expect(result).toContain("💡 skill-harness ▾ ✘");
       // A failed group is just its header and the error text; phases are hidden.
-      expect(result).toContain(`💡 skill-harness ▾ ✘\n     ${error}\n`);
+      expect(result).toContain(`💡 skill-harness ▾ ✘\n      ${error}\n`);
       expect(result).not.toContain(phase);
       expect(result.split(error)).toHaveLength(2);
     },
@@ -1597,8 +1597,8 @@ describe("renderStatusContent", () => {
     );
     expect(result).toContain(
       "💡 skill-harness ▾ ✘\n" +
-        "     checker returned nothing\n" +
-        "     upstream timeout\n",
+        "      checker returned nothing\n" +
+        "      upstream timeout\n",
     );
   });
 
@@ -1644,7 +1644,7 @@ describe("renderStatusContent", () => {
       ),
     );
     expect(result.match(/timeout/g)).toHaveLength(1);
-    expect(result).toContain("💡 skill-harness ▾ ✘\n     timeout\n");
+    expect(result).toContain("💡 skill-harness ▾ ✘\n      timeout\n");
   });
 
   it("keeps the details of a failed group that carries no error text", () => {
@@ -1688,8 +1688,8 @@ describe("renderStatusContent", () => {
 
     expect(result).toContain(
       "💡 skill-harness ▾ ✘\n" +
-        "     topic checker returned no context\n" +
-        "     classifier returned no result\n",
+        "      topic checker returned no context\n" +
+        "      classifier returned no result\n",
     );
     expect(result).not.toContain("topic-triage");
     expect(result).not.toContain("intent-classify");
@@ -1917,7 +1917,7 @@ describe("renderStatusContent", () => {
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🧠 hindsight-memory ▾ ✘");
     expect(stripAnsi(result)).toContain(
-      "🧠 hindsight-memory ▾ ✘\n     timed out after 15000ms",
+      "🧠 hindsight-memory ▾ ✘\n      timed out after 15000ms",
     );
     expect(result).toContain(`${RED}timed out after 15000ms${RESET}`);
   });

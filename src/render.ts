@@ -397,7 +397,7 @@ function paint(style: string | undefined, text: string): string {
 /**
  * skill-harness, hindsight-memory, and main-agent failure rows: no tree connectors, and a ⊹ mark
  * plus text in Discord's default color, so the bold blue header stands above its details. Error
- * rows have no mark: red text indented one column past where the mark would be.
+ * rows have no mark: their red text lines up with the text after a mark.
  */
 function renderGroupFieldRow(
   row: readonly DisplayField[],
@@ -405,8 +405,7 @@ function renderGroupFieldRow(
 ): string[] {
   const isError = row.some((field) => field.key === "error");
   const style = isError ? ANSI.red : undefined;
-  const mark = isError ? " " : `${GROUP_MARK} `;
-  const continuationIndent = isError ? " " : "  ";
+  const mark = isError ? "  " : `${GROUP_MARK} `;
   const label = (field: DisplayField) =>
     UNLABELED_GROUP_KEYS.has(field.key) ? "" : `${field.key}: `;
   const multiline =
@@ -415,9 +414,7 @@ function renderGroupFieldRow(
     const [first = "", ...rest] = multiline.multilineLines;
     const lines = [
       `${indent}${mark}${paint(style, `${label(multiline)}${first}`)}`,
-      ...rest.map(
-        (line) => `${indent}${continuationIndent}${paint(style, line)}`,
-      ),
+      ...rest.map((line) => `${indent}  ${paint(style, line)}`),
     ];
     if (multiline.omittedHint) {
       lines[lines.length - 1] += ansiSpan(
