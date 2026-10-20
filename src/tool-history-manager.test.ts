@@ -190,8 +190,8 @@ describe("ToolHistoryManager", () => {
         status: "pending",
       },
       {
-        toolCallId: "hindsight",
-        toolName: "hindsight",
+        toolCallId: "hindsight-memory",
+        toolName: "hindsight-memory",
         params: {},
         status: "pending",
       },
@@ -207,7 +207,7 @@ describe("ToolHistoryManager", () => {
     expect(history.map((entry) => entry.toolName)).toEqual([
       "skill-harness:memory_search",
       "skill-harness:wiki_search",
-      "hindsight",
+      "hindsight-memory",
     ]);
   });
 });

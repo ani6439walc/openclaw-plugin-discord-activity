@@ -74,7 +74,7 @@ describe("plugin", () => {
       mockApi.agent.events.registerAgentEventSubscription,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "discord-activity:hindsight-pipeline",
+        id: "discord-activity:hindsight-memory-pipeline",
         streams: ["plugin:hindsight-memory"],
         handle: expect.any(Function),
       }),

@@ -1,7 +1,7 @@
 import type { AgentPipelineEvent, ToolEntry } from "./types.js";
 
-export const HINDSIGHT_EVENT_STREAM = "plugin:hindsight-memory";
-export const HINDSIGHT_TOOL = "hindsight";
+export const HINDSIGHT_MEMORY_EVENT_STREAM = "plugin:hindsight-memory";
+export const HINDSIGHT_MEMORY_TOOL = "hindsight-memory";
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -9,13 +9,20 @@ function nonEmptyString(value: unknown): value is string {
 
 // Only project fixed labels and validated counts; never render producer text,
 // queries, bank identifiers, memories, or exception messages in Discord.
-export function parseHindsightRecallEvent(
+export function parseHindsightMemoryRecallEvent(
   event: AgentPipelineEvent,
 ): { sessionKey: string; entry: ToolEntry } | undefined {
-  if (event.stream !== HINDSIGHT_EVENT_STREAM || !nonEmptyString(event.runId))
+  if (
+    event.stream !== HINDSIGHT_MEMORY_EVENT_STREAM ||
+    !nonEmptyString(event.runId)
+  )
     return;
   const data = event.data;
-  if (!data || typeof data !== "object" || data.kind !== "hindsight.recall")
+  if (
+    !data ||
+    typeof data !== "object" ||
+    data.kind !== "hindsight-memory.recall"
+  )
     return;
   if (data.pluginId !== undefined && data.pluginId !== "hindsight-memory")
     return;
@@ -29,8 +36,8 @@ export function parseHindsightRecallEvent(
   if (data.sessionKey !== undefined && data.sessionKey !== sessionKey) return;
 
   const entry: ToolEntry = {
-    toolCallId: `hindsight:${event.runId}:${data.recallId}`,
-    toolName: HINDSIGHT_TOOL,
+    toolCallId: `hindsight-memory:${event.runId}:${data.recallId}`,
+    toolName: HINDSIGHT_MEMORY_TOOL,
     params: {},
     status: "pending",
   };
@@ -81,9 +88,11 @@ export function parseHindsightRecallEvent(
   return { sessionKey, entry };
 }
 
-export function finishPendingHindsightRecalls(history: ToolEntry[]): void {
+export function finishPendingHindsightMemoryRecalls(
+  history: ToolEntry[],
+): void {
   for (const entry of history) {
-    if (entry.toolName !== HINDSIGHT_TOOL || entry.status !== "pending")
+    if (entry.toolName !== HINDSIGHT_MEMORY_TOOL || entry.status !== "pending")
       continue;
     entry.status = "error";
     entry.params = {};

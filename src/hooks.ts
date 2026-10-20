@@ -48,9 +48,9 @@ import {
   updateSkillHarnessEntry,
 } from "./skill-harness-status.js";
 import {
-  finishPendingHindsightRecalls,
-  parseHindsightRecallEvent,
-} from "./hindsight-status.js";
+  finishPendingHindsightMemoryRecalls,
+  parseHindsightMemoryRecallEvent,
+} from "./hindsight-memory-status.js";
 import {
   mergeStatusDisplayStates,
   renderStatusContentWithState,
@@ -1022,7 +1022,7 @@ export function createHookHandlers(deps: HookDeps) {
       session.compactionActive = false;
       finishCompactionEntry(session, "completed");
     }
-    finishPendingHindsightRecalls(session.toolHistory);
+    finishPendingHindsightMemoryRecalls(session.toolHistory);
     finishPendingSkillHarness(session.toolHistory);
     session.finalized = true;
     await updateSessionStatus(session, true);
@@ -1156,7 +1156,7 @@ export function createHookHandlers(deps: HookDeps) {
         });
         return;
       }
-      finishPendingHindsightRecalls(session.toolHistory);
+      finishPendingHindsightMemoryRecalls(session.toolHistory);
       finishPendingSkillHarness(session.toolHistory);
       if (compactionWasActiveAtDispatch) {
         session.compactionActive = false;
@@ -1312,9 +1312,10 @@ export function createHookHandlers(deps: HookDeps) {
     await updateSessionStatus(session, false);
   }
 
-  async function onHindsightPipelineEvent(event: AgentPipelineEvent) {
-    const parsed = parseHindsightRecallEvent(event);
-    if (!parsed || shouldSkipSession(parsed, "hindsight_pipeline")) return;
+  async function onHindsightMemoryPipelineEvent(event: AgentPipelineEvent) {
+    const parsed = parseHindsightMemoryRecallEvent(event);
+    if (!parsed || shouldSkipSession(parsed, "hindsight_memory_pipeline"))
+      return;
     const { sessionKey, entry } = parsed;
     const contextKey = getDiscordContextKey(sessionKey);
     if (!contextKey) return;
@@ -1355,10 +1356,13 @@ export function createHookHandlers(deps: HookDeps) {
         scheduleOverflowRecoveryGrace(contextKey, session, sessionKey);
       }
     } catch (err) {
-      logger.warn("hindsight_pipeline: failed to update activity status.", {
-        sessionKey,
-        error: String(err),
-      });
+      logger.warn(
+        "hindsight_memory_pipeline: failed to update activity status.",
+        {
+          sessionKey,
+          error: String(err),
+        },
+      );
     }
   }
 
@@ -1411,7 +1415,7 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   return Object.freeze({
-    onHindsightPipelineEvent,
+    onHindsightMemoryPipelineEvent,
     onMessageReceived,
     onBeforeToolCall,
     onAfterToolCall,

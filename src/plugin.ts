@@ -8,7 +8,7 @@ import { defaultStore, defaultOrphans } from "./session.js";
 import { createHookHandlers } from "./hooks.js";
 import { resolveConfig } from "./config.js";
 import { SKILL_HARNESS_EVENT_STREAM } from "./skill-harness-status.js";
-import { HINDSIGHT_EVENT_STREAM } from "./hindsight-status.js";
+import { HINDSIGHT_MEMORY_EVENT_STREAM } from "./hindsight-memory-status.js";
 
 export default definePluginEntry({
   id: "discord-activity",
@@ -45,9 +45,9 @@ export default definePluginEntry({
       handle: handlers.onSkillHarnessPipelineEvent,
     });
     api.agent.events.registerAgentEventSubscription({
-      id: "discord-activity:hindsight-pipeline",
-      streams: [HINDSIGHT_EVENT_STREAM],
-      handle: handlers.onHindsightPipelineEvent,
+      id: "discord-activity:hindsight-memory-pipeline",
+      streams: [HINDSIGHT_MEMORY_EVENT_STREAM],
+      handle: handlers.onHindsightMemoryPipelineEvent,
     });
   },
 });

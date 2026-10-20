@@ -18,7 +18,7 @@ export type ToolEntry = {
   error?: string;
 };
 
-export type SubagentToolName = "skill-harness" | "hindsight";
+export type SubagentToolName = "skill-harness" | "hindsight-memory";
 
 export type StatusBlockDisplayLevel = "expanded" | "collapsed" | "removed";
 

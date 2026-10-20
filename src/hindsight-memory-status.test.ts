@@ -4,7 +4,7 @@ import { createHookHandlers } from "./hooks.js";
 import { clearAllSessionTimers } from "./helpers.js";
 import { createOrphanManager } from "./orphans.js";
 import { defaultStore } from "./session.js";
-import { parseHindsightRecallEvent } from "./hindsight-status.js";
+import { parseHindsightMemoryRecallEvent } from "./hindsight-memory-status.js";
 import { getDiscordContextKey } from "./parser.js";
 import type { AgentPipelineEvent } from "./types.js";
 import { deferred, flushPromises } from "../test-helpers.js";
@@ -13,7 +13,7 @@ const sessionKey = "agent:main:discord:channel:123456789012345678";
 const contextKey = getDiscordContextKey(sessionKey)!;
 const ctx = { sessionKey, runId: "run-1", channelId: "discord" };
 
-function recallEvent(
+function hindsightMemoryRecallEvent(
   data: Record<string, unknown> = {},
   envelope: Partial<AgentPipelineEvent> = {},
 ): AgentPipelineEvent {
@@ -22,7 +22,7 @@ function recallEvent(
     sessionKey,
     runId: "run-1",
     data: {
-      kind: "hindsight.recall",
+      kind: "hindsight-memory.recall",
       pluginId: "hindsight-memory",
       recallId: "recall-1",
       state: "started",
@@ -32,7 +32,7 @@ function recallEvent(
   };
 }
 
-describe("Hindsight recall status", () => {
+describe("Hindsight Memory recall status", () => {
   let handlers: ReturnType<typeof createHookHandlers>;
   let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 
@@ -80,12 +80,16 @@ describe("Hindsight recall status", () => {
   }
 
   it("creates progress before tools, edits the same message, and cleans up at agent end", async () => {
-    await handlers.onHindsightPipelineEvent(recallEvent());
-    expect(content()).toContain("🧠 hindsight");
+    await handlers.onHindsightMemoryPipelineEvent(hindsightMemoryRecallEvent());
+    expect(content()).toContain("🧠 hindsight-memory");
     expect(content()).not.toContain("🧠 hindsight-recall");
     expect(content()).toContain("recalling memories");
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({ state: "completed", durationMs: 1240, resultCount: 3 }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        state: "completed",
+        durationMs: 1240,
+        resultCount: 3,
+      }),
     );
     expect(content()).toContain("✔ [1.24s]");
     expect(content()).toContain("3 memories recalled");
@@ -103,9 +107,13 @@ describe("Hindsight recall status", () => {
     ).toBe(true);
   });
 
-  it("renders hindsight before skill-harness when hindsight is first in history", async () => {
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({ state: "completed", durationMs: 1570, resultCount: 8 }),
+  it("renders hindsight-memory before skill-harness when hindsight-memory is first in history", async () => {
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        state: "completed",
+        durationMs: 1570,
+        resultCount: 8,
+      }),
     );
     session().toolHistory.push({
       toolCallId: "skill-harness",
@@ -126,12 +134,12 @@ describe("Hindsight recall status", () => {
       "",
     );
     expect(rendered).toBeDefined();
-    const hsPos = rendered!.indexOf("🧠 hindsight");
+    const hsPos = rendered!.indexOf("🧠 hindsight-memory");
     const shPos = rendered!.indexOf("💡 skill-harness");
     const bashPos = rendered!.indexOf("bash");
     expect(hsPos).toBeLessThan(shPos);
     expect(shPos).toBeLessThan(bashPos);
-    expect(rendered).toContain("🧠 hindsight ▾ ✔ [1.57s]");
+    expect(rendered).toContain("🧠 hindsight-memory ▾ ✔ [1.57s]");
     expect(rendered).toContain("result: 8 memories recalled");
     expect(rendered).toContain("💡 skill-harness ▾ ✔ [2.92s]");
     expect(rendered).toContain("result: no relevant skills");
@@ -158,8 +166,8 @@ describe("Hindsight recall status", () => {
   ])(
     "renders the terminal outcome %j without requiring a start",
     async (data, label, status) => {
-      await handlers.onHindsightPipelineEvent(
-        recallEvent({ ...data, durationMs: 120 }),
+      await handlers.onHindsightMemoryPipelineEvent(
+        hindsightMemoryRecallEvent({ ...data, durationMs: 120 }),
       );
       expect(content()).toContain(label);
       expect(session().toolHistory[0].status).toBe(status);
@@ -169,11 +177,17 @@ describe("Hindsight recall status", () => {
   it.each(["completed", "failed", "cancelled", "skipped"])(
     "does not regress %s on duplicate or late start events",
     async (state) => {
-      const terminal = recallEvent({ state, resultCount: 2, durationMs: 120 });
-      await handlers.onHindsightPipelineEvent(terminal);
+      const terminal = hindsightMemoryRecallEvent({
+        state,
+        resultCount: 2,
+        durationMs: 120,
+      });
+      await handlers.onHindsightMemoryPipelineEvent(terminal);
       const before = structuredClone(session().toolHistory);
-      await handlers.onHindsightPipelineEvent(recallEvent());
-      await handlers.onHindsightPipelineEvent(terminal);
+      await handlers.onHindsightMemoryPipelineEvent(
+        hindsightMemoryRecallEvent(),
+      );
+      await handlers.onHindsightMemoryPipelineEvent(terminal);
       expect(session().toolHistory).toEqual(before);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     },
@@ -181,11 +195,13 @@ describe("Hindsight recall status", () => {
 
   it("keeps concurrent recall invocations separate and completion ordered", async () => {
     await Promise.all([
-      handlers.onHindsightPipelineEvent(recallEvent()),
-      handlers.onHindsightPipelineEvent(recallEvent({ recallId: "recall-2" })),
+      handlers.onHindsightMemoryPipelineEvent(hindsightMemoryRecallEvent()),
+      handlers.onHindsightMemoryPipelineEvent(
+        hindsightMemoryRecallEvent({ recallId: "recall-2" }),
+      ),
     ]);
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
         recallId: "recall-2",
         state: "completed",
         resultCount: 0,
@@ -196,8 +212,12 @@ describe("Hindsight recall status", () => {
       "pending",
       "completed",
     ]);
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({ state: "failed", reason: "timeout", durationMs: 10000 }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        state: "failed",
+        reason: "timeout",
+        durationMs: 10000,
+      }),
     );
     expect(session().toolHistory.map((entry) => entry.status)).toEqual([
       "error",
@@ -206,8 +226,8 @@ describe("Hindsight recall status", () => {
   });
 
   it("never exposes arbitrary producer fields, query text, or error messages", async () => {
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
         state: "failed",
         durationMs: 100,
         reason: "private bank name",
@@ -223,21 +243,24 @@ describe("Hindsight recall status", () => {
   });
 
   it("uses data.sessionKey when the host omits the envelope key", async () => {
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({ sessionKey }, { sessionKey: undefined }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({ sessionKey }, { sessionKey: undefined }),
     );
     expect(content()).toContain("recalling memories");
   });
 
   it("ignores stale runs, internal sessions, and inconsistent routing", async () => {
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({}, { runId: "old-run" }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({}, { runId: "old-run" }),
     );
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({}, { sessionKey: `${sessionKey}:subagent:child` }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent(
+        {},
+        { sessionKey: `${sessionKey}:subagent:child` },
+      ),
     );
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({ sessionKey: "different-owner" }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({ sessionKey: "different-owner" }),
     );
     expect(session().toolHistory).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -246,7 +269,9 @@ describe("Hindsight recall status", () => {
   it.each(["reply", "agent_end"])(
     "ends unobserved recall on %s and ignores late completion",
     async (finalizer) => {
-      await handlers.onHindsightPipelineEvent(recallEvent());
+      await handlers.onHindsightMemoryPipelineEvent(
+        hindsightMemoryRecallEvent(),
+      );
       if (finalizer === "reply") {
         await handlers.onMessageSending(
           { to: "channel:123456789012345678", content: "Reply" },
@@ -261,8 +286,12 @@ describe("Hindsight recall status", () => {
       expect(content()).toContain("recall outcome unavailable");
       const before = structuredClone(session().toolHistory);
       const calls = fetchMock.mock.calls.length;
-      await handlers.onHindsightPipelineEvent(
-        recallEvent({ state: "completed", durationMs: 100, resultCount: 1 }),
+      await handlers.onHindsightMemoryPipelineEvent(
+        hindsightMemoryRecallEvent({
+          state: "completed",
+          durationMs: 100,
+          resultCount: 1,
+        }),
       );
       expect(session().toolHistory).toEqual(before);
       expect(fetchMock).toHaveBeenCalledTimes(calls);
@@ -272,7 +301,9 @@ describe("Hindsight recall status", () => {
   it("preserves the successor generation while the old Discord request is in flight", async () => {
     const response = deferred<Response>();
     fetchMock.mockReturnValueOnce(response.promise);
-    const oldUpdate = handlers.onHindsightPipelineEvent(recallEvent());
+    const oldUpdate = handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent(),
+    );
     await flushPromises();
     const previous = session();
     await handlers.onMessageReceived(
@@ -285,12 +316,16 @@ describe("Hindsight recall status", () => {
     expect(session()).not.toBe(previous);
     response.resolve(Response.json({ id: "old-status" }));
     await oldUpdate;
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({ state: "completed", resultCount: 1, durationMs: 100 }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        state: "completed",
+        resultCount: 1,
+        durationMs: 100,
+      }),
     );
     expect(session().toolHistory).toEqual([]);
-    await handlers.onHindsightPipelineEvent(
-      recallEvent({}, { runId: "run-2" }),
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({}, { runId: "run-2" }),
     );
     expect(session().toolHistory).toHaveLength(1);
     expect(session().toolHistory[0].toolCallId).toContain("run-2");
@@ -302,44 +337,90 @@ describe("Hindsight recall status", () => {
       Response.json({ message: "Forbidden" }, { status: 403 }),
     );
     await expect(
-      handlers.onHindsightPipelineEvent(recallEvent()),
+      handlers.onHindsightMemoryPipelineEvent(hindsightMemoryRecallEvent()),
     ).resolves.toBeUndefined();
     await expect(
-      handlers.onHindsightPipelineEvent(
-        recallEvent({ state: "completed", resultCount: 1, durationMs: 100 }),
+      handlers.onHindsightMemoryPipelineEvent(
+        hindsightMemoryRecallEvent({
+          state: "completed",
+          resultCount: 1,
+          durationMs: 100,
+        }),
       ),
     ).resolves.toBeUndefined();
     expect(session().toolHistory[0].status).toBe("completed");
   });
 });
 
-describe("Hindsight event validation", () => {
+describe("Hindsight Memory event validation", () => {
+  it("uses hindsight-memory identifiers for the parsed activity", () => {
+    expect(
+      parseHindsightMemoryRecallEvent(hindsightMemoryRecallEvent()),
+    ).toMatchObject({
+      sessionKey,
+      entry: {
+        toolCallId: "hindsight-memory:run-1:recall-1",
+        toolName: "hindsight-memory",
+        status: "pending",
+      },
+    });
+  });
+
   it("accepts recall events without optional producer metadata", () => {
     expect(
-      parseHindsightRecallEvent(recallEvent({ pluginId: undefined })),
+      parseHindsightMemoryRecallEvent(
+        hindsightMemoryRecallEvent({ pluginId: undefined }),
+      ),
     ).toBeDefined();
   });
 
   it.each([
-    recallEvent({}, { stream: "other", runId: "run-1" }),
-    recallEvent({}, { stream: "plugin:hindsight", runId: "run-1" }),
-    recallEvent({}, { stream: "hindsight-openclaw.recall", runId: "run-1" }),
-    recallEvent({}, { runId: "" }),
-    recallEvent({ pluginId: "other" }),
-    recallEvent({ pluginId: "hindsight" }),
-    recallEvent({ pluginId: "hindsight-openclaw" }),
-    recallEvent({ kind: "other" }),
-    recallEvent({ recallId: "" }),
-    recallEvent({ recallId: "x\n" }),
-    recallEvent({ state: "unknown" }),
-    recallEvent({ state: "completed", durationMs: -1, resultCount: 0 }),
-    recallEvent({ state: "completed", durationMs: Infinity, resultCount: 0 }),
-    recallEvent({ state: "completed", durationMs: 1, resultCount: NaN }),
-    recallEvent({ state: "completed", durationMs: 1, resultCount: -1 }),
-    recallEvent({ state: "completed", durationMs: 1, resultCount: 1.5 }),
-    recallEvent({ state: "completed", durationMs: 1 }),
-    recallEvent({}, { sessionKey: undefined }),
+    hindsightMemoryRecallEvent({}, { stream: "other", runId: "run-1" }),
+    hindsightMemoryRecallEvent(
+      {},
+      { stream: "plugin:hindsight", runId: "run-1" },
+    ),
+    hindsightMemoryRecallEvent(
+      {},
+      { stream: "hindsight-openclaw.recall", runId: "run-1" },
+    ),
+    hindsightMemoryRecallEvent({}, { runId: "" }),
+    hindsightMemoryRecallEvent({ pluginId: "other" }),
+    hindsightMemoryRecallEvent({ pluginId: "hindsight" }),
+    hindsightMemoryRecallEvent({ pluginId: "hindsight-openclaw" }),
+    hindsightMemoryRecallEvent({ kind: "other" }),
+    hindsightMemoryRecallEvent({ kind: "hindsight.recall" }),
+    hindsightMemoryRecallEvent({ recallId: "" }),
+    hindsightMemoryRecallEvent({ recallId: "x\n" }),
+    hindsightMemoryRecallEvent({ state: "unknown" }),
+    hindsightMemoryRecallEvent({
+      state: "completed",
+      durationMs: -1,
+      resultCount: 0,
+    }),
+    hindsightMemoryRecallEvent({
+      state: "completed",
+      durationMs: Infinity,
+      resultCount: 0,
+    }),
+    hindsightMemoryRecallEvent({
+      state: "completed",
+      durationMs: 1,
+      resultCount: NaN,
+    }),
+    hindsightMemoryRecallEvent({
+      state: "completed",
+      durationMs: 1,
+      resultCount: -1,
+    }),
+    hindsightMemoryRecallEvent({
+      state: "completed",
+      durationMs: 1,
+      resultCount: 1.5,
+    }),
+    hindsightMemoryRecallEvent({ state: "completed", durationMs: 1 }),
+    hindsightMemoryRecallEvent({}, { sessionKey: undefined }),
   ])("ignores malformed events %j", (event) => {
-    expect(parseHindsightRecallEvent(event)).toBeUndefined();
+    expect(parseHindsightMemoryRecallEvent(event)).toBeUndefined();
   });
 });

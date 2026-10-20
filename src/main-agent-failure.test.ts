@@ -39,8 +39,8 @@ describe("main agent failure rendering", () => {
     const result = renderStatusContent(
       [
         entry({
-          toolCallId: "hindsight:mem_1",
-          toolName: "hindsight:memory_search",
+          toolCallId: "hindsight-memory:mem_1",
+          toolName: "hindsight-memory:memory_search",
         }),
         entry({
           toolCallId: "skill-harness:phase_1",
@@ -67,7 +67,7 @@ describe("main agent failure rendering", () => {
     expect(plain).toContain("error: provider timeout");
     expect(plain).toContain("bash ▾ ✘");
     expect(plain).toContain("error: permission denied");
-    expect(result.indexOf("hindsight")).toBeLessThan(
+    expect(result.indexOf("hindsight-memory")).toBeLessThan(
       result.indexOf("skill-harness"),
     );
     expect(result.indexOf("skill-harness")).toBeLessThan(

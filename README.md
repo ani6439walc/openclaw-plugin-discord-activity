@@ -94,23 +94,25 @@ Session and race-safety behavior:
 ### Hindsight automatic recall
 
 The [Hindsight integration fork](https://github.com/ani6439walc/openclaw-plugin-hindsight-memory)
-uses plugin ID `hindsight-memory` and emits `plugin:hindsight-memory` events before
-the model receives its prompt.
+uses plugin ID `hindsight-memory` and emits `plugin:hindsight-memory` events with
+kind `hindsight-memory.recall` before the model receives its prompt. Each recall
+is correlated by `recallId`; Discord Activity subscribes with ID
+`discord-activity:hindsight-memory-pipeline`.
 Discord Activity subscribes automatically; no extra Discord Activity configuration
 is needed. The official Hindsight OpenClaw v0.13.0 does not emit these events.
 Install the fork in place of the official integration as described in its README.
 
-A `hindsight` row shows progress while the integration prepares its client
+A `hindsight-memory` row shows progress while the integration prepares its client
 and retrieves memories, then displays the number of memories injected (or an
 explicit empty result), elapsed time, timeout, cancellation, or failure. The
 duration includes client initialization. Queries, bank IDs, recalled text, and
 raw error messages are never copied from these events into Discord.
 
 ```text
-🧠 hindsight ▾ ←
+🧠 hindsight-memory ▾ ←
 └─ status: recalling memories
 
-🧠 hindsight ▾ ✔ [1.24s]
+🧠 hindsight-memory ▾ ✔ [1.24s]
 └─ result: 3 memories recalled
 ```
 
