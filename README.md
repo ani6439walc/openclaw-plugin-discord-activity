@@ -29,7 +29,7 @@ A simplified live status message looks like this:
 
 ```ansi
 💡 skill-harness ▾ ✔ [450ms]
-    └─ result: 2 skills selected: handoff, hindsight-docs (.92)
+    ⊹ 2 skills selected: handoff, hindsight-docs (.92)
 
 🔍 web_search ▾ ✔ [450ms]
     └─ query: OpenClaw plugin SDK
@@ -50,8 +50,9 @@ Rendering rules to preserve:
 - Normal tools render after `skill-harness` and Hindsight groups.
 - `skill-harness` and Hindsight group order is stable.
 - Each top-level tree connector starts under the second text character after the header emoji and separating space. Nested connectors and multiline continuation text likewise start under the second text character of their parent text.
+- `skill-harness` and Hindsight groups use no tree connectors, so they read apart from ordinary tools. Each detail line starts with `⊹` at the same indent and is one color: blue, or red for errors. The header's `←` / `✔` / `✘` already states progress, so `status`, `result`, and `error` values are shown without their key; any other field keeps `key: value`, and fields on one row stay joined with `·`. Nested phases render as `⊹ phase ✔ [duration]` with their details indented two more spaces, and multiline values continue under the text after `⊹`.
 - A failed main agent renders once as `💥 agent ✘` at the bottom. It occupies one slot in the shared 6-entry budget, has no detail row, and is protected from normal block removal.
-- `skill-harness` renders as a single-row status entry with fixed format (`status` / `result` / `error`). During pipeline execution it renders current phase status and confidence (`(.xx)`), on completion it renders selected skills with confidence, and on failure/interruption it renders error.
+- `skill-harness` renders as a single-row status entry whose value comes from the fixed `status` / `result` / `error` fields. During pipeline execution it renders current phase status and confidence (`(.xx)`), on completion it renders selected skills with confidence, and on failure/interruption it renders error.
 - The `skill-harness` status follows its explicit lifecycle: it remains `←` with live phase status while running and changes to `✔` with selected skills and confidence when `pipeline:completed` arrives. `pipeline:failed` or unobserved completion renders `✘` with error text.
 - Tool-provided durations take precedence. When a completion omits `durationMs`, elapsed time falls back to the first observed `before_tool_call`; duplicate terminal events preserve that value instead of recalculating it.
 - The `skill-harness` group duration comes directly from the producer's terminal parent lifecycle event. Individual phase durations still fall back to locally observed start/completion timing when the event does not provide `durationMs`.
@@ -110,10 +111,10 @@ raw error messages are never copied from these events into Discord.
 
 ```text
 🧠 hindsight-memory ▾ ←
-└─ status: recalling memories
+    ⊹ recalling memories
 
 🧠 hindsight-memory ▾ ✔ [1.24s]
-└─ result: 3 memories recalled
+    ⊹ 3 memories recalled
 ```
 
 Each recall invocation has its own ID, including concurrent invocations that

@@ -676,9 +676,9 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "changed: false · complexity: low · domain: health\n" +
-        '        ├─ keywords: ["weight","clinic"] · reason: same-topic\n' +
-        "        └─ topic: Update corrected weight tracking",
+      "      ⊹ changed: false · complexity: low · domain: health\n" +
+        '      ⊹ keywords: ["weight","clinic"] · reason: same-topic\n' +
+        "      ⊹ topic: Update corrected weight tracking",
     );
   });
 
@@ -702,7 +702,7 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "        └─ complexity: low · intent: update · reason: explicit correction",
+      "      ⊹ complexity: low · intent: update · reason: explicit correction",
     );
   });
 
@@ -888,22 +888,25 @@ describe("ANSI internal group contract", () => {
     expect(stripAnsi(result)).toContain(
       [
         "🧠 hindsight-memory ▾ ♻︎",
-        "    ├─ memory_search ✔ [100ms]",
-        "    │   └─ limit: 5 · query: hello",
-        "    ├─ memory_write ✘",
-        "    │   └─ error: permission denied",
-        "    ├─ result: |",
-        "    │   first line",
-        "    │   second line",
-        "    └─ error: parent timeout",
+        "    ⊹ memory_search ✔ [100ms]",
+        "      ⊹ limit: 5 · query: hello",
+        "    ⊹ memory_write ✘",
+        "      ⊹ permission denied",
+        "    ⊹ first line",
+        "      second line",
+        "    ⊹ parent timeout",
       ].join("\n"),
     );
+    expect(stripAnsi(result)).not.toMatch(/[├└│]/);
     expect(result).toContain(
       `${BOLD_CYAN}🧠 hindsight-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
     expect(result).toContain(
-      `${CYAN}memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,
+      `${BLUE}⊹ memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,
     );
+    expect(result).toContain(`${RED}⊹ ${RESET}${RED}permission denied${RESET}`);
+    expect(result).toContain(`${RED}⊹ ${RESET}${RED}parent timeout${RESET}`);
+    expect(result).toContain(`${BLUE}⊹ first line${RESET}`);
   });
 
   it("renders a main-agent failure with its concrete error", () => {
@@ -1107,8 +1110,9 @@ describe("group wall-clock duration", () => {
     );
 
     expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ♻︎ [1.2s]");
-    expect(result).toContain("qmd-keyword ✘");
-    expect(result).toContain("error: QMD keyword index unavailable");
+    expect(result).toContain(
+      "⊹ qmd-keyword ✘\n      ⊹ QMD keyword index unavailable",
+    );
     expect(result).toContain("qmd-hybrid ✔ [800ms]");
     expect(result).toContain("confidence: 0.92 · intent: git-commit");
     expect(result).toContain("reason: intent-examples-and-keywords");
@@ -1322,9 +1326,9 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain("memory_search");
-    expect(result).toContain("result: 每日早報重跑已觸發");
+    expect(result).toContain("    ⊹ 每日早報重跑已觸發");
     expect(result.indexOf("memory_search")).toBeLessThan(
-      result.indexOf("result: 每日早報重跑已觸發"),
+      result.indexOf("⊹ 每日早報重跑已觸發"),
     );
   });
 
@@ -1342,7 +1346,7 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     const omitted = [...text].length - 70;
     expect(result).toContain(
-      `result: ${[...text].slice(0, 70).join("")}... (+${omitted} chars)`,
+      `    ⊹ ${[...text].slice(0, 70).join("")}... (+${omitted} chars)`,
     );
   });
 
@@ -1376,8 +1380,9 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, true));
 
+    expect(result).toContain("⊹ NONE");
     expect(result.indexOf("memory_search")).toBeLessThan(
-      result.indexOf("result: NONE"),
+      result.indexOf("⊹ NONE"),
     );
     expect(result.indexOf("topic-triage")).toBeLessThan(
       result.indexOf("intent: answer-question"),
@@ -1514,8 +1519,9 @@ describe("renderStatusContent", () => {
     expect(result).not.toContain("memory_search_3");
     expect(result).toContain("memory_search_4");
     expect(result).toContain("memory_search_5");
+    expect(result).toContain("⊹ final result");
     expect(result.indexOf("memory_search_6")).toBeLessThan(
-      result.indexOf("result: final result"),
+      result.indexOf("⊹ final result"),
     );
   });
 
@@ -1563,8 +1569,7 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
 
     expect(result).toContain("💡 skill-harness ▾ ✘");
-    expect(result).toContain(`${phase} ✘`);
-    expect(result).toContain(`error: ${error}`);
+    expect(result).toContain(`⊹ ${phase} ✘\n      ⊹ ${error}`);
     expect(result.split(error)).toHaveLength(2);
   });
 
@@ -1588,10 +1593,12 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, true));
 
-    expect(result).toContain("topic-triage ✘");
-    expect(result).toContain("error: topic checker returned no context");
-    expect(result).toContain("intent-classify ✘");
-    expect(result).toContain("error: classifier returned no result");
+    expect(result).toContain(
+      "⊹ topic-triage ✘\n      ⊹ topic checker returned no context",
+    );
+    expect(result).toContain(
+      "⊹ intent-classify ✘\n      ⊹ classifier returned no result",
+    );
     expect(result.match(/topic checker returned no context/g)).toHaveLength(1);
     expect(result.match(/classifier returned no result/g)).toHaveLength(1);
   });
@@ -1607,7 +1614,8 @@ describe("renderStatusContent", () => {
     ];
     const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain("💡 skill-harness ▾ ✔");
-    expect(result).toContain("result: INTENT:RESEARCH | GOAL: docs");
+    expect(result).toContain("    ⊹ INTENT:RESEARCH | GOAL: docs");
+    expect(result).not.toContain("result:");
   });
 
   it("renders skill-harness JSON object strings containing colons", () => {
@@ -1706,7 +1714,7 @@ describe("renderStatusContent", () => {
     expect(result).not.toContain("keywords: |");
   });
 
-  it("indents multiline phase result under the result key", () => {
+  it("indents multiline phase result under its mark without the result key", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "skill-harness:phase",
@@ -1721,10 +1729,10 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
     expect(result).toContain(
       [
-        "        └─ result: |",
-        "            Intent: memory-recent",
-        "            ",
-        "            Suggested workflow",
+        "    ⊹ instruction-hint-generation ✔",
+        "      ⊹ Intent: memory-recent",
+        "        ",
+        "        Suggested workflow",
       ].join("\n"),
     );
   });
@@ -1747,12 +1755,13 @@ describe("renderStatusContent", () => {
 
     const result = stripAnsi(renderStatusContent(entries, true));
     const orderedFields = [
-      "confidence: 0.9",
-      "basis: |",
-      "reason: |",
-      "topic: |",
-      "result: |",
+      "⊹ confidence: 0.9",
+      "⊹ basis: basis line 1\n        basis line 2",
+      "⊹ reason: reason line 1\n        reason line 2",
+      "⊹ topic: topic line 1\n        topic line 2",
+      "⊹ result line 1\n        result line 2",
     ];
+    for (const field of orderedFields) expect(result).toContain(field);
 
     for (let index = 1; index < orderedFields.length; index += 1) {
       expect(result.indexOf(orderedFields[index - 1])).toBeLessThan(
@@ -1779,10 +1788,13 @@ describe("renderStatusContent", () => {
     ];
 
     const result = stripAnsi(renderStatusContent(entries, true));
-    expect(result).toContain("basis: |");
-    expect(result).toContain("reason: |");
-    expect(result).toContain("result: |");
-    expect(result).toContain("topic: |");
+    expect(result).toContain("    ⊹ basis: basis line 1\n      basis line 2");
+    expect(result).toContain(
+      "    ⊹ reason: reason line 1\n      reason line 2",
+    );
+    expect(result).toContain("    ⊹ result line 1\n      result line 2");
+    expect(result).toContain("    ⊹ topic: topic line 1\n      topic line 2");
+    expect(result).not.toContain("result:");
   });
 
   it("renders hindsight-memory group with error suffix", () => {
@@ -1810,7 +1822,8 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🧠 hindsight-memory ▾ ✘");
-    expect(stripAnsi(result)).toContain("error: timed out after 15000ms");
+    expect(stripAnsi(result)).toContain("    ⊹ timed out after 15000ms");
+    expect(result).toContain(`${RED}timed out after 15000ms${RESET}`);
   });
 
   it("renders mixed normal and hindsight-memory entries", () => {
@@ -1907,10 +1920,14 @@ describe("renderStatusContent", () => {
     const bashPos = result.indexOf("bash");
     expect(hsPos).toBeLessThan(ihPos);
     expect(ihPos).toBeLessThan(bashPos);
-    expect(plain).toContain("🧠 hindsight-memory ▾ ✔ [1.57s]");
-    expect(plain).toContain("result: 8 memories recalled");
-    expect(plain).toContain("💡 skill-harness ▾ ✔ [2.92s]");
-    expect(plain).toContain("result: no relevant skills");
+    expect(plain).toContain(
+      "🧠 hindsight-memory ▾ ✔ [1.57s]\n    ⊹ 8 memories recalled",
+    );
+    expect(plain).toContain(
+      "💡 skill-harness ▾ ✔ [2.92s]\n    ⊹ no relevant skills",
+    );
+    // Ordinary tools keep their tree connectors.
+    expect(plain).toContain("⚙️ bash ▾ ✔\n    └─ command: ls");
   });
 
   it("supports collapsing hindsight-memory as a subagent group via group:hindsight-memory", () => {

@@ -140,9 +140,9 @@ describe("Hindsight Memory recall status", () => {
     expect(hsPos).toBeLessThan(shPos);
     expect(shPos).toBeLessThan(bashPos);
     expect(rendered).toContain("🧠 hindsight-memory ▾ ✔ [1.57s]");
-    expect(rendered).toContain("result: 8 memories recalled");
+    expect(rendered).toContain("    ⊹ 8 memories recalled");
     expect(rendered).toContain("💡 skill-harness ▾ ✔ [2.92s]");
-    expect(rendered).toContain("result: no relevant skills");
+    expect(rendered).toContain("    ⊹ no relevant skills");
   });
 
   it.each([
