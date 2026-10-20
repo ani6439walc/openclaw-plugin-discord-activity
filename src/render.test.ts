@@ -891,22 +891,24 @@ describe("ANSI internal group contract", () => {
         "    ⊹ memory_search ✔ [100ms]",
         "      ⊹ limit: 5 · query: hello",
         "    ⊹ memory_write ✘",
-        "      ⊹ permission denied",
+        "        permission denied",
         "    ⊹ first line",
         "      second line",
-        "    ⊹ parent timeout",
+        "      parent timeout",
       ].join("\n"),
     );
     expect(stripAnsi(result)).not.toMatch(/[├└│]/);
     expect(result).toContain(
-      `${BOLD_CYAN}🧠 hindsight-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+      `${BOLD_BLUE}🧠 hindsight-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
     expect(result).toContain(
-      `${BLUE}⊹ memory_search${RESET} ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}`,
+      `\n    ⊹ memory_search ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}\n`,
     );
-    expect(result).toContain(`${RED}⊹ ${RESET}${RED}permission denied${RESET}`);
-    expect(result).toContain(`${RED}⊹ ${RESET}${RED}parent timeout${RESET}`);
-    expect(result).toContain(`${BLUE}⊹ first line${RESET}`);
+    expect(result).toContain(`\n        ${RED}permission denied${RESET}`);
+    expect(result).toContain(`\n      ${RED}parent timeout${RESET}`);
+    // Group details use Discord's default text color: no escape before the mark or the text.
+    expect(result).toContain("\n    ⊹ first line\n      second line\n");
+    expect(result).toContain("\n      ⊹ limit: 5 · query: hello\n");
   });
 
   it("renders a main-agent failure with its concrete error", () => {
@@ -927,7 +929,7 @@ describe("ANSI internal group contract", () => {
       [
         "```ansi",
         `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`,
-        `    └─ ${RED}error:${RESET} ${GREEN}provider timeout${RESET}`,
+        `      ${RED}provider timeout${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -1111,7 +1113,7 @@ describe("group wall-clock duration", () => {
 
     expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ♻︎ [1.2s]");
     expect(result).toContain(
-      "⊹ qmd-keyword ✘\n      ⊹ QMD keyword index unavailable",
+      "⊹ qmd-keyword ✘\n        QMD keyword index unavailable",
     );
     expect(result).toContain("qmd-hybrid ✔ [800ms]");
     expect(result).toContain("confidence: 0.92 · intent: git-commit");
@@ -1148,7 +1150,7 @@ describe("group wall-clock duration", () => {
       false,
     );
     expect(rawResult).toContain(
-      `${BOLD_CYAN}💡 skill-harness${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+      `${BOLD_BLUE}💡 skill-harness${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
   });
 
@@ -1555,25 +1557,174 @@ describe("renderStatusContent", () => {
     ["topic-triage", "topic checker returned no context"],
     ["intent-classify", "classifier returned no result"],
     ["hint-generate", "instruction writer produced no text"],
-  ])("renders %s failure under its phase exactly once", (phase, error) => {
-    const entries: ToolEntry[] = [
-      {
-        toolCallId: `skill-harness:run-1:${phase}`,
-        toolName: `skill-harness:${phase}`,
-        params: { error },
-        status: "error",
-        error,
-      },
-    ];
+  ])(
+    "renders only the %s failure text once when the group fails",
+    (phase, error) => {
+      const entries: ToolEntry[] = [
+        {
+          toolCallId: `skill-harness:run-1:${phase}`,
+          toolName: `skill-harness:${phase}`,
+          params: { error },
+          status: "error",
+          error,
+        },
+      ];
 
-    const result = stripAnsi(renderStatusContent(entries, true));
+      const result = stripAnsi(renderStatusContent(entries, true));
 
-    expect(result).toContain("💡 skill-harness ▾ ✘");
-    expect(result).toContain(`⊹ ${phase} ✘\n      ⊹ ${error}`);
-    expect(result.split(error)).toHaveLength(2);
+      expect(result).toContain("💡 skill-harness ▾ ✘");
+      // A failed group is just its header and the error text; phases are hidden.
+      expect(result).toContain(`💡 skill-harness ▾ ✘\n      ${error}\n`);
+      expect(result).not.toContain(phase);
+      expect(result.split(error)).toHaveLength(2);
+    },
+  );
+
+  it("shows both error sources of one failed entry when they differ", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:topic-triage",
+            toolName: "skill-harness:topic-triage",
+            params: { error: "checker returned nothing" },
+            status: "error",
+            error: "upstream timeout",
+          },
+        ],
+        true,
+      ),
+    );
+    expect(result).toContain(
+      "💡 skill-harness ▾ ✘\n" +
+        "      checker returned nothing\n" +
+        "      upstream timeout\n",
+    );
   });
 
-  it("keeps multiple skill-harness errors associated with their phases", () => {
+  it("treats whitespace-only errors as no error text and keeps the details", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:topic-triage",
+            toolName: "skill-harness:topic-triage",
+            params: { error: "   ", topic: "weight" },
+            status: "error",
+            error: "  ",
+          },
+        ],
+        true,
+      ),
+    );
+    expect(result).toContain("💡 skill-harness ▾ ✘\n    ⊹ topic-triage ✘");
+    expect(result).toContain("⊹ topic: weight");
+  });
+
+  function expectNoBlankOrLeakedDetail(raw: string) {
+    const lines = stripAnsi(raw).split("\n").slice(1, -1);
+    expect(lines.filter((line) => line.trim() === "")).toEqual([]);
+    expect(raw).not.toContain("\u0000");
+    expect(raw).not.toContain("]0;title");
+  }
+
+  const invisibleErrors = [
+    ["an ANSI color only", "\u001b[31m"],
+    ["a NUL", "\u0000"],
+    ["an OSC title escape", "\u001b]0;title\u0007"],
+  ] as const;
+
+  it.each(invisibleErrors)(
+    "keeps a nested phase's details when its error is %s",
+    (_label, error) => {
+      const raw = renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:phase",
+            toolName: "skill-harness:phase",
+            params: { topic: "keep" },
+            status: "error",
+            error,
+          },
+        ],
+        true,
+      );
+      const result = stripAnsi(raw);
+      expect(result).toContain(
+        "💡 skill-harness ▾ ✘\n    ⊹ phase ✘\n      ⊹ topic: keep",
+      );
+      expectNoBlankOrLeakedDetail(raw);
+    },
+  );
+
+  it.each(invisibleErrors)(
+    "keeps a parent-only group's status when its error is %s",
+    (_label, error) => {
+      const raw = renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness",
+            toolName: "skill-harness",
+            params: { status: "selecting skills" },
+            status: "error",
+            error,
+          },
+        ],
+        true,
+      );
+      expect(stripAnsi(raw)).toContain(
+        "💡 skill-harness ▾ ✘\n    ⊹ selecting skills\n```",
+      );
+      expectNoBlankOrLeakedDetail(raw);
+    },
+  );
+
+  it("shows errors that display identically only once", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:a",
+            toolName: "skill-harness:a",
+            params: {},
+            status: "error",
+            error: "timeout",
+          },
+          {
+            toolCallId: "skill-harness:b",
+            toolName: "skill-harness:b",
+            params: {},
+            status: "error",
+            error: "timeout ",
+          },
+        ],
+        true,
+      ),
+    );
+    expect(result.match(/timeout/g)).toHaveLength(1);
+    expect(result).toContain("💡 skill-harness ▾ ✘\n      timeout\n");
+  });
+
+  it("keeps the details of a failed group that carries no error text", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          {
+            toolCallId: "skill-harness:topic-triage",
+            toolName: "skill-harness:topic-triage",
+            params: { topic: "weight" },
+            status: "error",
+          },
+        ],
+        true,
+      ),
+    );
+    expect(result).toContain(
+      "💡 skill-harness ▾ ✘\n    ⊹ topic-triage ✘\n      ⊹ topic: weight",
+    );
+  });
+
+  it("lists each error once, in order, when several skill-harness phases fail", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "skill-harness:run-1:topic-triage",
@@ -1594,11 +1745,12 @@ describe("renderStatusContent", () => {
     const result = stripAnsi(renderStatusContent(entries, true));
 
     expect(result).toContain(
-      "⊹ topic-triage ✘\n      ⊹ topic checker returned no context",
+      "💡 skill-harness ▾ ✘\n" +
+        "      topic checker returned no context\n" +
+        "      classifier returned no result\n",
     );
-    expect(result).toContain(
-      "⊹ intent-classify ✘\n      ⊹ classifier returned no result",
-    );
+    expect(result).not.toContain("topic-triage");
+    expect(result).not.toContain("intent-classify");
     expect(result.match(/topic checker returned no context/g)).toHaveLength(1);
     expect(result.match(/classifier returned no result/g)).toHaveLength(1);
   });
@@ -1822,7 +1974,9 @@ describe("renderStatusContent", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🧠 hindsight-memory ▾ ✘");
-    expect(stripAnsi(result)).toContain("    ⊹ timed out after 15000ms");
+    expect(stripAnsi(result)).toContain(
+      "🧠 hindsight-memory ▾ ✘\n      timed out after 15000ms",
+    );
     expect(result).toContain(`${RED}timed out after 15000ms${RESET}`);
   });
 
