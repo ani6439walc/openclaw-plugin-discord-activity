@@ -64,7 +64,7 @@ describe("main agent failure rendering", () => {
 
     const plain = stripAnsi(result);
     expect(plain).toContain("💥 agent ✘");
-    expect(plain).toContain("💥 agent ✘\n      provider timeout");
+    expect(plain).toContain("💥 agent ✘\n    ⊹ provider timeout");
     expect(plain).toContain("bash ▾ ✘");
     expect(plain).toContain("error: permission denied");
     expect(result.indexOf("hindsight-memory")).toBeLessThan(
@@ -151,7 +151,7 @@ describe("main agent failure rendering", () => {
     );
     const plainContent = stripAnsi(session?.lastRenderedContent ?? "");
     expect(plainContent).toContain("💥 agent ✘");
-    expect(plainContent).toContain("💥 agent ✘\n      provider timeout");
+    expect(plainContent).toContain("💥 agent ✘\n    ⊹ provider timeout");
     expect(session?.clearTimer).toBeDefined();
   });
   it("shows a failure that was recorded but absent from the finalized render", async () => {
@@ -197,7 +197,7 @@ describe("main agent failure rendering", () => {
     );
 
     expect(stripAnsi(session.lastRenderedContent ?? "")).toContain(
-      "💥 agent ✘\n      provider timeout",
+      "💥 agent ✘\n    ⊹ provider timeout",
     );
     expect(
       fetchMock.mock.calls.filter(

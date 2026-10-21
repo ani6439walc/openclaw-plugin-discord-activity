@@ -65,7 +65,10 @@ function getGroupDurationMs(
   group: readonly ToolEntry[],
   prefix: string,
 ): number | undefined {
-  const parentEntry = group.find((entry) => entry.toolName === prefix);
+  const parentEntry = findLastEntry(
+    group,
+    (entry) => entry.toolName === prefix,
+  );
   const authoritativeParent = getAuthoritativeGroupParent(prefix, parentEntry);
   if (authoritativeParent) {
     return authoritativeParent.status === "pending"
@@ -397,7 +400,7 @@ function paint(style: string | undefined, text: string): string {
 /**
  * skill-harness, hindsight-memory, and main-agent failure rows: no tree connectors, and a ⊹ mark
  * plus text in Discord's default color, so the bold blue header stands above its details. Error
- * rows have no mark: their red text lines up with the text after a mark.
+ * rows use the same mark and alignment, with both the mark and text in red.
  */
 function renderGroupFieldRow(
   row: readonly DisplayField[],
@@ -405,7 +408,7 @@ function renderGroupFieldRow(
 ): string[] {
   const isError = row.some((field) => field.key === "error");
   const style = isError ? ANSI.red : undefined;
-  const mark = isError ? "  " : `${GROUP_MARK} `;
+  const mark = `${GROUP_MARK} `;
   const label = (field: DisplayField) =>
     UNLABELED_GROUP_KEYS.has(field.key) ? "" : `${field.key}: `;
   const multiline =
@@ -413,7 +416,7 @@ function renderGroupFieldRow(
   if (multiline?.multilineLines) {
     const [first = "", ...rest] = multiline.multilineLines;
     const lines = [
-      `${indent}${mark}${paint(style, `${label(multiline)}${first}`)}`,
+      `${indent}${paint(style, `${mark}${label(multiline)}${first}`)}`,
       ...rest.map((line) => `${indent}  ${paint(style, line)}`),
     ];
     if (multiline.omittedHint) {
@@ -426,13 +429,13 @@ function renderGroupFieldRow(
   }
   const text = row
     .map(
-      (field) =>
-        `${paint(style, `${label(field)}${field.value}`)}${
+      (field, index) =>
+        `${paint(style, `${index === 0 ? mark : ""}${label(field)}${field.value}`)}${
           field.omittedHint ? ansiSpan(ANSI.lightGray, field.omittedHint) : ""
         }`,
     )
     .join(paint(style, " · "));
-  return [`${indent}${mark}${text}`];
+  return [`${indent}${text}`];
 }
 
 /** True when a field still shows something after sanitizing (not only control or escape codes). */
@@ -478,6 +481,7 @@ function collectGroupErrorMessages(group: readonly ToolEntry[]): string[] {
   const messages: string[] = [];
   for (const entry of group) {
     const candidates = [
+      ...(entry.activityErrors ?? []),
       entry.params?.error,
       entry.status === "error" ? entry.error : undefined,
     ];
@@ -491,7 +495,7 @@ function collectGroupErrorMessages(group: readonly ToolEntry[]): string[] {
 }
 
 /**
- * Red error lines, one per message as displayed. Messages whose visible text is empty after
+ * Red error lines with a trailing ✘, one per message as displayed. Messages whose visible text is empty after
  * sanitizing (control or escape sequences only) are dropped, and messages that display alike
  * appear once.
  */
@@ -503,6 +507,7 @@ function renderDistinctErrorLines(messages: readonly string[]): string[] {
     const visible = sanitizeVisibleText(rendered.join("\n")).trim();
     if (!visible || seen.has(visible)) continue;
     seen.add(visible);
+    rendered[rendered.length - 1] += ansiSpan(ANSI.red, " ✘");
     lines.push(...rendered);
   }
   return lines;
@@ -510,27 +515,21 @@ function renderDistinctErrorLines(messages: readonly string[]): string[] {
 
 function renderGroupDetails(
   prefix: InternalGroupName,
-  group: readonly ToolEntry[],
-  realEntries: readonly ToolEntry[],
   displayedTools: readonly ToolEntry[],
   resultEntries: readonly ToolEntry[],
   parentErrorEntry: ToolEntry | undefined,
 ): string[] {
+  const resultLines = resultEntries.flatMap((resultEntry) =>
+    renderGroupFields(
+      prefix === "skill-harness"
+        ? getSkillHarnessResultFields(resultEntry)
+        : formatDisplayFields({ result: resultEntry.params?.text }),
+    ),
+  );
   const bodyLines = displayedTools.flatMap((entry) =>
     renderGroupNestedTool(entry, prefix),
   );
-  for (const resultEntry of resultEntries) {
-    const resultFields =
-      prefix === "skill-harness"
-        ? getSkillHarnessResultFields(resultEntry)
-        : formatDisplayFields({ result: resultEntry.params?.text });
-    bodyLines.push(...renderGroupFields(resultFields));
-  }
-  if (realEntries.length === 0) {
-    for (const entry of group) {
-      bodyLines.push(...renderGroupFields(formatDisplayFields(entry.params)));
-    }
-  }
+  bodyLines.push(...resultLines);
   if (
     parentErrorEntry?.error &&
     !displayedTools.some((entry) => entry.error === parentErrorEntry.error) &&
@@ -551,6 +550,9 @@ function renderSubagentGroup(
   prefix: InternalGroupName,
   group: readonly ToolEntry[],
 ): StatusBlock {
+  group = [...group].sort(
+    (a, b) => (a.statusSequence ?? 0) - (b.statusSequence ?? 0),
+  );
   const realEntries = group.filter((e) => e.toolName.startsWith(`${prefix}:`));
   const displayedTools = realEntries
     .filter((entry) => !isSubagentResultEntry(entry, prefix))
@@ -563,7 +565,9 @@ function renderSubagentGroup(
     (entry) => entry.toolName === prefix,
   );
   const authoritativeParent = getAuthoritativeGroupParent(prefix, parentEntry);
-  const hasError = group.some((entry) => entry.status === "error");
+  const hasError = group.some(
+    (entry) => entry.status === "error" || entry.activityErrors?.length,
+  );
   const hasResult = realEntries.some((entry) =>
     isSubagentResultEntry(entry, prefix),
   );
@@ -583,23 +587,35 @@ function renderSubagentGroup(
     (entry) =>
       entry.toolName === prefix && entry.status === "error" && entry.error,
   );
-  // A failed group shows only its error text: the header's ✘ already says it failed, and the
-  // phases and partial results that led there are noise.
-  const failureLines =
-    parentSuffix === "✘"
-      ? renderDistinctErrorLines(collectGroupErrorMessages(group))
-      : [];
+  // Error history stays above the single latest producer status or result.
+  const errorLines = renderDistinctErrorLines(collectGroupErrorMessages(group));
+  const messageFields = (entry: ToolEntry): DisplayField[] =>
+    (isSubagentResultEntry(entry, prefix)
+      ? prefix === "skill-harness"
+        ? getSkillHarnessResultFields(entry)
+        : formatDisplayFields({ result: entry.params?.text })
+      : formatDisplayFields(entry.params)
+    ).filter((field) => field.key !== "error");
+  const currentEntry = findLastEntry(
+    group,
+    (entry) =>
+      (entry.toolName === prefix || isSubagentResultEntry(entry, prefix)) &&
+      messageFields(entry).some(hasVisibleContent),
+  );
+  const currentLines = currentEntry
+    ? renderGroupFields(messageFields(currentEntry))
+    : [];
   const bodyLines =
-    failureLines.length > 0
-      ? failureLines
-      : renderGroupDetails(
-          prefix,
-          group,
-          realEntries,
-          displayedTools,
-          resultEntries,
-          parentErrorEntry,
-        );
+    realEntries.length === 0 || parentSuffix === "♻︎"
+      ? [...errorLines, ...currentLines]
+      : parentSuffix === "✘" && errorLines.length > 0
+        ? errorLines
+        : renderGroupDetails(
+            prefix,
+            displayedTools,
+            resultEntries,
+            parentErrorEntry,
+          );
 
   const parentStatus: ToolEntry["status"] =
     parentSuffix === "✘"

@@ -7,6 +7,8 @@ import {
 } from "./render.js";
 import { getToolIcon } from "./formatting.js";
 import type { ToolEntry } from "./types.js";
+import { parseHindsightMemoryRecallEvent } from "./hindsight-memory-status.js";
+import { updateSkillHarnessEntry } from "./skill-harness-status.js";
 
 function makeEntry(overrides: Partial<ToolEntry> = {}): ToolEntry {
   return {
@@ -851,7 +853,7 @@ describe("multiline values", () => {
 });
 
 describe("ANSI internal group contract", () => {
-  it("renders child tools, result, and a distinct parent error as complete trees", () => {
+  it("flattens legacy recovered groups to distinct errors and the final result", () => {
     const result = renderStatusContent(
       [
         makeEntry({
@@ -888,13 +890,10 @@ describe("ANSI internal group contract", () => {
     expect(stripAnsi(result)).toContain(
       [
         "🧠 hindsight-memory ▾ ♻︎",
-        "    ⊹ memory_search ✔ [100ms]",
-        "      ⊹ limit: 5 · query: hello",
-        "    ⊹ memory_write ✘",
-        "        permission denied",
+        "    ⊹ parent timeout ✘",
+        "    ⊹ permission denied ✘",
         "    ⊹ first line",
         "      second line",
-        "      parent timeout",
       ].join("\n"),
     );
     expect(stripAnsi(result)).not.toMatch(/[├└│]/);
@@ -902,13 +901,15 @@ describe("ANSI internal group contract", () => {
       `${BOLD_BLUE}🧠 hindsight-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
     expect(result).toContain(
-      `\n    ⊹ memory_search ${GREEN}✔${RESET} ${YELLOW}[100ms]${RESET}\n`,
+      `\n    ${RED}⊹ permission denied${RESET}${RED} ✘${RESET}`,
     );
-    expect(result).toContain(`\n        ${RED}permission denied${RESET}`);
-    expect(result).toContain(`\n      ${RED}parent timeout${RESET}`);
-    // Group details use Discord's default text color: no escape before the mark or the text.
+    expect(result).toContain(
+      `\n    ${RED}⊹ parent timeout${RESET}${RED} ✘${RESET}`,
+    );
     expect(result).toContain("\n    ⊹ first line\n      second line\n");
-    expect(result).toContain("\n      ⊹ limit: 5 · query: hello\n");
+    expect(result).not.toContain("memory_search");
+    expect(result).not.toContain("memory_write");
+    expect(result).not.toContain("query:");
   });
 
   it("renders a main-agent failure with its concrete error", () => {
@@ -929,7 +930,7 @@ describe("ANSI internal group contract", () => {
       [
         "```ansi",
         `${BOLD_BLUE}💥 agent${RESET} ${RED}✘${RESET}`,
-        `      ${RED}provider timeout${RESET}`,
+        `    ${RED}⊹ provider timeout${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -1077,80 +1078,43 @@ describe("group wall-clock duration", () => {
     expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ✔ [2s]");
   });
 
-  it("shows recycle glyph for completed pipeline parent when an earlier child phase failed", () => {
-    const result = stripAnsi(
-      renderStatusContent(
-        [
-          makeEntry({
-            toolCallId: "skill-harness",
-            toolName: "skill-harness",
-            params: {},
-            status: "completed",
-            durationMs: 1_200,
-          }),
-          makeEntry({
-            toolCallId: "qmd-keyword",
-            toolName: "skill-harness:qmd-keyword",
-            params: { error: "QMD keyword index unavailable" },
-            status: "error",
-            error: "QMD keyword index unavailable",
-          }),
-          makeEntry({
-            toolCallId: "qmd-hybrid",
-            toolName: "skill-harness:qmd-hybrid",
-            params: {
-              intent: "git-commit",
-              confidence: 0.92,
-              reason: "intent-examples-and-keywords",
-            },
-            status: "completed",
-            durationMs: 800,
-          }),
-        ],
-        true,
-      ),
-    );
-
-    expect(result.split("\n")[1]).toBe("💡 skill-harness ▾ ♻︎ [1.2s]");
-    expect(result).toContain(
-      "⊹ qmd-keyword ✘\n        QMD keyword index unavailable",
-    );
-    expect(result).toContain("qmd-hybrid ✔ [800ms]");
-    expect(result).toContain("confidence: 0.92 · intent: git-commit");
-    expect(result).toContain("reason: intent-examples-and-keywords");
-
-    const rawResult = renderStatusContent(
+  it("flattens legacy recovered skill-harness errors and preserves the final selection", () => {
+    const entries: ToolEntry[] = [
+      makeEntry({
+        toolCallId: "skill-harness",
+        toolName: "skill-harness",
+        params: { result: "1 skill selected: ani-persona (.80)" },
+        status: "completed",
+        durationMs: 1_200,
+      }),
+      makeEntry({
+        toolCallId: "qmd-keyword",
+        toolName: "skill-harness:qmd-keyword",
+        params: { error: "QMD keyword index unavailable" },
+        status: "error",
+        error: "QMD keyword index unavailable",
+      }),
+      makeEntry({
+        toolCallId: "qmd-hybrid",
+        toolName: "skill-harness:qmd-hybrid",
+        params: { intent: "git-commit", confidence: 0.92 },
+        status: "completed",
+        durationMs: 800,
+      }),
+    ];
+    const raw = renderStatusContent(entries, true);
+    expect(stripAnsi(raw)).toBe(
       [
-        makeEntry({
-          toolCallId: "skill-harness",
-          toolName: "skill-harness",
-          params: {},
-          status: "completed",
-          durationMs: 1_200,
-        }),
-        makeEntry({
-          toolCallId: "qmd-keyword",
-          toolName: "skill-harness:qmd-keyword",
-          params: { error: "QMD keyword index unavailable" },
-          status: "error",
-          error: "QMD keyword index unavailable",
-        }),
-        makeEntry({
-          toolCallId: "qmd-hybrid",
-          toolName: "skill-harness:qmd-hybrid",
-          params: {
-            intent: "git-commit",
-            confidence: 0.92,
-            reason: "intent-examples-and-keywords",
-          },
-          status: "completed",
-          durationMs: 800,
-        }),
-      ],
-      false,
+        "```ansi",
+        "💡 skill-harness ▾ ♻︎ [1.2s]",
+        "    ⊹ QMD keyword index unavailable ✘",
+        "    ⊹ 1 skill selected: ani-persona (.80)",
+        "```",
+      ].join("\n"),
     );
-    expect(rawResult).toContain(
-      `${BOLD_BLUE}💡 skill-harness${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
+    expect(raw).toContain(`${CYAN}♻︎${RESET}`);
+    expect(raw).toContain(
+      `${RED}⊹ QMD keyword index unavailable${RESET}${RED} ✘${RESET}`,
     );
   });
 
@@ -1570,11 +1534,13 @@ describe("renderStatusContent", () => {
         },
       ];
 
-      const result = stripAnsi(renderStatusContent(entries, true));
+      const rendered = renderStatusContent(entries, true);
+      const result = stripAnsi(rendered);
 
+      expect(rendered).toContain(`    ${RED}⊹ ${error}${RESET}`);
       expect(result).toContain("💡 skill-harness ▾ ✘");
       // A failed group is just its header and the error text; phases are hidden.
-      expect(result).toContain(`💡 skill-harness ▾ ✘\n      ${error}\n`);
+      expect(result).toContain(`💡 skill-harness ▾ ✘\n    ⊹ ${error} ✘\n`);
       expect(result).not.toContain(phase);
       expect(result.split(error)).toHaveLength(2);
     },
@@ -1597,8 +1563,8 @@ describe("renderStatusContent", () => {
     );
     expect(result).toContain(
       "💡 skill-harness ▾ ✘\n" +
-        "      checker returned nothing\n" +
-        "      upstream timeout\n",
+        "    ⊹ checker returned nothing ✘\n" +
+        "    ⊹ upstream timeout ✘\n",
     );
   });
 
@@ -1702,7 +1668,7 @@ describe("renderStatusContent", () => {
       ),
     );
     expect(result.match(/timeout/g)).toHaveLength(1);
-    expect(result).toContain("💡 skill-harness ▾ ✘\n      timeout\n");
+    expect(result).toContain("💡 skill-harness ▾ ✘\n    ⊹ timeout ✘\n");
   });
 
   it("keeps the details of a failed group that carries no error text", () => {
@@ -1746,8 +1712,8 @@ describe("renderStatusContent", () => {
 
     expect(result).toContain(
       "💡 skill-harness ▾ ✘\n" +
-        "      topic checker returned no context\n" +
-        "      classifier returned no result\n",
+        "    ⊹ topic checker returned no context ✘\n" +
+        "    ⊹ classifier returned no result ✘\n",
     );
     expect(result).not.toContain("topic-triage");
     expect(result).not.toContain("intent-classify");
@@ -1975,9 +1941,9 @@ describe("renderStatusContent", () => {
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🧠 hindsight-memory ▾ ✘");
     expect(stripAnsi(result)).toContain(
-      "🧠 hindsight-memory ▾ ✘\n      timed out after 15000ms",
+      "🧠 hindsight-memory ▾ ✘\n    ⊹ timed out after 15000ms",
     );
-    expect(result).toContain(`${RED}timed out after 15000ms${RESET}`);
+    expect(result).toContain(`${RED}⊹ timed out after 15000ms${RESET}`);
   });
 
   it("renders mixed normal and hindsight-memory entries", () => {
@@ -2353,5 +2319,145 @@ describe("tool intent and title rendering", () => {
     expect(result).toContain("    → In progress step");
     expect(result).not.toContain(`${YELLOW}→`);
     expect(result).toContain(`    ${LIGHT_GRAY}· Pending step${RESET}`);
+  });
+});
+
+describe("current producer event rendering", () => {
+  it("keeps skill-harness phase updates in one flat entry", () => {
+    let entry: ToolEntry | undefined;
+    for (const [phase, state, data] of [
+      ["pipeline", "started", {}],
+      ["name-match", "completed", { result: ["ani-persona"], confidence: 0.8 }],
+      ["pipeline", "completed", { durationMs: 4390 }],
+    ] as const) {
+      entry = updateSkillHarnessEntry(
+        entry,
+        {
+          runId: "run-1",
+          stream: "plugin:skill-harness",
+          data: { kind: "skill-harness.pipeline", phase, state, ...data },
+        },
+        1000,
+      );
+      expect(entry?.toolName).toBe("skill-harness");
+    }
+    expect(entry).toBeDefined();
+    expect(stripAnsi(renderStatusContent([entry!], true))).toBe(
+      [
+        "```ansi",
+        "💡 skill-harness ▾ ✔ [4.39s]",
+        "    ⊹ 1 skill selected: ani-persona (.80)",
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps a failed skill-harness pipeline terminal when completion arrives later", () => {
+    const failed = updateSkillHarnessEntry(
+      undefined,
+      {
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "failed",
+          error: "search unavailable",
+        },
+      },
+      1000,
+    );
+    const completed = updateSkillHarnessEntry(
+      failed,
+      {
+        runId: "run-1",
+        stream: "plugin:skill-harness",
+        data: {
+          kind: "skill-harness.pipeline",
+          phase: "pipeline",
+          state: "completed",
+        },
+      },
+      2000,
+    );
+    expect(completed).toBe(failed);
+    expect(stripAnsi(renderStatusContent([completed!], true))).toContain(
+      "💡 skill-harness ▾ ✘\n    ⊹ search unavailable ✘",
+    );
+  });
+
+  it("keeps phase errors above one changing progress or result row", () => {
+    let entry: ToolEntry | undefined;
+    const update = (phase: string, state: string, data = {}) => {
+      entry = updateSkillHarnessEntry(
+        entry,
+        {
+          runId: "run-1",
+          stream: "plugin:skill-harness",
+          data: { kind: "skill-harness.pipeline", phase, state, ...data },
+        },
+        1000,
+      );
+      expect(entry).toBeDefined();
+      return stripAnsi(renderStatusContent([entry!], false));
+    };
+    expect(update("pipeline", "started")).toContain("    ⊹ selecting skills");
+    const failed = update("search", "completed", {
+      status: "error",
+      error: "search unavailable",
+    });
+    expect(failed).toContain("    ⊹ search unavailable ✘");
+    expect(failed).toContain("⊹ search unavailable ✘\n    ⊹ selecting skills");
+    const progress = update("rerank", "completed", {
+      result: ["ani-persona"],
+      confidence: 0.8,
+    });
+    expect(progress).toContain("💡 skill-harness ▾ ←");
+    expect(progress.match(/⊹/g)).toHaveLength(2);
+    expect(progress).toMatch(/⊹ search unavailable ✘\n    ⊹ rerank/);
+    const completed = update("pipeline", "completed", { durationMs: 4390 });
+    expect(completed).toContain("💡 skill-harness ▾ ♻︎ [4.39s]");
+    expect(completed).toContain(
+      "    ⊹ search unavailable ✘\n    ⊹ 1 skill selected: ani-persona (.80)",
+    );
+    expect(completed).not.toContain("rerank");
+    expect(completed.match(/⊹/g)).toHaveLength(2);
+  });
+
+  it("renders separate failed and completed Hindsight recalls without nested phases", () => {
+    const entries = [
+      {
+        recallId: "first",
+        state: "failed",
+        reason: "timeout",
+        durationMs: 1000,
+      },
+      {
+        recallId: "retry",
+        state: "completed",
+        resultCount: 4,
+        durationMs: 3350,
+      },
+    ].map((data) => {
+      const parsed = parseHindsightMemoryRecallEvent({
+        runId: "run-1",
+        stream: "plugin:hindsight-memory",
+        sessionKey: "agent:main:discord:direct:123",
+        data: { kind: "hindsight-memory.recall", ...data },
+      });
+      expect(parsed).toBeDefined();
+      return parsed!.entry;
+    });
+    const raw = renderStatusContent(entries, true);
+    expect(stripAnsi(raw)).toBe(
+      [
+        "```ansi",
+        "🧠 hindsight-memory ▾ ♻︎ [3.35s]",
+        "    ⊹ recall timed out ✘",
+        "    ⊹ 4 memories recalled",
+        "```",
+      ].join("\n"),
+    );
+    expect(raw).toContain(`${RED}⊹ recall timed out${RESET}${RED} ✘${RESET}`);
   });
 });

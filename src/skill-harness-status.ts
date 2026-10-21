@@ -202,6 +202,9 @@ export function updateSkillHarnessEntry(
   }
 
   const startedAtMs = existingEntry?.startedAtMs ?? observedAtMs;
+  const activityHistory = existingEntry?.activityErrors
+    ? { activityErrors: existingEntry.activityErrors }
+    : {};
 
   if (phase === "pipeline" && state === "started") {
     return {
@@ -209,6 +212,7 @@ export function updateSkillHarnessEntry(
       toolName: SKILL_HARNESS_TOOL,
       status: "pending",
       startedAtMs,
+      ...activityHistory,
       params: {
         status: "selecting skills",
       },
@@ -232,6 +236,7 @@ export function updateSkillHarnessEntry(
         status: "completed",
         startedAtMs,
         durationMs,
+        ...activityHistory,
         params: {
           result: "skill selection skipped",
         },
@@ -257,17 +262,39 @@ export function updateSkillHarnessEntry(
       status: "completed",
       startedAtMs,
       durationMs,
+      ...activityHistory,
       params: {
         result,
       },
     };
   }
 
-  if (state === "failed" || data.status === "error") {
+  if (
+    state === "failed" ||
+    data.status === "error" ||
+    data.status === "timeout" ||
+    data.status === "unavailable"
+  ) {
     const error =
       getNonEmptyString(data.error) ??
       getNonEmptyString(data.reason) ??
-      "skill selection failed";
+      (data.status === "timeout"
+        ? `${phase} timed out`
+        : data.status === "unavailable"
+          ? `${phase} unavailable`
+          : "skill selection failed");
+    if (phase !== "pipeline") {
+      return {
+        toolCallId: SKILL_HARNESS_TOOL,
+        toolName: SKILL_HARNESS_TOOL,
+        status: "pending",
+        startedAtMs,
+        activityErrors: [
+          ...new Set([...(existingEntry?.activityErrors ?? []), error]),
+        ],
+        params: { ...existingEntry?.params },
+      };
+    }
     const durationMs =
       typeof data.durationMs === "number" &&
       Number.isFinite(data.durationMs) &&
@@ -284,7 +311,8 @@ export function updateSkillHarnessEntry(
       startedAtMs,
       durationMs,
       error,
-      params: {},
+      ...activityHistory,
+      params: { ...existingEntry?.params },
     };
   }
 
@@ -312,6 +340,7 @@ export function updateSkillHarnessEntry(
     toolName: SKILL_HARNESS_TOOL,
     status: "pending",
     startedAtMs,
+    ...activityHistory,
     durationMs: existingEntry?.durationMs,
     params: {
       status,
@@ -327,7 +356,6 @@ export function finishPendingSkillHarness(history: ToolEntry[]): void {
       continue;
     }
     entry.status = "error";
-    entry.params = {};
     entry.error = "skill selection unavailable";
   }
 }

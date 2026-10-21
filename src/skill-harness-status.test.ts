@@ -328,6 +328,62 @@ describe("skill-harness status lifecycle", () => {
       expect(entry?.params).toEqual({});
     });
 
+    it("retains phase errors while later progress and completion replace the current message", () => {
+      let entry = updateSkillHarnessEntry(
+        undefined,
+        makePipelineEvent("pipeline", "started"),
+        1000,
+      );
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("name-match", "completed", {
+          result: ["weather"],
+          confidence: 0.95,
+        }),
+        1100,
+      );
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("search", "completed", {
+          status: "error",
+          error: "search unavailable",
+        }),
+        1200,
+      );
+      expect(entry?.status).toBe("pending");
+      expect(entry?.activityErrors).toEqual(["search unavailable"]);
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("search", "completed", {
+          status: "error",
+          error: "search unavailable",
+        }),
+        1250,
+      );
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("rerank", "completed", {
+          result: ["weather"],
+          confidence: 0.8,
+        }),
+        1300,
+      );
+      expect(entry?.activityErrors).toEqual(["search unavailable"]);
+      expect(entry?.params.status).toContain("rerank");
+      entry = updateSkillHarnessEntry(
+        entry,
+        makePipelineEvent("pipeline", "completed", {
+          durationMs: 400,
+        }),
+        1400,
+      );
+      expect(entry?.status).toBe("completed");
+      expect(entry?.activityErrors).toEqual(["search unavailable"]);
+      expect(entry?.params).toEqual({
+        result: "1 skill selected: weather (.80)",
+      });
+    });
+
     it("ignores late events once terminal completed", () => {
       const completed = updateSkillHarnessEntry(
         undefined,
@@ -345,7 +401,7 @@ describe("skill-harness status lifecycle", () => {
 });
 
 describe("finishPendingSkillHarness", () => {
-  it("marks pending skill-harness as unavailable error and clears params", () => {
+  it("marks pending skill-harness as unavailable while keeping its latest message", () => {
     const history: ToolEntry[] = [
       {
         toolCallId: "skill-harness",
@@ -368,7 +424,7 @@ describe("finishPendingSkillHarness", () => {
       toolName: "skill-harness",
       status: "error",
       error: "skill selection unavailable",
-      params: {},
+      params: { status: "selecting skills" },
     });
     expect(history[1].status).toBe("pending");
   });

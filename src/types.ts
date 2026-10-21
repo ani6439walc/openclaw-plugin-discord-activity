@@ -16,6 +16,8 @@ export type ToolEntry = {
   startedAtMs?: number;
   durationMs?: number;
   error?: string;
+  activityErrors?: string[];
+  statusSequence?: number;
 };
 
 export type SubagentToolName = "skill-harness" | "hindsight-memory";

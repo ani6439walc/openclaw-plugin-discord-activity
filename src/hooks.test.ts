@@ -3077,7 +3077,7 @@ describe("createHookHandlers", () => {
       ).toBe(1);
     });
 
-    it("renders canonical skill-harness failures as phase-local errors", async () => {
+    it("renders terminal skill-harness failures as flat error history", async () => {
       createDiscordFetchMock();
 
       await handlers.onMessageReceived(
@@ -3118,9 +3118,11 @@ describe("createHookHandlers", () => {
         store.sessions.get("discord:direct:123")?.lastRenderedContent;
       expect(stripAnsi(rendered ?? "")).toContain("💡 skill-harness ▾ ✘");
       expect(stripAnsi(rendered ?? "")).toContain(
-        "💡 skill-harness ▾ ✘\n      classifier crashed",
+        "💡 skill-harness ▾ ✘\n    ⊹ classifier crashed",
       );
-      expect(rendered).toContain("\u001b[31mclassifier crashed\u001b[0m");
+      expect(rendered).toContain(
+        "\u001b[31m⊹ classifier crashed\u001b[0m\u001b[31m ✘\u001b[0m",
+      );
       expect(rendered?.match(/classifier crashed/g)).toHaveLength(1);
     });
 

@@ -1350,6 +1350,13 @@ export function createHookHandlers(deps: HookDeps) {
         (isTerminalToolStatus(existing.status) || entry.status === "pending")
       )
         return;
+      entry.statusSequence =
+        Math.max(
+          0,
+          ...session.toolHistory
+            .filter((candidate) => candidate.toolName === entry.toolName)
+            .map((candidate) => candidate.statusSequence ?? 0),
+        ) + 1;
       entry.startedAtMs = existing?.startedAtMs ?? Date.now();
       if (existing) {
         toolHistoryManager.updateEntry(

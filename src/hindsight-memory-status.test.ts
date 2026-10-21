@@ -225,6 +225,76 @@ describe("Hindsight Memory recall status", () => {
     ]);
   });
 
+  it("retains errors and shows only the latest observed progress or result", async () => {
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        state: "failed",
+        reason: "timeout",
+        durationMs: 1000,
+      }),
+    );
+    expect(content()).toContain("    ⊹ recall timed out ✘");
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({ recallId: "retry" }),
+    );
+    expect(content()).toContain(
+      "    ⊹ recall timed out ✘\n    ⊹ recalling memories",
+    );
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        recallId: "retry",
+        state: "completed",
+        resultCount: 2,
+        durationMs: 2000,
+      }),
+    );
+    expect(content()).toContain(
+      "    ⊹ recall timed out ✘\n    ⊹ 2 memories recalled",
+    );
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        recallId: "third",
+        state: "completed",
+        resultCount: 4,
+        durationMs: 3350,
+      }),
+    );
+    expect(content()).toContain("🧠 hindsight-memory ▾ ♻︎ [3.35s]");
+    expect(content()).toContain(
+      "    ⊹ recall timed out ✘\n    ⊹ 4 memories recalled",
+    );
+    expect(content()).not.toContain("2 memories recalled");
+    expect(content()?.match(/⊹/g)).toHaveLength(2);
+  });
+
+  it("shows one latest result in completion order even when an earlier recall finishes last", async () => {
+    await handlers.onHindsightMemoryPipelineEvent(hindsightMemoryRecallEvent());
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({ recallId: "second" }),
+    );
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        recallId: "second",
+        state: "completed",
+        resultCount: 2,
+        durationMs: 2000,
+      }),
+    );
+    expect(content()).toContain("    ⊹ 2 memories recalled");
+    expect(content()?.match(/⊹/g)).toHaveLength(1);
+    await handlers.onHindsightMemoryPipelineEvent(
+      hindsightMemoryRecallEvent({
+        state: "completed",
+        resultCount: 4,
+        durationMs: 3350,
+      }),
+    );
+    expect(content()).toContain("✔ [3.35s]");
+    expect(content()).toContain("    ⊹ 4 memories recalled");
+    expect(content()).not.toContain("2 memories recalled");
+    expect(content()?.match(/⊹/g)).toHaveLength(1);
+  });
+
   it("never exposes arbitrary producer fields, query text, or error messages", async () => {
     await handlers.onHindsightMemoryPipelineEvent(
       hindsightMemoryRecallEvent({
