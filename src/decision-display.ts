@@ -12,6 +12,7 @@ export type DecisionDisplayNode = {
   text: string;
   continuationLines: string[];
   children: DecisionDisplayNode[];
+  isQuestion?: boolean;
 };
 
 type RecordValue = Record<string, unknown>;
@@ -40,15 +41,16 @@ export function createDecisionStateLines(entry: ToolEntry): string[] {
     ? Object.entries(objectState)
     : [[undefined, state]];
   return fields.flatMap(([key, value]) => {
-    const field = formatDisplayFields({ value: stateDisplayValue(value) })[0];
-    if (!field) return [];
-    const label = key === undefined ? "»" : `» ${sanitizeInlineText(key)}:`;
+    const normalized = stateDisplayValue(value);
+    if (!hasText(normalized)) return [];
+    const label = key === undefined ? "" : `${sanitizeInlineText(key)}: `;
+    const field = formatDisplayFields({
+      value: `${label}${String(normalized)}`,
+    })[0];
     const hint = field.omittedHint
       ? ansiSpan(ANSI.lightGray, field.omittedHint)
       : "";
-    return [
-      `    ${ansiSpan(ANSI.yellow, label)} ${ansiSpan(ANSI.green, field.value)}${hint}`,
-    ];
+    return [`    ≡ ${field.value}${hint}`];
   });
 }
 
@@ -67,7 +69,12 @@ function hasText(value: unknown): boolean {
 }
 
 /** Reuse ordinary fields' sanitization, multiline preservation and 70-code-point limit. */
-function valueNode(value: unknown, fallback: string): DecisionDisplayNode {
+function valueNode(
+  value: unknown,
+  fallback: string,
+  style: string = ANSI.green,
+  prefix = "",
+): DecisionDisplayNode {
   let displayValue = hasText(value) ? value : fallback;
   if (displayValue !== null && typeof displayValue === "object") {
     try {
@@ -82,7 +89,9 @@ function valueNode(value: unknown, fallback: string): DecisionDisplayNode {
     formatDisplayFields({ value: displayValue })[0] ??
     formatDisplayFields({ value: hasText(fallback) ? fallback : "?" })[0];
   const lines = field.multilineLines ?? [field.value];
-  const rendered = lines.map((line) => ansiSpan(ANSI.green, line));
+  const rendered = lines.map((line, index) =>
+    ansiSpan(style, `${index === 0 ? prefix : ""}${line}`),
+  );
   if (field.omittedHint) {
     rendered[rendered.length - 1] += ansiSpan(
       ANSI.lightGray,
@@ -245,7 +254,8 @@ export function createDecisionDisplayNodes(
           : "結果未提供";
   const nodes = Object.entries(questions ?? {}).map(([id, rawQuestion]) => {
     const question = record(rawQuestion) ?? {};
-    const node = valueNode(question.instructions, id);
+    const node = valueNode(question.instructions, id, ANSI.yellow, "» ");
+    node.isQuestion = true;
     const criteria = criteriaFor(question);
     const answer = validAnswer(
       question,
