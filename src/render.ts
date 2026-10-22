@@ -11,7 +11,10 @@ import {
   type DisplayField,
 } from "./formatting.js";
 import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
-import { createDecisionDisplayNodes } from "./decision-display.js";
+import {
+  createDecisionDisplayNodes,
+  createDecisionStateLines,
+} from "./decision-display.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   STATUS_MAX_ENTRIES,
@@ -815,6 +818,15 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
   const summaryLine = intent
     ? `    ${ansiSpan(ANSI.yellow, `» ${formatExpandedTitle(intent.text)}`)}`
     : undefined;
+  const isDecision =
+    canonicalToolNameForDedupe(t.toolName) === "decision_evaluate";
+  const children = isDecision
+    ? createDecisionDisplayNodes(t)
+    : createEntryFieldNodes(
+        t,
+        intent ? { excludeKeys: [intent.key] } : undefined,
+      );
+  const stateLines = isDecision ? createDecisionStateLines(t) : [];
 
   return {
     key: `tool:${t.displayId ?? t.toolCallId}`,
@@ -829,13 +841,10 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
       collapsedName,
     },
     summaryLine,
-    children:
-      canonicalToolNameForDedupe(t.toolName) === "decision_evaluate"
-        ? createDecisionDisplayNodes(t)
-        : createEntryFieldNodes(
-            t,
-            intent ? { excludeKeys: [intent.key] } : undefined,
-          ),
+    children,
+    ...(stateLines.length
+      ? { bodyLines: [...stateLines, ...renderStatusNodes(children)] }
+      : {}),
   };
 }
 

@@ -1,4 +1,9 @@
-import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
+import {
+  ANSI,
+  ansiSpan,
+  sanitizeInlineText,
+  sanitizeVisibleText,
+} from "./ansi.js";
 import { formatDisplayFields } from "./formatting.js";
 import type { ToolEntry } from "./types.js";
 
@@ -10,6 +15,42 @@ export type DecisionDisplayNode = {
 };
 
 type RecordValue = Record<string, unknown>;
+
+/** Normalize nested string values before serialization and ordinary field trimming. */
+function stateDisplayValue(value: unknown): unknown {
+  const singleLine = (text: string) =>
+    sanitizeVisibleText(text).replace(/\s*[\r\n]+\s*/g, " ");
+  if (typeof value === "string") return singleLine(value);
+  if (value !== null && typeof value === "object") {
+    try {
+      return JSON.stringify(value, (_key, nested: unknown) =>
+        typeof nested === "string" ? singleLine(nested) : nested,
+      );
+    } catch {
+      return "[unserializable]";
+    }
+  }
+  return value;
+}
+
+export function createDecisionStateLines(entry: ToolEntry): string[] {
+  const state = record(entry.params)?.state;
+  const objectState = record(state);
+  const fields: [string | undefined, unknown][] = objectState
+    ? Object.entries(objectState)
+    : [[undefined, state]];
+  return fields.flatMap(([key, value]) => {
+    const field = formatDisplayFields({ value: stateDisplayValue(value) })[0];
+    if (!field) return [];
+    const label = key === undefined ? "»" : `» ${sanitizeInlineText(key)}:`;
+    const hint = field.omittedHint
+      ? ansiSpan(ANSI.lightGray, field.omittedHint)
+      : "";
+    return [
+      `    ${ansiSpan(ANSI.yellow, label)} ${ansiSpan(ANSI.green, field.value)}${hint}`,
+    ];
+  });
+}
 
 function record(value: unknown): RecordValue | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
