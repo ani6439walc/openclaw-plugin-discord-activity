@@ -1788,6 +1788,107 @@ describe("createHookHandlers", () => {
   });
 
   describe("onAfterToolCall", () => {
+    it.each(["decision_evaluate", "openclawdecision_evaluate"])(
+      "retains the result of %s without collecting ordinary tool output",
+      async (toolName) => {
+        createDiscordFetchMock();
+        store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+        const params = {
+          state: { message: "Hello" },
+          questions: { reply: { type: "boolean", instructions: "Reply?" } },
+        };
+        const ctx = { sessionKey: "discord:channel:123:thread:x", toolName };
+        const result = {
+          details: {
+            status: "ok",
+            result: {
+              model: "test-model",
+              answers: { reply: { type: "boolean", probabilityTrue: 0.82 } },
+            },
+          },
+        };
+        await handlers.onBeforeToolCall(
+          { toolCallId: "decision-1", toolName, params },
+          ctx,
+        );
+        const completion = {
+          toolCallId: "decision-1",
+          toolName,
+          params,
+          result,
+          durationMs: 952,
+        };
+        await handlers.onAfterToolCall(completion, ctx);
+        const history = store.sessions.get("discord:channel:123")!.toolHistory;
+        expect(history[0]).toHaveProperty("result", result);
+        const rendered =
+          store.sessions.get("discord:channel:123")!.lastRenderedContent ?? "";
+        expect(stripAnsi(rendered)).toContain("⚖️");
+        expect(stripAnsi(rendered)).toContain("Reply?");
+        expect(stripAnsi(rendered)).toContain("82.0%");
+        expect(stripAnsi(rendered)).toContain("18.0%");
+        expect(rendered).not.toContain('"message":"Hello"');
+
+        // Duplicate completion and late start events must not erase the result.
+        await handlers.onAfterToolCall(
+          { toolCallId: "decision-1", toolName, params },
+          ctx,
+        );
+        await handlers.onBeforeToolCall(
+          { toolCallId: "decision-1", toolName, params },
+          ctx,
+        );
+        expect(history).toHaveLength(1);
+        expect(history[0]).toHaveProperty("result", result);
+        expect(history[0].status).toBe("completed");
+
+        const ordinaryCtx = { ...ctx, toolName: "exec" };
+        await handlers.onBeforeToolCall(
+          { toolCallId: "ordinary-1", toolName: "exec", params: {} },
+          ordinaryCtx,
+        );
+        const ordinaryCompletion = {
+          toolCallId: "ordinary-1",
+          toolName: "exec",
+          params: {},
+          result: { text: "unrelated output" },
+        };
+        await handlers.onAfterToolCall(ordinaryCompletion, ordinaryCtx);
+        expect(history[1]).not.toHaveProperty("result");
+      },
+    );
+
+    it("retains decision results when reconciling an orphan and clears them on a tool error", async () => {
+      createDiscordFetchMock();
+      store.contexts.set("discord:channel:123", { actualChannelId: "123" });
+      const toolName = "decision_evaluate";
+      const params = { state: null, questions: { reply: { type: "boolean" } } };
+      const ctx = { sessionKey: "discord:channel:123:thread:x", toolName };
+      orphans.add({
+        toolCallId: "decision-1",
+        toolName,
+        params,
+        createdAt: Date.now(),
+      });
+      const result = { status: "unavailable", reason: "deadline" };
+      const completion = { toolCallId: "decision-1", toolName, params, result };
+      await handlers.onAfterToolCall(completion, ctx);
+      const entry = store.sessions.get("discord:channel:123")!.toolHistory[0];
+      expect(entry.status).toBe("orphan-completed");
+      expect(entry).toHaveProperty("result", result);
+      await handlers.onAfterToolCall(
+        {
+          toolCallId: "decision-1",
+          toolName,
+          params,
+          error: "transport failed",
+        },
+        ctx,
+      );
+      expect(entry.status).toBe("error");
+      expect(entry).toHaveProperty("result", undefined);
+    });
+
     it("reconciles orphan tool entry", async () => {
       store.contexts.set("discord:channel:123", { actualChannelId: "123" });
       orphans.add({
