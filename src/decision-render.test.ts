@@ -46,9 +46,9 @@ describe("decision_evaluate rendering", () => {
     const e = entry({ result: booleanResult });
     expect(visible(e)).toBe(`\`\`\`ansi
 ⚖️ decision_evaluate ▾ ✔ [952ms]
-    ╰─ 是否需要回覆？
-        ├─ true: 有直接提問 → 82.0%
-        ╰─ false: 不需要回應 → 18.0%
+    » 是否需要回覆？
+    ├─ true: 有直接提問 → 82.0%
+    ╰─ false: 不需要回應 → 18.0%
 \`\`\``);
     const colored = renderStatusContent([e], true, 12_000);
     expect(colored).toContain(
@@ -57,7 +57,7 @@ describe("decision_evaluate rendering", () => {
     expect(colored).toContain(`${ANSI.magenta}true:${ANSI.reset}`);
     expect(colored).toContain(`${ANSI.green}有直接提問${ANSI.reset}`);
     expect(colored).toContain(`${ANSI.yellow}[952ms]${ANSI.reset}`);
-    expect(colored).not.toContain("»");
+    expect(colored).toContain(`${ANSI.yellow}» 是否需要回覆？${ANSI.reset}`);
   });
 
   it("renders choice and score criteria in input order, including fractional score", () => {
@@ -89,14 +89,24 @@ describe("decision_evaluate rendering", () => {
         urgency: { type: "score", score: 1.7, probabilities: [0.1, 0.1, 0.8] },
       }),
     });
-    expect(visible(e)).toContain(`├─ 交給哪個部門？ → billing
-    │   ├─ support: 技術問題 → 15.0%
-    │   ├─ billing: 帳務問題 → 80.0%
-    │   ╰─ sales: 購買諮詢 → 5.0%
-    ╰─ 有多緊急？ → score: 1.70 / 2
-        ├─ 0: 一般 → 10.0%
-        ├─ 1: 部分受影響 → 10.0%
-        ╰─ 2: 服務中斷 → 80.0%`);
+    expect(visible(e)).toContain(`» 交給哪個部門？ → billing
+    ├─ support: 技術問題 → 15.0%
+    ├─ billing: 帳務問題 → 80.0%
+    ╰─ sales: 購買諮詢 → 5.0%
+    » 有多緊急？ → score: 1.70 / 2
+    ├─ 0: 一般 → 10.0%
+    ├─ 1: 部分受影響 → 10.0%
+    ╰─ 2: 服務中斷 → 80.0%`);
+    const colored = renderStatusContent([e], true, 12_000);
+    expect(colored).toContain(
+      `    ${ANSI.yellow}» 交給哪個部門？${ANSI.reset} → ${ANSI.green}billing${ANSI.reset}`,
+    );
+    expect(colored).toContain(
+      `    ${ANSI.yellow}» 有多緊急？${ANSI.reset} → ${ANSI.magenta}score:${ANSI.reset} ${ANSI.green}1.70 / 2${ANSI.reset}`,
+    );
+    expect(colored).toContain(
+      `    ├─ ${ANSI.magenta}support:${ANSI.reset} ${ANSI.green}技術問題${ANSI.reset} → ${ANSI.green}15.0%${ANSI.reset}`,
+    );
   });
 
   it.each([
@@ -126,7 +136,7 @@ describe("decision_evaluate rendering", () => {
         params: { questions: { reply: { type: "boolean", instructions } } },
         result: booleanResult,
       });
-      expect(visible(e)).toContain("╰─ reply\n");
+      expect(visible(e)).toContain("» reply\n");
       expect(visible(e)).toContain("true: 未提供描述 → 82.0%");
       expect(visible(e)).toContain("false: 未提供描述 → 18.0%");
     },
@@ -149,7 +159,7 @@ describe("decision_evaluate rendering", () => {
       result: booleanResult,
     });
     const text = visible(e);
-    expect(text).toContain("第一行\n        第二行ˋ");
+    expect(text).toContain("第一行\n      第二行ˋ");
     expect(text).toContain('true: {"text":"ˋ直接"} → 82.0%');
     expect(text).toContain('false: ["忽略","閒聊"] → 18.0%');
     expect(text).not.toContain("\u001b");
@@ -327,7 +337,7 @@ describe("decision_evaluate rendering", () => {
     });
     const text = visible(e);
     expect(text).toContain('{"prompt":"是否回覆？"}');
-    expect(text).toContain("true: 第一行\n    │   │   第二行 → 82.0%");
+    expect(text).toContain("true: 第一行\n    │   第二行 → 82.0%");
     expect(text).toContain("false: 未提供描述 → 18.0%");
     expect(text).toContain('["問題","補充"]');
     expect(text).toContain("結果未提供");
@@ -421,7 +431,7 @@ describe("decision_evaluate shared state", () => {
     });
   }
 
-  it("flattens state in input order above unchanged questions with yellow labels and green values", () => {
+  it("flattens state in input order with a context marker, default color and skill-harness indentation", () => {
     const e = withState({
       zContext: "Shared context",
       aSample: "Short sample",
@@ -431,8 +441,8 @@ describe("decision_evaluate shared state", () => {
     lines.splice(
       2,
       0,
-      `    ${ANSI.yellow}» zContext:${ANSI.reset} ${ANSI.green}Shared context${ANSI.reset}`,
-      `    ${ANSI.yellow}» aSample:${ANSI.reset} ${ANSI.green}Short sample${ANSI.reset}`,
+      "    ≡ zContext: Shared context",
+      "    ≡ aSample: Short sample",
     );
     expect(renderStatusContent([e], true)).toBe(lines.join("\n"));
     expect(visible(e)).not.toContain("├─ state");
@@ -451,12 +461,12 @@ describe("decision_evaluate shared state", () => {
     const original = JSON.stringify(state);
     const text = visible(withState(state));
     expect(text).toContain(
-      "» context: First  sentence. Second. Third. Fourth.\n",
+      "≡ context: First  sentence. Second. Third. Fourth.\n",
     );
     expect(text).toContain(
-      '» detail: {"speaker":"yuu （姊姊）","notes":["a b",{"text":"c d"}]}\n',
+      '≡ detail: {"speaker":"yuu （姊姊）","notes":["a b",{"text":"c d"}]}\n',
     );
-    expect(text).toContain("» literal: a\\nb c\n");
+    expect(text).toContain("≡ literal: a\\nb c\n");
     expect(text).not.toContain("\r");
     expect(JSON.stringify(state)).toBe(original);
   });
@@ -465,8 +475,31 @@ describe("decision_evaluate shared state", () => {
     const e = withState({ context: "😀".repeat(71) });
     const colored = renderStatusContent([e], true);
     expect(colored).toContain(
-      `${ANSI.yellow}» context:${ANSI.reset} ${ANSI.green}${"😀".repeat(70)}...${ANSI.reset}${ANSI.lightGray} (+1 char)${ANSI.reset}`,
+      `≡ context: ${"😀".repeat(61)}...${ANSI.lightGray} (+10 chars)${ANSI.reset}`,
     );
+  });
+
+  it("counts the key, colon and space in the 70-code-point limit", () => {
+    const text = visible(
+      withState({
+        exact: "a".repeat(63),
+        extra: "a".repeat(64),
+      }),
+    );
+    expect(text).toContain(`    ≡ exact: ${"a".repeat(63)}\n`);
+    expect(text).toContain(`    ≡ extra: ${"a".repeat(63)}... (+1 char)\n`);
+  });
+
+  it("bounds long Unicode keys and counts sanitized characters", () => {
+    const key = "😀".repeat(71);
+    const text = visible(
+      withState({
+        [key]: "value",
+        "\u001b[31mkey\u001b[0m": "a".repeat(66),
+      }),
+    );
+    expect(text).toContain(`    ≡ ${"😀".repeat(70)}... (+8 chars)\n`);
+    expect(text).toContain(`    ≡ key: ${"a".repeat(65)}... (+1 char)\n`);
   });
 
   it("normalizes before counting omitted characters", () => {
@@ -474,7 +507,7 @@ describe("decision_evaluate shared state", () => {
       withState({ context: "a".repeat(35) + "\n    " + "b".repeat(36) }),
     );
     expect(text).toContain(
-      `» context: ${"a".repeat(35)} ${"b".repeat(34)}... (+2 chars)`,
+      `≡ context: ${"a".repeat(35)} ${"b".repeat(25)}... (+11 chars)`,
     );
   });
 
@@ -487,7 +520,7 @@ describe("decision_evaluate shared state", () => {
     const normalized =
       '{"text":"' + "a".repeat(50) + " " + "b".repeat(40) + '"}';
     expect(text).toContain(
-      `» detail: ${normalized.slice(0, 70)}... (+${normalized.length - 70} chars)`,
+      `≡ detail: ${normalized.slice(0, 62)}... (+${normalized.length - 62} chars)`,
     );
   });
 
@@ -497,17 +530,17 @@ describe("decision_evaluate shared state", () => {
       nested: { note: "safe`\u001b[31m\nnext" },
     });
     const text = visible(e);
-    expect(text).toContain("» ˋcontext: safeˋ next");
-    expect(text).toContain('» nested: {"note":"safeˋ next"}');
+    expect(text).toContain("≡ ˋcontext: safeˋ next");
+    expect(text).toContain('≡ nested: {"note":"safeˋ next"}');
     expect(text).not.toContain("\u001b");
     expect(text).not.toContain("\\u001b");
   });
 
   it.each([
-    ["first\nsecond", "» first second"],
+    ["first\nsecond", "≡ first second"],
     [
       ["first\nsecond", { text: "third\nfourth" }],
-      '» ["first second",{"text":"third fourth"}]',
+      '≡ ["first second",{"text":"third fourth"}]',
     ],
   ])(
     "handles string and array state without adding a container label",
@@ -526,12 +559,12 @@ describe("decision_evaluate shared state", () => {
         flag: false,
       }),
     );
-    expect(text).toContain("» count: 0");
-    expect(text).toContain("» flag: false");
-    expect(text).not.toMatch(/» (empty|absent|missing):/);
+    expect(text).toContain("≡ count: 0");
+    expect(text).toContain("≡ flag: false");
+    expect(text).not.toMatch(/≡ (empty|absent|missing):/);
   });
 
-  it("keeps all three question/result trees byte-for-byte unchanged", () => {
+  it("keeps all three question/result displays unchanged when adding state", () => {
     const params = {
       state: null as unknown,
       questions: {
@@ -564,13 +597,11 @@ describe("decision_evaluate shared state", () => {
       true,
     );
     const lines = baseline.split("\n");
-    lines.splice(
-      2,
-      0,
-      `    ${ANSI.yellow}» context:${ANSI.reset} ${ANSI.green}Shared context${ANSI.reset}`,
-    );
+    lines.splice(2, 0, "    ≡ context: Shared context");
     expect(actual).toBe(lines.join("\n"));
-    expect(actual).toContain(`${ANSI.green}First${ANSI.reset}\n`);
+    expect(actual).toContain(
+      `${ANSI.yellow}» First${ANSI.reset}\n      ${ANSI.yellow}second${ANSI.reset}`,
+    );
   });
 
   it("handles nonserializable state without hiding valid question results", () => {
@@ -579,8 +610,8 @@ describe("decision_evaluate shared state", () => {
     const text = visible(
       withState({ detail: cycle, absent: { toJSON: () => undefined } }),
     );
-    expect(text).toContain("» detail: [unserializable]");
-    expect(text).not.toContain("» absent:");
+    expect(text).toContain("≡ detail: [unserializable]");
+    expect(text).not.toContain("≡ absent:");
     expect(text).toContain("true: 有直接提問 → 82.0%");
   });
 

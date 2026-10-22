@@ -14,6 +14,7 @@ import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
 import {
   createDecisionDisplayNodes,
   createDecisionStateLines,
+  type DecisionDisplayNode,
 } from "./decision-display.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
@@ -380,6 +381,18 @@ function renderStatusNodes(
       ...renderStatusNodes(node.children, childPrefix),
     ];
   });
+}
+
+function renderDecisionNodes(nodes: readonly DecisionDisplayNode[]): string[] {
+  return nodes.flatMap((node) =>
+    node.isQuestion
+      ? [
+          `    ${node.text}`,
+          ...node.continuationLines.map((line) => `      ${line}`),
+          ...renderStatusNodes(node.children),
+        ]
+      : renderStatusNodes([node]),
+  );
 }
 
 function findLastEntry(
@@ -820,13 +833,13 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
     : undefined;
   const isDecision =
     canonicalToolNameForDedupe(t.toolName) === "decision_evaluate";
-  const children = isDecision
-    ? createDecisionDisplayNodes(t)
-    : createEntryFieldNodes(
-        t,
-        intent ? { excludeKeys: [intent.key] } : undefined,
-      );
-  const stateLines = isDecision ? createDecisionStateLines(t) : [];
+  const decisionNodes = isDecision ? createDecisionDisplayNodes(t) : undefined;
+  const children =
+    decisionNodes ??
+    createEntryFieldNodes(
+      t,
+      intent ? { excludeKeys: [intent.key] } : undefined,
+    );
 
   return {
     key: `tool:${t.displayId ?? t.toolCallId}`,
@@ -842,8 +855,13 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
     },
     summaryLine,
     children,
-    ...(stateLines.length
-      ? { bodyLines: [...stateLines, ...renderStatusNodes(children)] }
+    ...(decisionNodes
+      ? {
+          bodyLines: [
+            ...createDecisionStateLines(t),
+            ...renderDecisionNodes(decisionNodes),
+          ],
+        }
       : {}),
   };
 }

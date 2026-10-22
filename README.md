@@ -36,24 +36,24 @@ A simplified live status message looks like this:
 ```
 
 `decision_evaluate` uses a dedicated `⚖️` display with the same cyan header,
-magenta field labels, green values, and yellow timing as ordinary tools. It
+magenta result labels, green result values, and yellow timing as ordinary tools. It
 shows each question's `instructions` (or its ID when omitted) and the input
 criteria descriptions alongside the returned probabilities:
 
 ```text
 ⚖️ decision_evaluate ▾ ✔ [952ms]
-    » context: Reviewing an incoming support request.
-    » detail: {"channel":"support","message":"Checkout is unavailable"}
-    ├─ Should this message receive a reply?
-    │   ├─ true: Direct question or mention → 82.0%
-    │   ╰─ false: No reply needed → 18.0%
-    ├─ Which department should handle this? → support
-    │   ├─ support: Technical issues → 80.0%
-    │   ╰─ billing: Payments and refunds → 20.0%
-    ╰─ How urgent is this? → score: 1.70 / 2
-        ├─ 0: Normal operation → 10.0%
-        ├─ 1: Partial disruption → 10.0%
-        ╰─ 2: Service unavailable → 80.0%
+    ≡ context: Reviewing an incoming support request.
+    ≡ detail: {"channel":"support","message":"Checkout is unavailable"}
+    » Should this message receive a reply?
+    ├─ true: Direct question or mention → 82.0%
+    ╰─ false: No reply needed → 18.0%
+    » Which department should handle this? → support
+    ├─ support: Technical issues → 80.0%
+    ╰─ billing: Payments and refunds → 20.0%
+    » How urgent is this? → score: 1.70 / 2
+    ├─ 0: Normal operation → 10.0%
+    ├─ 1: Partial disruption → 10.0%
+    ╰─ 2: Service unavailable → 80.0%
 ```
 
 Boolean false probability is calculated as `1 - probabilityTrue`. Choice
@@ -63,17 +63,24 @@ remain a separate distribution. Missing/null/blank descriptions show
 `未提供描述`; object and array instructions/descriptions display as JSON.
 While running, results show `等待結果…`. Missing or invalid results show
 `結果未提供`, and unavailable outcomes show their reason without probabilities.
-Shared `state` appears above the questions as flat `» field: value` rows in input
-order, without a state container. Markers and field names are yellow, values
-are green, and omission hints are light gray. Newlines and adjacent indentation
+Shared `state` appears above the questions as flat `≡ field: value` rows in input
+order, without a state container. These rows use Discord's default text color,
+matching skill-harness details; omission hints are light gray. Newlines and adjacent indentation
 inside string values, including nested objects and arrays, become one space
-before JSON serialization. Each value then uses the ordinary-tool 70-code-point
-limit and `... (+N chars)` omission hint. String or array state appears directly
-after `»`; absent/null/blank state and empty fields are omitted, while zero and
+before JSON serialization. Each combined `field: value` uses the ordinary-tool
+70-code-point limit, including the field name, colon and space, with the same
+`... (+N chars)` omission hint. The indent, `≡` marker and omission suffix are
+outside this limit; long field names are truncated too. String or array state appears directly
+after `≡`; absent/null/blank state and empty fields are omitted, while zero and
 false field values remain visible.
 
-The display omits model, provenance and token usage. Question/result formatting,
-sanitization and monotonic message bounding rules are unchanged. Other tools
+Question headings use a yellow `»` and yellow instructions (or question ID),
+while selected choices, scores and answer rows keep their result colors.
+State markers, question markers and answer tree connectors all use four-space
+indentation. Narrow Discord windows can still wrap lines.
+
+The display omits model, provenance and token usage. Sanitization, result parsing
+and monotonic message bounding rules are unchanged. Other tools
 keep their existing display.
 
 Status markers:
