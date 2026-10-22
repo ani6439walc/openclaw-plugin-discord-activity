@@ -25,6 +25,10 @@ Status messages are Discord ANSI code blocks. The latest non-empty `progress_car
 
 ### Example display
 
+Colored tool field labels use a single space before the green value, without a
+separator colon. Colons inside field names and values are preserved. Plain context
+rows and internal workflow details retain their own formatting.
+
 A simplified live status message looks like this:
 
 ```ansi
@@ -32,7 +36,7 @@ A simplified live status message looks like this:
     ⊹ 2 skills selected: handoff, hindsight-docs (.92)
 
 🔍 web_search ▾ ✔ [450ms]
-    ╰─ query: OpenClaw plugin SDK
+    ╰─ query OpenClaw plugin SDK
 ```
 
 `decision_evaluate` uses a dedicated `⚖️` display with the same cyan header,
@@ -45,15 +49,15 @@ criteria descriptions alongside the returned probabilities:
     ≡ context: Reviewing an incoming support request.
     ≡ detail: {"channel":"support","message":"Checkout is unavailable"}
     » Should this message receive a reply?
-    ├─ true: Direct question or mention → 82.0%
-    ╰─ false: No reply needed → 18.0%
+    ├─ true Direct question or mention → 82.0%
+    ╰─ false No reply needed → 18.0%
     » Which department should handle this? → support
-    ├─ support: Technical issues → 80.0%
-    ╰─ billing: Payments and refunds → 20.0%
-    » How urgent is this? → score: 1.70 / 2
-    ├─ 0: Normal operation → 10.0%
-    ├─ 1: Partial disruption → 10.0%
-    ╰─ 2: Service unavailable → 80.0%
+    ├─ support Technical issues → 80.0%
+    ╰─ billing Payments and refunds → 20.0%
+    » How urgent is this? → score 1.70 / 2
+    ├─ 0 Normal operation → 10.0%
+    ├─ 1 Partial disruption → 10.0%
+    ╰─ 2 Service unavailable → 80.0%
 ```
 
 Boolean false probability is calculated as `1 - probabilityTrue`. Choice

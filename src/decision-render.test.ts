@@ -47,14 +47,14 @@ describe("decision_evaluate rendering", () => {
     expect(visible(e)).toBe(`\`\`\`ansi
 ⚖️ decision_evaluate ▾ ✔ [952ms]
     » 是否需要回覆？
-    ├─ true: 有直接提問 → 82.0%
-    ╰─ false: 不需要回應 → 18.0%
+    ├─ true 有直接提問 → 82.0%
+    ╰─ false 不需要回應 → 18.0%
 \`\`\``);
     const colored = renderStatusContent([e], true, 12_000);
     expect(colored).toContain(
       `${ANSI.boldCyan}⚖️ decision_evaluate${ANSI.reset}`,
     );
-    expect(colored).toContain(`${ANSI.magenta}true:${ANSI.reset}`);
+    expect(colored).toContain(`${ANSI.magenta}true${ANSI.reset}`);
     expect(colored).toContain(`${ANSI.green}有直接提問${ANSI.reset}`);
     expect(colored).toContain(`${ANSI.yellow}[952ms]${ANSI.reset}`);
     expect(colored).toContain(`${ANSI.yellow}» 是否需要回覆？${ANSI.reset}`);
@@ -90,22 +90,22 @@ describe("decision_evaluate rendering", () => {
       }),
     });
     expect(visible(e)).toContain(`» 交給哪個部門？ → billing
-    ├─ support: 技術問題 → 15.0%
-    ├─ billing: 帳務問題 → 80.0%
-    ╰─ sales: 購買諮詢 → 5.0%
-    » 有多緊急？ → score: 1.70 / 2
-    ├─ 0: 一般 → 10.0%
-    ├─ 1: 部分受影響 → 10.0%
-    ╰─ 2: 服務中斷 → 80.0%`);
+    ├─ support 技術問題 → 15.0%
+    ├─ billing 帳務問題 → 80.0%
+    ╰─ sales 購買諮詢 → 5.0%
+    » 有多緊急？ → score 1.70 / 2
+    ├─ 0 一般 → 10.0%
+    ├─ 1 部分受影響 → 10.0%
+    ╰─ 2 服務中斷 → 80.0%`);
     const colored = renderStatusContent([e], true, 12_000);
     expect(colored).toContain(
       `    ${ANSI.yellow}» 交給哪個部門？${ANSI.reset} → ${ANSI.green}billing${ANSI.reset}`,
     );
     expect(colored).toContain(
-      `    ${ANSI.yellow}» 有多緊急？${ANSI.reset} → ${ANSI.magenta}score:${ANSI.reset} ${ANSI.green}1.70 / 2${ANSI.reset}`,
+      `    ${ANSI.yellow}» 有多緊急？${ANSI.reset} → ${ANSI.magenta}score${ANSI.reset} ${ANSI.green}1.70 / 2${ANSI.reset}`,
     );
     expect(colored).toContain(
-      `    ├─ ${ANSI.magenta}support:${ANSI.reset} ${ANSI.green}技術問題${ANSI.reset} → ${ANSI.green}15.0%${ANSI.reset}`,
+      `    ├─ ${ANSI.magenta}support${ANSI.reset} ${ANSI.green}技術問題${ANSI.reset} → ${ANSI.green}15.0%${ANSI.reset}`,
     );
   });
 
@@ -117,7 +117,7 @@ describe("decision_evaluate rendering", () => {
   ])("recognizes canonical alias %s", (toolName) => {
     expect(getToolIcon(toolName)).toBe("⚖️");
     expect(visible(entry({ toolName, result: booleanResult }))).toContain(
-      "true: 有直接提問 → 82.0%",
+      "true 有直接提問 → 82.0%",
     );
   });
 
@@ -126,7 +126,7 @@ describe("decision_evaluate rendering", () => {
     { structuredContent: booleanResult },
     { content: [{ type: "text", text: JSON.stringify(booleanResult) }] },
   ])("reads supported result wrappers", (result) => {
-    expect(visible(entry({ result }))).toContain("true: 有直接提問 → 82.0%");
+    expect(visible(entry({ result }))).toContain("true 有直接提問 → 82.0%");
   });
 
   it.each([undefined, null, "", "  ", "\u001b[31m\u001b[0m"])(
@@ -137,8 +137,8 @@ describe("decision_evaluate rendering", () => {
         result: booleanResult,
       });
       expect(visible(e)).toContain("» reply\n");
-      expect(visible(e)).toContain("true: 未提供描述 → 82.0%");
-      expect(visible(e)).toContain("false: 未提供描述 → 18.0%");
+      expect(visible(e)).toContain("true 未提供描述 → 82.0%");
+      expect(visible(e)).toContain("false 未提供描述 → 18.0%");
     },
   );
 
@@ -160,8 +160,8 @@ describe("decision_evaluate rendering", () => {
     });
     const text = visible(e);
     expect(text).toContain("第一行\n      第二行ˋ");
-    expect(text).toContain('true: {"text":"ˋ直接"} → 82.0%');
-    expect(text).toContain('false: ["忽略","閒聊"] → 18.0%');
+    expect(text).toContain('true {"text":"ˋ直接"} → 82.0%');
+    expect(text).toContain('false ["忽略","閒聊"] → 18.0%');
     expect(text).not.toContain("\u001b");
   });
 
@@ -178,10 +178,10 @@ describe("decision_evaluate rendering", () => {
         rating: { type: "score", score: 0, probabilities: [1, 0] },
       }),
     });
-    expect(visible(e)).toContain("a: 未提供描述 → 100.0%");
-    expect(visible(e)).toContain("b: 未提供描述 → 0.0%");
-    expect(visible(e)).toContain("0: 未提供描述 → 100.0%");
-    expect(visible(e)).toContain("1: 未提供描述 → 0.0%");
+    expect(visible(e)).toContain("a 未提供描述 → 100.0%");
+    expect(visible(e)).toContain("b 未提供描述 → 0.0%");
+    expect(visible(e)).toContain("0 未提供描述 → 100.0%");
+    expect(visible(e)).toContain("1 未提供描述 → 0.0%");
   });
 
   it("shows pending without consuming a stale result", () => {
@@ -214,7 +214,7 @@ describe("decision_evaluate rendering", () => {
         result: booleanResult,
       }),
     );
-    expect(text).toContain("error: brokenˋ");
+    expect(text).toContain("error brokenˋ");
     expect(text).not.toContain("82.0%");
   });
 
@@ -290,7 +290,7 @@ describe("decision_evaluate rendering", () => {
   it.each([{ details: { structuredContent: booleanResult } }])(
     "accepts structured content within details",
     (result) => {
-      expect(visible(entry({ result }))).toContain("true: 有直接提問 → 82.0%");
+      expect(visible(entry({ result }))).toContain("true 有直接提問 → 82.0%");
     },
   );
 
@@ -337,8 +337,8 @@ describe("decision_evaluate rendering", () => {
     });
     const text = visible(e);
     expect(text).toContain('{"prompt":"是否回覆？"}');
-    expect(text).toContain("true: 第一行\n    │   第二行 → 82.0%");
-    expect(text).toContain("false: 未提供描述 → 18.0%");
+    expect(text).toContain("true 第一行\n    │   第二行 → 82.0%");
+    expect(text).toContain("false 未提供描述 → 18.0%");
     expect(text).toContain('["問題","補充"]');
     expect(text).toContain("結果未提供");
   });
@@ -364,7 +364,7 @@ describe("decision_evaluate rendering", () => {
     });
     const text = visible(e);
     expect(text).toContain("ˋ題目 → ˋ選項");
-    expect(text).toContain("ˋ選項: 描述 → 100.0%");
+    expect(text).toContain("ˋ選項 描述 → 100.0%");
     expect(text).not.toContain("\u001b");
   });
 
@@ -394,7 +394,7 @@ describe("decision_evaluate rendering", () => {
       },
       result: booleanResult,
     });
-    expect(visible(e)).toContain("true: 未提供描述 → 82.0%");
+    expect(visible(e)).toContain("true 未提供描述 → 82.0%");
   });
 
   it("accepts rounded distributions without forcing their sum to one", () => {
@@ -406,8 +406,8 @@ describe("decision_evaluate rendering", () => {
         q: { type: "choice", choice: "a", probabilities: { a: 0.66, b: 0.33 } },
       }),
     });
-    expect(visible(e)).toContain("a: A → 66.0%");
-    expect(visible(e)).toContain("b: B → 33.0%");
+    expect(visible(e)).toContain("a A → 66.0%");
+    expect(visible(e)).toContain("b B → 33.0%");
   });
 
   it("leaves ordinary tools unchanged", () => {
@@ -419,7 +419,7 @@ describe("decision_evaluate rendering", () => {
           result: booleanResult,
         }),
       ),
-    ).toContain("⚙️ custom_tool ▾ ✔ [952ms]\n    ╰─ query: hello");
+    ).toContain("⚙️ custom_tool ▾ ✔ [952ms]\n    ╰─ query hello");
   });
 });
 
@@ -683,7 +683,7 @@ describe("decision_evaluate shared state", () => {
     );
     expect(text).toContain("≡ detail: [unserializable]");
     expect(text).not.toContain("≡ absent:");
-    expect(text).toContain("true: 有直接提問 → 82.0%");
+    expect(text).toContain("true 有直接提問 → 82.0%");
   });
 
   it("stays bounded when shared state exceeds the message budget", () => {

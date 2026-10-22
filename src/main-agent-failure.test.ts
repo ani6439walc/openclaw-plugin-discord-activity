@@ -66,7 +66,7 @@ describe("main agent failure rendering", () => {
     expect(plain).toContain("💥 agent ✘");
     expect(plain).toContain("💥 agent ✘\n    ⊹ provider timeout");
     expect(plain).toContain("bash ▾ ✘");
-    expect(plain).toContain("error: permission denied");
+    expect(plain).toContain("error permission denied");
     expect(result.indexOf("hindsight-memory")).toBeLessThan(
       result.indexOf("skill-harness"),
     );

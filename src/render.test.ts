@@ -100,7 +100,7 @@ describe("status block display state", () => {
     );
 
     expect(stripAnsi(result.content)).toContain("⚙️ bash ▸ ✔");
-    expect(stripAnsi(result.content)).not.toContain("command: ls");
+    expect(stripAnsi(result.content)).not.toContain("command ls");
   });
 });
 
@@ -182,6 +182,31 @@ describe("tool icon categories", () => {
 });
 
 describe("ANSI main-tool contract", () => {
+  it("omits separator colons while preserving colons in keys and values", () => {
+    const result = renderStatusContent(
+      [
+        makeEntry({
+          params: {
+            "scope:tag": "https://example.com:8443",
+            payload: { note: "status:open" },
+          },
+          status: "error",
+          error: "failed: timeout",
+        }),
+      ],
+      true,
+    );
+    expect(result).toContain(
+      `${MAGENTA}scope:tag${RESET} ${GREEN}https://example.com:8443${RESET}`,
+    );
+    expect(result).toContain(
+      `${MAGENTA}payload${RESET} ${GREEN}{"note":"status:open"}${RESET}`,
+    );
+    expect(result).toContain(
+      `${RED}error${RESET} ${GREEN}failed: timeout${RESET}`,
+    );
+    expect(result).not.toMatch(/\u001b\[(?:35|31)m[^\n]*:\u001b\[0m/);
+  });
   it("fails open when both JSON and string serialization throw", () => {
     const hostile = {
       toJSON() {
@@ -197,7 +222,7 @@ describe("ANSI main-tool contract", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("payload: [unserializable]");
+    expect(stripAnsi(result)).toContain("payload [unserializable]");
   });
 
   it("omits empty string fields while preserving zero and false", () => {
@@ -220,9 +245,9 @@ describe("ANSI main-tool contract", () => {
       ),
     );
 
-    expect(result).toContain("name: delegate");
-    expect(result).toContain("offset: 0");
-    expect(result).toContain("enabled: false");
+    expect(result).toContain("name delegate");
+    expect(result).toContain("offset 0");
+    expect(result).toContain("enabled false");
     expect(result).not.toContain("file_path:");
     expect(result).not.toContain("whitespace:");
   });
@@ -243,7 +268,7 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${GREEN}✔${RESET} ${YELLOW}[1s]${RESET}`,
-        `    ╰─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET} · ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
+        `    ╰─ ${MAGENTA}cwd${RESET} ${GREEN}/repo${RESET} · ${MAGENTA}command${RESET} ${GREEN}ls${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -280,7 +305,7 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${RED}✘${RESET}`,
-        `    ╰─ ${RED}error:${RESET} ${GREEN}permission denied${RESET}`,
+        `    ╰─ ${RED}error${RESET} ${GREEN}permission denied${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -508,7 +533,7 @@ describe("display-value formatting", () => {
         ),
       );
 
-      expect(result).toContain(`${key}: ${"a".repeat(70)}... (+3 chars)`);
+      expect(result).toContain(`${key} ${"a".repeat(70)}... (+3 chars)`);
       expect(result).not.toContain("z");
     },
   );
@@ -523,7 +548,7 @@ describe("display-value formatting", () => {
     const plain = stripAnsi(result);
 
     expect(plain).toContain(
-      ["    ╰─ query: |", "        saferedˋˋˋend\\tline", "        next"].join(
+      ["    ╰─ query |", "        saferedˋˋˋend\\tline", "        next"].join(
         "\n",
       ),
     );
@@ -570,7 +595,7 @@ describe("display-value formatting", () => {
     );
     const plain = stripAnsi(result);
 
-    expect(plain).toContain("bad\\nkeyˋˋˋ: value");
+    expect(plain).toContain("bad\\nkeyˋˋˋ value");
     expect(result.match(/```/g)).toHaveLength(2);
     expect(result).not.toContain("\u001b[31mkey");
   });
@@ -590,6 +615,45 @@ describe("display-value formatting", () => {
 });
 
 describe("compact scalar rows", () => {
+  it("keeps fields wider than 34 code points out of compact rows", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            params: { aWide: "x".repeat(30), zShort: 1 },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+    expect(result).toContain(
+      `    ├─ zShort 1\n    ╰─ aWide ${"x".repeat(30)}\n`,
+    );
+  });
+  it("uses the actual separator width for tools and internal groups", () => {
+    const first = "a".repeat(31);
+    const second = "b".repeat(32);
+    const params = { [first]: 1, [second]: 2 };
+    const normal = stripAnsi(
+      renderStatusContent([makeEntry({ params, status: "completed" })], true),
+    );
+    expect(normal).toContain(`    ╰─ ${first} 1 · ${second} 2\n`);
+    const group = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            toolCallId: "skill-harness:phase",
+            toolName: "skill-harness:phase",
+            params,
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+    expect(group).toContain(`      ⊹ ${first}: 1\n      ⊹ ${second}: 2\n`);
+  });
   it("moves eligible scalars first and packs at most three per row", () => {
     const result = stripAnsi(
       renderStatusContent(
@@ -611,8 +675,8 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "    ├─ caseSensitive: false · limit: 50 · offset: 0\n" +
-        "    ╰─ query: renderStatusContent · retries: 2 · path: src",
+      "    ├─ caseSensitive false · limit 50 · offset 0\n" +
+        "    ╰─ query renderStatusContent · retries 2 · path src",
     );
   });
 
@@ -634,8 +698,8 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      "    ├─ firstMetadataKey123456: 1 · secondMetadataKey12345: 2\n" +
-        "    ╰─ thirdMetadataKey123456: 3",
+      "    ├─ firstMetadataKey123456 1 · secondMetadataKey12345 2\n" +
+        "    ╰─ thirdMetadataKey123456 3",
     );
   });
 
@@ -651,7 +715,7 @@ describe("compact scalar rows", () => {
     );
 
     expect(result).toContain(
-      `${MAGENTA}enabled:${RESET} ${GREEN}true${RESET} · ${MAGENTA}limit:${RESET} ${GREEN}50${RESET}`,
+      `${MAGENTA}enabled${RESET} ${GREEN}true${RESET} · ${MAGENTA}limit${RESET} ${GREEN}50${RESET}`,
     );
   });
 
@@ -730,9 +794,10 @@ describe("compact scalar rows", () => {
         ),
       );
 
-      const firstRow = "corpus: memory · maxResults: 5 · minScore: 0.2";
+      const separator = toolName.startsWith("hindsight-memory:") ? ": " : " ";
+      const firstRow = `corpus${separator}memory · maxResults${separator}5 · minScore${separator}0.2`;
       expect(result).toContain(firstRow);
-      expect(result).toContain("query: weight clinic");
+      expect(result).toContain(`query${separator}weight clinic`);
     },
   );
 
@@ -750,7 +815,7 @@ describe("compact scalar rows", () => {
       ),
     );
 
-    expect(result).toContain("    ╰─ corpus: memory · limit: 5");
+    expect(result).toContain("    ╰─ corpus memory · limit 5");
   });
 });
 
@@ -773,8 +838,8 @@ describe("multiline values", () => {
 
     expect(result).toContain(
       [
-        "    ├─ cwd: /repo",
-        "    ╰─ command: |",
+        "    ├─ cwd /repo",
+        "    ╰─ command |",
         "        pnpm run typecheck",
         "        pnpm run test",
       ].join("\n"),
@@ -801,8 +866,8 @@ describe("multiline values", () => {
     );
 
     const firstRow =
-      "query: status renderer · cwd: /repo · command: pnpm run test";
-    const secondRow = "result: summary · error: warning";
+      "query status renderer · cwd /repo · command pnpm run test";
+    const secondRow = "result summary · error warning";
     expect(result).toContain(firstRow);
     expect(result).toContain(secondRow);
     expect(result.indexOf(firstRow)).toBeLessThan(result.indexOf(secondRow));
@@ -1189,7 +1254,7 @@ describe("renderStatusContent", () => {
       false,
     );
     expect(stripAnsi(result)).toContain("⚙️ bash ▾ ✘");
-    expect(stripAnsi(result)).toContain("error: permission denied");
+    expect(stripAnsi(result)).toContain("error permission denied");
   });
 
   it("leaves single-line string params containing colons unquoted", () => {
@@ -1203,7 +1268,7 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("query: site:example.com status:open");
+    expect(stripAnsi(result)).toContain("query site:example.com status:open");
   });
 
   it("leaves error messages containing colons unquoted", () => {
@@ -1217,7 +1282,7 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("╰─ error: failed: timeout");
+    expect(stripAnsi(result)).toContain("╰─ error failed: timeout");
   });
 
   it("does not apply YAML quoting to ordinary strings", () => {
@@ -1238,11 +1303,11 @@ describe("renderStatusContent", () => {
     );
 
     const plain = stripAnsi(result);
-    expect(plain).toContain('quoted: "already quoted"');
-    expect(plain).toContain("dash: - item");
-    expect(plain).toContain("question: ? key");
-    expect(plain).toContain("hex: 0x1A");
-    expect(plain).toContain("octal: 0o77");
+    expect(plain).toContain('quoted "already quoted"');
+    expect(plain).toContain("dash - item");
+    expect(plain).toContain("question ? key");
+    expect(plain).toContain("hex 0x1A");
+    expect(plain).toContain("octal 0o77");
   });
 
   it("renders orphan-completed with recycle mark", () => {
@@ -2047,7 +2112,7 @@ describe("renderStatusContent", () => {
       "💡 skill-harness ▾ ✔ [2.92s]\n    ⊹ no relevant skills",
     );
     // Ordinary tools keep their tree connectors.
-    expect(plain).toContain("⚙️ bash ▾ ✔\n    ╰─ command: ls");
+    expect(plain).toContain("⚙️ bash ▾ ✔\n    ╰─ command ls");
   });
 
   it("supports collapsing hindsight-memory as a subagent group via group:hindsight-memory", () => {
@@ -2086,7 +2151,7 @@ describe("tool intent and title rendering", () => {
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔ [2.15s]");
     expect(stripAnsi(result)).toContain("» Search Japantown San Jose cafes");
-    expect(stripAnsi(result)).toContain("╰─ command: curl https://example.com");
+    expect(stripAnsi(result)).toContain("╰─ command curl https://example.com");
     expect(stripAnsi(result)).not.toContain("title:");
     expect(result).toContain(
       `${YELLOW}» Search Japantown San Jose cafes${RESET}`,
@@ -2163,7 +2228,7 @@ describe("tool intent and title rendering", () => {
     const resultLabel = renderStatusContent(entryWithLabel, true);
     expect(stripAnsi(resultLabel)).toContain("» Spawn subagent worker");
     expect(stripAnsi(resultLabel)).not.toContain("label:");
-    expect(stripAnsi(resultLabel)).toContain("agentId: worker-1");
+    expect(stripAnsi(resultLabel)).toContain("agentId worker-1");
 
     const entryWithDesc: ToolEntry[] = [
       {
@@ -2176,7 +2241,7 @@ describe("tool intent and title rendering", () => {
     const resultDesc = renderStatusContent(entryWithDesc, true);
     expect(stripAnsi(resultDesc)).toContain("» Poll build logs");
     expect(stripAnsi(resultDesc)).not.toContain("description:");
-    expect(stripAnsi(resultDesc)).toContain("sessionId: s1");
+    expect(stripAnsi(resultDesc)).toContain("sessionId s1");
   });
 
   it("normalizes multi-line title to a single line", () => {

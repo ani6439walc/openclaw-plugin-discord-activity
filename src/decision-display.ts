@@ -126,7 +126,7 @@ function fieldNode(key: string, value: unknown): DecisionDisplayNode {
   const labelText = sanitizeVisibleText(
     [label.text, ...label.continuationLines].join(" "),
   );
-  node.text = `${ansiSpan(key === "error" ? ANSI.red : ANSI.magenta, `${labelText}:`)} ${node.text}`;
+  node.text = `${ansiSpan(key === "error" ? ANSI.red : ANSI.magenta, labelText)} ${node.text}`;
   return node;
 }
 
@@ -278,7 +278,7 @@ export function createDecisionDisplayNodes(
     } else if (answer?.type === "score") {
       append(
         node,
-        ` → ${ansiSpan(ANSI.magenta, "score:")} ${ansiSpan(ANSI.green, `${(answer.score as number).toFixed(2)} / ${criteria.length - 1}`)}`,
+        ` → ${ansiSpan(ANSI.magenta, "score")} ${ansiSpan(ANSI.green, `${(answer.score as number).toFixed(2)} / ${criteria.length - 1}`)}`,
       );
     }
     node.children = criteria.map(([key, description], index) => {

@@ -237,8 +237,9 @@ export function formatDisplayFields(
       const { isMultiline, ...formatted } = formatDisplayValue(value);
       const key = sanitizeInlineText(rawKey);
       const width = [
-        ...`${key}: ${formatted.value}${formatted.omittedHint ?? ""}`,
+        ...`${key} ${formatted.value}${formatted.omittedHint ?? ""}`,
       ].length;
+      // Tool spacing is a lower bound; the renderer rechecks the group separator.
       return {
         key,
         ...formatted,
