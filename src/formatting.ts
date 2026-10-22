@@ -237,7 +237,7 @@ export function formatDisplayFields(
       const { isMultiline, ...formatted } = formatDisplayValue(value);
       const key = sanitizeInlineText(rawKey);
       const width = [
-        ...`${key}: ${formatted.value}${formatted.omittedHint ?? ""}`,
+        ...`${key} ${formatted.value}${formatted.omittedHint ?? ""}`,
       ].length;
       return {
         key,

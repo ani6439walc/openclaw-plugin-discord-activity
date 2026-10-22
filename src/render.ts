@@ -123,25 +123,29 @@ function getStatusStyle(status: ToolEntry["status"]): string {
 function renderMainField(field: DisplayField): string {
   const keyStyle = field.key === "error" ? ANSI.red : ANSI.magenta;
   if (field.multilineLines) {
-    return `${ansiSpan(keyStyle, `${field.key}:`)} |`;
+    return `${ansiSpan(keyStyle, field.key)} |`;
   }
   const value = ansiSpan(ANSI.green, field.value);
   const hint = field.omittedHint
     ? ansiSpan(ANSI.lightGray, field.omittedHint)
     : "";
-  return `${ansiSpan(keyStyle, `${field.key}:`)} ${value}${hint}`;
+  return `${ansiSpan(keyStyle, field.key)} ${value}${hint}`;
 }
 
-function getDisplayFieldWidth(field: DisplayField): number {
-  return [...`${field.key}: ${field.value}${field.omittedHint ?? ""}`].length;
+function getDisplayFieldWidth(field: DisplayField, separator = " "): number {
+  return [...`${field.key}${separator}${field.value}${field.omittedHint ?? ""}`]
+    .length;
 }
 
-function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
+function packMainFields(
+  fields: readonly DisplayField[],
+  separator = " ",
+): DisplayField[][] {
   const compactFields: DisplayField[] = [];
   const ordinaryFields: DisplayField[] = [];
 
   for (const field of fields) {
-    if (field.compactEligible && getDisplayFieldWidth(field) <= 70) {
+    if (field.compactEligible && getDisplayFieldWidth(field, separator) <= 34) {
       compactFields.push(field);
     } else {
       ordinaryFields.push(field);
@@ -152,7 +156,7 @@ function packMainFields(fields: readonly DisplayField[]): DisplayField[][] {
   let currentRow: DisplayField[] = [];
   let currentWidth = 0;
   for (const field of compactFields) {
-    const fieldWidth = getDisplayFieldWidth(field);
+    const fieldWidth = getDisplayFieldWidth(field, separator);
     const nextWidth =
       currentWidth + (currentRow.length > 0 ? 3 : 0) + fieldWidth;
     if (currentRow.length === 3 || nextWidth > 70) {
@@ -465,7 +469,7 @@ function renderGroupFields(
   fields: readonly DisplayField[],
   indent = GROUP_INDENT,
 ): string[] {
-  return packMainFields(fields.filter(hasVisibleContent)).flatMap((row) =>
+  return packMainFields(fields.filter(hasVisibleContent), ": ").flatMap((row) =>
     renderGroupFieldRow(row, indent),
   );
 }

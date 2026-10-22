@@ -58,8 +58,8 @@ describe("bounded status rendering", () => {
     expect(plain).toContain("tool_first ▸ ✔");
     expect(plain).toContain("tool_second ▾ ✔");
     expect(plain).toContain("tool_third ▾ ✔");
-    expect(plain).not.toContain("detail: a");
-    expect(plain).toContain("detail: b");
+    expect(plain).not.toContain("detail a");
+    expect(plain).toContain("detail b");
     assertNoGlobalOmissionMarker(result.content);
   });
 
@@ -81,8 +81,8 @@ describe("bounded status rendering", () => {
     expect(plain).toContain("tool_first ▸ ←");
     expect(plain).toContain("tool_second ▾ ←");
     expect(plain).toContain("tool_third ▾ ←");
-    expect(plain).not.toContain("detail: a");
-    expect(plain).toContain("detail: b");
+    expect(plain).not.toContain("detail a");
+    expect(plain).toContain("detail b");
   });
 
   it("collapses every block before removing the oldest block", () => {
