@@ -1,7 +1,9 @@
 import { sanitizeInlineText, sanitizeVisibleText } from "./ansi.js";
+import { canonicalToolNameForDedupe } from "./tool-name.js";
 
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
+  if (canonicalToolNameForDedupe(name) === "decision_evaluate") return "⚖️";
   if (n.includes("__")) return "🔗";
 
   // Web & Communication

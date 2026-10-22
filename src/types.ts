@@ -16,6 +16,7 @@ export type ToolEntry = {
   startedAtMs?: number;
   durationMs?: number;
   error?: string;
+  result?: unknown;
   activityErrors?: string[];
   statusSequence?: number;
 };
@@ -145,6 +146,7 @@ export type AfterToolCallEvent = {
   runId?: string;
   toolCallId?: string;
   error?: string;
+  result?: unknown;
   durationMs?: number;
 };
 

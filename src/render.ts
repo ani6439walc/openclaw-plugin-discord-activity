@@ -11,6 +11,7 @@ import {
   type DisplayField,
 } from "./formatting.js";
 import { ANSI, ansiSpan, sanitizeVisibleText } from "./ansi.js";
+import { createDecisionDisplayNodes } from "./decision-display.js";
 import {
   DEFAULT_MAX_STATUS_MESSAGE_LENGTH,
   STATUS_MAX_ENTRIES,
@@ -828,10 +829,13 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
       collapsedName,
     },
     summaryLine,
-    children: createEntryFieldNodes(
-      t,
-      intent ? { excludeKeys: [intent.key] } : undefined,
-    ),
+    children:
+      canonicalToolNameForDedupe(t.toolName) === "decision_evaluate"
+        ? createDecisionDisplayNodes(t)
+        : createEntryFieldNodes(
+            t,
+            intent ? { excludeKeys: [intent.key] } : undefined,
+          ),
   };
 }
 

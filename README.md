@@ -35,6 +35,36 @@ A simplified live status message looks like this:
     ╰─ query: OpenClaw plugin SDK
 ```
 
+`decision_evaluate` uses a dedicated `⚖️` display with the same cyan header,
+magenta field labels, green values, and yellow timing as ordinary tools. It
+shows each question's `instructions` (or its ID when omitted) and the input
+criteria descriptions alongside the returned probabilities:
+
+```text
+⚖️ decision_evaluate ▾ ✔ [952ms]
+    ├─ Should this message receive a reply?
+    │   ├─ true: Direct question or mention → 82.0%
+    │   ╰─ false: No reply needed → 18.0%
+    ├─ Which department should handle this? → support
+    │   ├─ support: Technical issues → 80.0%
+    │   ╰─ billing: Payments and refunds → 20.0%
+    ╰─ How urgent is this? → score: 1.70 / 2
+        ├─ 0: Normal operation → 10.0%
+        ├─ 1: Partial disruption → 10.0%
+        ╰─ 2: Service unavailable → 80.0%
+```
+
+Boolean false probability is calculated as `1 - probabilityTrue`. Choice
+alternatives and score criteria retain input order. Scores display the provider's
+score rounded to two decimal places against `criteria.length - 1`; probabilities
+remain a separate distribution. Missing/null/blank descriptions show
+`未提供描述`; object and array instructions/descriptions display as JSON.
+While running, results show `等待結果…`. Missing or invalid results show
+`結果未提供`, and unavailable outcomes show their reason without probabilities.
+The display omits `state`, model, provenance and token usage; it uses the existing
+sanitization, field truncation and monotonic message bounding rules. Other tools
+keep their existing display.
+
 Status markers:
 
 - `▾` details are expanded.

@@ -933,6 +933,13 @@ export function createHookHandlers(deps: HookDeps) {
         event.durationMs,
         observedAtMs,
       );
+      // Only decisions need output for display. Omitted duplicate output must
+      // not clear an already observed result; a tool error must clear it.
+      const resultUpdate: Partial<ToolEntry> =
+        canonicalToolNameForDedupe(nextToolName) === "decision_evaluate" &&
+        (event.error || event.result !== undefined)
+          ? { result: event.error ? undefined : event.result }
+          : {};
       if (event.error) {
         toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
           toolCallId: nextToolCallId,
@@ -941,6 +948,7 @@ export function createHookHandlers(deps: HookDeps) {
           status: "error",
           error: event.error,
           durationMs: nextDurationMs,
+          ...resultUpdate,
         });
       } else if (isOrphanReconcile) {
         toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
@@ -950,6 +958,7 @@ export function createHookHandlers(deps: HookDeps) {
           status: "orphan-completed",
           error: undefined,
           durationMs: nextDurationMs,
+          ...resultUpdate,
         });
       } else {
         toolHistoryManager.updateEntry(session.toolHistory, updateToolCallId, {
@@ -959,6 +968,7 @@ export function createHookHandlers(deps: HookDeps) {
           status: "completed",
           error: undefined,
           durationMs: nextDurationMs,
+          ...resultUpdate,
         });
       }
       try {
