@@ -239,6 +239,7 @@ export function formatDisplayFields(
       const width = [
         ...`${key} ${formatted.value}${formatted.omittedHint ?? ""}`,
       ].length;
+      // Tool spacing is a lower bound; the renderer rechecks the group separator.
       return {
         key,
         ...formatted,

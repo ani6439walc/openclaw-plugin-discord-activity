@@ -615,6 +615,22 @@ describe("display-value formatting", () => {
 });
 
 describe("compact scalar rows", () => {
+  it("keeps fields wider than 34 code points out of compact rows", () => {
+    const result = stripAnsi(
+      renderStatusContent(
+        [
+          makeEntry({
+            params: { aWide: "x".repeat(30), zShort: 1 },
+            status: "completed",
+          }),
+        ],
+        true,
+      ),
+    );
+    expect(result).toContain(
+      `    ├─ zShort 1\n    ╰─ aWide ${"x".repeat(30)}\n`,
+    );
+  });
   it("uses the actual separator width for tools and internal groups", () => {
     const first = "a".repeat(31);
     const second = "b".repeat(32);
