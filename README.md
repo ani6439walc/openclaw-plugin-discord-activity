@@ -64,7 +64,10 @@ remain a separate distribution. Missing/null/blank descriptions show
 While running, results show `等待結果…`. Missing or invalid results show
 `結果未提供`, and unavailable outcomes show their reason without probabilities.
 Shared `state` appears above the questions as flat `≡ field: value` rows in input
-order, without a state container. These rows use Discord's default text color,
+order, without a state container. A JSON object string is parsed once and rendered
+like object state, with each top-level field trimmed independently. Invalid JSON,
+JSON arrays and JSON primitives keep their original string display; nested strings
+are not parsed again. These rows use Discord's default text color,
 matching skill-harness details; omission hints are light gray. Newlines and adjacent indentation
 inside string values, including nested objects and arrays, become one space
 before JSON serialization. Each combined `field: value` uses the ordinary-tool

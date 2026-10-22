@@ -36,7 +36,14 @@ function stateDisplayValue(value: unknown): unknown {
 
 export function createDecisionStateLines(entry: ToolEntry): string[] {
   const state = record(entry.params)?.state;
-  const objectState = record(state);
+  let objectState = record(state);
+  if (typeof state === "string") {
+    try {
+      objectState = record(JSON.parse(state));
+    } catch {
+      // Plain text and malformed JSON keep their original single-row display.
+    }
+  }
   const fields: [string | undefined, unknown][] = objectState
     ? Object.entries(objectState)
     : [[undefined, state]];

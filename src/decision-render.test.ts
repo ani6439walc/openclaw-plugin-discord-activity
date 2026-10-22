@@ -449,6 +449,77 @@ describe("decision_evaluate shared state", () => {
     expect(visible(e)).not.toContain("├─ zContext");
   });
 
+  it.each([undefined, 2])(
+    "renders JSON object strings exactly like object state (JSON indent: %s)",
+    (indent) => {
+      const state = {
+        game: "boxed pigs / pig game",
+        players: { small_pig: "烤雞堡", big_pig: "the other pig" },
+        payoffs: {
+          units: "food net of the run cost",
+          neither_presses: { small: 0, big: 0 },
+          only_small_presses: { small: 1, big: 4 },
+          only_big_presses: { small: 4, big: 9 },
+          both_press: { small: -1, big: 5 },
+        },
+        question:
+          "If both play the dominant strategy of the classic one-shot game, who gets more food?",
+      };
+      const serialized = ` \n${JSON.stringify(state, null, indent)}\n `;
+      expect(renderStatusContent([withState(serialized)], true)).toBe(
+        renderStatusContent([withState(state)], true),
+      );
+      const text = visible(withState(serialized));
+      expect(text).toContain("    ≡ game: boxed pigs / pig game\n");
+      expect(text).toContain(
+        '    ≡ players: {"small_pig":"烤雞堡","big_pig":"the other pig"}\n',
+      );
+      expect(text.match(/^    ≡ /gm)).toHaveLength(4);
+    },
+  );
+
+  it("normalizes and sanitizes parsed fields before their individual Unicode limits", () => {
+    const state = {
+      "`\u001b[31mcontext": "a\n  b",
+      detail: { text: "a\r\n  b", notes: ["c\nd"] },
+      emoji: "😀".repeat(64),
+      count: 0,
+      flag: false,
+      absent: null,
+      blank: " \n ",
+    };
+    const serialized = JSON.stringify(state);
+    const actual = renderStatusContent([withState(serialized)], true);
+    expect(actual).toBe(renderStatusContent([withState(state)], true));
+    expect(actual).toContain("    ≡ ˋcontext: a b\n");
+    expect(actual).toContain('    ≡ detail: {"text":"a b","notes":["c d"]}\n');
+    expect(actual).toContain(
+      `    ≡ emoji: ${"😀".repeat(63)}...${ANSI.lightGray} (+1 char)${ANSI.reset}`,
+    );
+  });
+
+  it.each([
+    "ordinary text",
+    '{"game": broken}',
+    '{"game":"unfinished"',
+    "null",
+    "false",
+    "0",
+    '"quoted text"',
+    '["one","two"]',
+  ])("preserves non-object or invalid JSON text: %s", (state) => {
+    expect(visible(withState(state))).toContain(`    ≡ ${state}\n`);
+  });
+
+  it("omits an empty JSON object and parses only the outermost string", () => {
+    expect(renderStatusContent([withState("{}")], true)).toBe(
+      renderStatusContent([withState({})], true),
+    );
+    expect(
+      visible(withState('{"detail":"{\\"note\\":\\"context\\"}"}')),
+    ).toContain('    ≡ detail: {"note":"context"}\n');
+  });
+
   it("normalizes CRLF, CR, blank lines and indentation recursively without changing the input", () => {
     const state = {
       context: "First  sentence.\r\n    Second.\n\n  Third.\r Fourth.",
@@ -587,21 +658,21 @@ describe("decision_evaluate shared state", () => {
       score: { type: "score", score: 0.7, probabilities: [0.3, 0.7] },
     });
     const baseline = renderStatusContent([entry({ params, result })], true);
-    const actual = renderStatusContent(
-      [
-        entry({
-          params: { ...params, state: { context: "Shared\ncontext" } },
-          result,
-        }),
-      ],
-      true,
-    );
     const lines = baseline.split("\n");
     lines.splice(2, 0, "    ≡ context: Shared context");
-    expect(actual).toBe(lines.join("\n"));
-    expect(actual).toContain(
-      `${ANSI.yellow}» First${ANSI.reset}\n      ${ANSI.yellow}second${ANSI.reset}`,
-    );
+    for (const state of [
+      { context: "Shared\ncontext" },
+      JSON.stringify({ context: "Shared\ncontext" }),
+    ]) {
+      const actual = renderStatusContent(
+        [entry({ params: { ...params, state }, result })],
+        true,
+      );
+      expect(actual).toBe(lines.join("\n"));
+      expect(actual).toContain(
+        `${ANSI.yellow}» First${ANSI.reset}\n      ${ANSI.yellow}second${ANSI.reset}`,
+      );
+    }
   });
 
   it("handles nonserializable state without hiding valid question results", () => {
