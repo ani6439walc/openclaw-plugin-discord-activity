@@ -243,7 +243,7 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${GREEN}✔${RESET} ${YELLOW}[1s]${RESET}`,
-        `    └─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET} · ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
+        `    ╰─ ${MAGENTA}cwd:${RESET} ${GREEN}/repo${RESET} · ${MAGENTA}command:${RESET} ${GREEN}ls${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -280,7 +280,7 @@ describe("ANSI main-tool contract", () => {
       [
         "```ansi",
         `${BOLD_CYAN}⚙️ bash${RESET} ${LIGHT_GRAY}▾${RESET} ${RED}✘${RESET}`,
-        `    └─ ${RED}error:${RESET} ${GREEN}permission denied${RESET}`,
+        `    ╰─ ${RED}error:${RESET} ${GREEN}permission denied${RESET}`,
         "```",
       ].join("\n"),
     );
@@ -523,7 +523,7 @@ describe("display-value formatting", () => {
     const plain = stripAnsi(result);
 
     expect(plain).toContain(
-      ["    └─ query: |", "        saferedˋˋˋend\\tline", "        next"].join(
+      ["    ╰─ query: |", "        saferedˋˋˋend\\tline", "        next"].join(
         "\n",
       ),
     );
@@ -612,7 +612,7 @@ describe("compact scalar rows", () => {
 
     expect(result).toContain(
       "    ├─ caseSensitive: false · limit: 50 · offset: 0\n" +
-        "    └─ query: renderStatusContent · retries: 2 · path: src",
+        "    ╰─ query: renderStatusContent · retries: 2 · path: src",
     );
   });
 
@@ -635,7 +635,7 @@ describe("compact scalar rows", () => {
 
     expect(result).toContain(
       "    ├─ firstMetadataKey123456: 1 · secondMetadataKey12345: 2\n" +
-        "    └─ thirdMetadataKey123456: 3",
+        "    ╰─ thirdMetadataKey123456: 3",
     );
   });
 
@@ -750,7 +750,7 @@ describe("compact scalar rows", () => {
       ),
     );
 
-    expect(result).toContain("    └─ corpus: memory · limit: 5");
+    expect(result).toContain("    ╰─ corpus: memory · limit: 5");
   });
 });
 
@@ -774,7 +774,7 @@ describe("multiline values", () => {
     expect(result).toContain(
       [
         "    ├─ cwd: /repo",
-        "    └─ command: |",
+        "    ╰─ command: |",
         "        pnpm run typecheck",
         "        pnpm run test",
       ].join("\n"),
@@ -896,7 +896,7 @@ describe("ANSI internal group contract", () => {
         "      second line",
       ].join("\n"),
     );
-    expect(stripAnsi(result)).not.toMatch(/[├└│]/);
+    expect(stripAnsi(result)).not.toMatch(/[├╰│]/);
     expect(result).toContain(
       `${BOLD_BLUE}🧠 hindsight-memory${RESET} ${LIGHT_GRAY}▾${RESET} ${CYAN}♻︎${RESET}`,
     );
@@ -1217,7 +1217,7 @@ describe("renderStatusContent", () => {
       true,
     );
 
-    expect(stripAnsi(result)).toContain("└─ error: failed: timeout");
+    expect(stripAnsi(result)).toContain("╰─ error: failed: timeout");
   });
 
   it("does not apply YAML quoting to ordinary strings", () => {
@@ -2047,7 +2047,7 @@ describe("renderStatusContent", () => {
       "💡 skill-harness ▾ ✔ [2.92s]\n    ⊹ no relevant skills",
     );
     // Ordinary tools keep their tree connectors.
-    expect(plain).toContain("⚙️ bash ▾ ✔\n    └─ command: ls");
+    expect(plain).toContain("⚙️ bash ▾ ✔\n    ╰─ command: ls");
   });
 
   it("supports collapsing hindsight-memory as a subagent group via group:hindsight-memory", () => {
@@ -2086,7 +2086,7 @@ describe("tool intent and title rendering", () => {
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔ [2.15s]");
     expect(stripAnsi(result)).toContain("» Search Japantown San Jose cafes");
-    expect(stripAnsi(result)).toContain("└─ command: curl https://example.com");
+    expect(stripAnsi(result)).toContain("╰─ command: curl https://example.com");
     expect(stripAnsi(result)).not.toContain("title:");
     expect(result).toContain(
       `${YELLOW}» Search Japantown San Jose cafes${RESET}`,
@@ -2204,7 +2204,7 @@ describe("tool intent and title rendering", () => {
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔");
     expect(stripAnsi(result)).toContain("» Simple task");
-    expect(stripAnsi(result)).not.toContain("└─");
+    expect(stripAnsi(result)).not.toContain("╰─");
     expect(stripAnsi(result)).not.toContain("├─");
   });
 

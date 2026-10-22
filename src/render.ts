@@ -368,7 +368,7 @@ function renderStatusNodes(
 ): string[] {
   return nodes.flatMap((node, index) => {
     const isLast = index === nodes.length - 1;
-    const connector = isLast ? "└─" : "├─";
+    const connector = isLast ? "╰─" : "├─";
     const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
     return [
       `${prefix} ${connector} ${node.text}`,

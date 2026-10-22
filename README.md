@@ -32,7 +32,7 @@ A simplified live status message looks like this:
     ⊹ 2 skills selected: handoff, hindsight-docs (.92)
 
 🔍 web_search ▾ ✔ [450ms]
-    └─ query: OpenClaw plugin SDK
+    ╰─ query: OpenClaw plugin SDK
 ```
 
 Status markers:
