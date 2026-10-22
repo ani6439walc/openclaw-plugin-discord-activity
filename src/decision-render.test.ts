@@ -11,7 +11,7 @@ function entry(
     toolCallId: "decision",
     toolName: "decision_evaluate",
     params: {
-      state: { privateContext: "do not display state" },
+      state: null,
       questions: {
         reply: {
           type: "boolean",
@@ -57,7 +57,7 @@ describe("decision_evaluate rendering", () => {
     expect(colored).toContain(`${ANSI.magenta}true:${ANSI.reset}`);
     expect(colored).toContain(`${ANSI.green}有直接提問${ANSI.reset}`);
     expect(colored).toContain(`${ANSI.yellow}[952ms]${ANSI.reset}`);
-    expect(colored).not.toContain("privateContext");
+    expect(colored).not.toContain("»");
   });
 
   it("renders choice and score criteria in input order, including fractional score", () => {
@@ -410,5 +410,196 @@ describe("decision_evaluate rendering", () => {
         }),
       ),
     ).toContain("⚙️ custom_tool ▾ ✔ [952ms]\n    ╰─ query: hello");
+  });
+});
+
+describe("decision_evaluate shared state", () => {
+  function withState(state: unknown): ToolEntry {
+    return entry({
+      params: { ...entry().params, state },
+      result: booleanResult,
+    });
+  }
+
+  it("flattens state in input order above unchanged questions with yellow labels and green values", () => {
+    const e = withState({
+      zContext: "Shared context",
+      aSample: "Short sample",
+    });
+    const baseline = renderStatusContent([withState(null)], true);
+    const lines = baseline.split("\n");
+    lines.splice(
+      2,
+      0,
+      `    ${ANSI.yellow}» zContext:${ANSI.reset} ${ANSI.green}Shared context${ANSI.reset}`,
+      `    ${ANSI.yellow}» aSample:${ANSI.reset} ${ANSI.green}Short sample${ANSI.reset}`,
+    );
+    expect(renderStatusContent([e], true)).toBe(lines.join("\n"));
+    expect(visible(e)).not.toContain("├─ state");
+    expect(visible(e)).not.toContain("├─ zContext");
+  });
+
+  it("normalizes CRLF, CR, blank lines and indentation recursively without changing the input", () => {
+    const state = {
+      context: "First  sentence.\r\n    Second.\n\n  Third.\r Fourth.",
+      detail: {
+        speaker: "yuu\n（姊姊）",
+        notes: ["a\r\nb", { text: "c\n\td" }],
+      },
+      literal: "a\\nb\nc",
+    };
+    const original = JSON.stringify(state);
+    const text = visible(withState(state));
+    expect(text).toContain(
+      "» context: First  sentence. Second. Third. Fourth.\n",
+    );
+    expect(text).toContain(
+      '» detail: {"speaker":"yuu （姊姊）","notes":["a b",{"text":"c d"}]}\n',
+    );
+    expect(text).toContain("» literal: a\\nb c\n");
+    expect(text).not.toContain("\r");
+    expect(JSON.stringify(state)).toBe(original);
+  });
+
+  it("uses ordinary Unicode-aware truncation and a gray omission hint", () => {
+    const e = withState({ context: "😀".repeat(71) });
+    const colored = renderStatusContent([e], true);
+    expect(colored).toContain(
+      `${ANSI.yellow}» context:${ANSI.reset} ${ANSI.green}${"😀".repeat(70)}...${ANSI.reset}${ANSI.lightGray} (+1 char)${ANSI.reset}`,
+    );
+  });
+
+  it("normalizes before counting omitted characters", () => {
+    const text = visible(
+      withState({ context: "a".repeat(35) + "\n    " + "b".repeat(36) }),
+    );
+    expect(text).toContain(
+      `» context: ${"a".repeat(35)} ${"b".repeat(34)}... (+2 chars)`,
+    );
+  });
+
+  it("normalizes nested JSON before applying the ordinary value limit", () => {
+    const text = visible(
+      withState({
+        detail: { text: "a".repeat(50) + "\n\n    " + "b".repeat(40) },
+      }),
+    );
+    const normalized =
+      '{"text":"' + "a".repeat(50) + " " + "b".repeat(40) + '"}';
+    expect(text).toContain(
+      `» detail: ${normalized.slice(0, 70)}... (+${normalized.length - 70} chars)`,
+    );
+  });
+
+  it("sanitizes state keys and nested text before displaying JSON", () => {
+    const e = withState({
+      "`\u001b[31mcontext": "safe`\u001b[31m\nnext",
+      nested: { note: "safe`\u001b[31m\nnext" },
+    });
+    const text = visible(e);
+    expect(text).toContain("» ˋcontext: safeˋ next");
+    expect(text).toContain('» nested: {"note":"safeˋ next"}');
+    expect(text).not.toContain("\u001b");
+    expect(text).not.toContain("\\u001b");
+  });
+
+  it.each([
+    ["first\nsecond", "» first second"],
+    [
+      ["first\nsecond", { text: "third\nfourth" }],
+      '» ["first second",{"text":"third fourth"}]',
+    ],
+  ])(
+    "handles string and array state without adding a container label",
+    (state, expected) => {
+      expect(visible(withState(state))).toContain(expected);
+    },
+  );
+
+  it("preserves ordinary empty-field behavior and shows zero and false", () => {
+    const text = visible(
+      withState({
+        empty: " \n ",
+        absent: null,
+        missing: undefined,
+        count: 0,
+        flag: false,
+      }),
+    );
+    expect(text).toContain("» count: 0");
+    expect(text).toContain("» flag: false");
+    expect(text).not.toMatch(/» (empty|absent|missing):/);
+  });
+
+  it("keeps all three question/result trees byte-for-byte unchanged", () => {
+    const params = {
+      state: null as unknown,
+      questions: {
+        boolean: {
+          type: "boolean",
+          instructions: "First\nsecond",
+          criteria: { true: "Yes\nindeed", false: "No" },
+        },
+        choice: { type: "choice", criteria: { a: "A", b: "B" } },
+        score: { type: "score", criteria: ["Low", "High"] },
+      },
+    };
+    const result = outcome({
+      boolean: { type: "boolean", probabilityTrue: 0.82 },
+      choice: {
+        type: "choice",
+        choice: "a",
+        probabilities: { a: 0.8, b: 0.2 },
+      },
+      score: { type: "score", score: 0.7, probabilities: [0.3, 0.7] },
+    });
+    const baseline = renderStatusContent([entry({ params, result })], true);
+    const actual = renderStatusContent(
+      [
+        entry({
+          params: { ...params, state: { context: "Shared\ncontext" } },
+          result,
+        }),
+      ],
+      true,
+    );
+    const lines = baseline.split("\n");
+    lines.splice(
+      2,
+      0,
+      `    ${ANSI.yellow}» context:${ANSI.reset} ${ANSI.green}Shared context${ANSI.reset}`,
+    );
+    expect(actual).toBe(lines.join("\n"));
+    expect(actual).toContain(`${ANSI.green}First${ANSI.reset}\n`);
+  });
+
+  it("handles nonserializable state without hiding valid question results", () => {
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    const text = visible(
+      withState({ detail: cycle, absent: { toJSON: () => undefined } }),
+    );
+    expect(text).toContain("» detail: [unserializable]");
+    expect(text).not.toContain("» absent:");
+    expect(text).toContain("true: 有直接提問 → 82.0%");
+  });
+
+  it("stays bounded when shared state exceeds the message budget", () => {
+    const e = withState(
+      Object.fromEntries(
+        Array.from({ length: 30 }, (_, i) => [`field${i}`, "a".repeat(100)]),
+      ),
+    );
+    const first = renderStatusContentWithState([e], false, 250);
+    expect(first.content.length).toBeLessThanOrEqual(250);
+    expect(first.displayState["tool:decision"]).toBe("collapsed");
+    const next = renderStatusContentWithState(
+      [withState(null)],
+      true,
+      1700,
+      first.displayState,
+    );
+    expect(next.displayState["tool:decision"]).toBe("collapsed");
+    expect(next.content).not.toContain("82.0%");
   });
 });

@@ -42,6 +42,8 @@ criteria descriptions alongside the returned probabilities:
 
 ```text
 ⚖️ decision_evaluate ▾ ✔ [952ms]
+    » context: Reviewing an incoming support request.
+    » detail: {"channel":"support","message":"Checkout is unavailable"}
     ├─ Should this message receive a reply?
     │   ├─ true: Direct question or mention → 82.0%
     │   ╰─ false: No reply needed → 18.0%
@@ -61,8 +63,17 @@ remain a separate distribution. Missing/null/blank descriptions show
 `未提供描述`; object and array instructions/descriptions display as JSON.
 While running, results show `等待結果…`. Missing or invalid results show
 `結果未提供`, and unavailable outcomes show their reason without probabilities.
-The display omits `state`, model, provenance and token usage; it uses the existing
-sanitization, field truncation and monotonic message bounding rules. Other tools
+Shared `state` appears above the questions as flat `» field: value` rows in input
+order, without a state container. Markers and field names are yellow, values
+are green, and omission hints are light gray. Newlines and adjacent indentation
+inside string values, including nested objects and arrays, become one space
+before JSON serialization. Each value then uses the ordinary-tool 70-code-point
+limit and `... (+N chars)` omission hint. String or array state appears directly
+after `»`; absent/null/blank state and empty fields are omitted, while zero and
+false field values remain visible.
+
+The display omits model, provenance and token usage. Question/result formatting,
+sanitization and monotonic message bounding rules are unchanged. Other tools
 keep their existing display.
 
 Status markers:
