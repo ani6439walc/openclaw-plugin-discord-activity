@@ -1,3 +1,4 @@
+import { settleRun } from "../test-helpers.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "./config.js";
 import { createHookHandlers } from "./hooks.js";
@@ -135,7 +136,8 @@ describe("main agent failure rendering", () => {
       { messageId: "user_1", metadata: { to: "channel:123" } },
       { channelId: "discord", sessionKey },
     );
-    await handlers.onAgentEnd(
+    await settleRun(
+      handlers,
       { success: false, error: "provider timeout", messages: [] },
       { sessionKey },
     );
@@ -183,6 +185,11 @@ describe("main agent failure rendering", () => {
       { to: "channel:123", content: "done" },
       { channelId: "discord", sessionKey },
     );
+    await settleRun(
+      handlers,
+      { success: true },
+      { channelId: "discord", sessionKey },
+    );
     const session = defaultStore.sessions.get("discord:channel:123")!;
     expect(stripAnsi(session.lastRenderedContent ?? "")).not.toContain(
       "provider timeout",
@@ -191,7 +198,8 @@ describe("main agent failure rendering", () => {
       ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
     ).length;
 
-    await handlers.onAgentEnd(
+    await settleRun(
+      handlers,
       { success: false, error: "provider timeout" },
       { sessionKey },
     );
@@ -228,7 +236,8 @@ describe("main agent failure rendering", () => {
       { messageId: "user_1", metadata: { to: "channel:123" } },
       { channelId: "discord", sessionKey },
     );
-    await handlers.onAgentEnd(
+    await settleRun(
+      handlers,
       { success: false, error: "provider timeout" },
       { sessionKey },
     );
@@ -237,7 +246,8 @@ describe("main agent failure rendering", () => {
       ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
     ).length;
 
-    await handlers.onAgentEnd(
+    await settleRun(
+      handlers,
       { success: false, error: "provider timeout" },
       { sessionKey },
     );
@@ -275,7 +285,8 @@ describe("main agent failure rendering", () => {
       { messageId: "user_1", metadata: { to: "channel:123" } },
       { channelId: "discord", sessionKey },
     );
-    await handlers.onAgentEnd(
+    await settleRun(
+      handlers,
       { success: false, error: "provider timeout" },
       { sessionKey },
     );
@@ -286,7 +297,8 @@ describe("main agent failure rendering", () => {
       ([, init]) => (init as RequestInit | undefined)?.method === "POST",
     ).length;
 
-    await handlers.onAgentEnd(
+    await settleRun(
+      handlers,
       { success: false, error: "provider timeout" },
       { sessionKey },
     );
@@ -328,6 +340,11 @@ describe("main agent failure rendering", () => {
       { to: "channel:123", content: "old reply" },
       { channelId: "discord", sessionKey, runId: "run_old" },
     );
+    await settleRun(
+      handlers,
+      { success: true },
+      { channelId: "discord", sessionKey, runId: "run_old" },
+    );
 
     await handlers.onMessageReceived(
       { messageId: "user_new", metadata: { to: "channel:123" } },
@@ -336,7 +353,8 @@ describe("main agent failure rendering", () => {
     const replacement = defaultStore.sessions.get("discord:channel:123")!;
     expect(replacement).not.toBe(oldSession);
 
-    await handlers.onAgentEnd(
+    await settleRun(
+      handlers,
       { success: false, error: "old provider timeout" },
       { sessionKey, runId: "run_old" },
     );

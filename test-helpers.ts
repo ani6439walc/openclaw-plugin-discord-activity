@@ -1,4 +1,32 @@
 import type { SessionEntry, ToolEntry, OrphanEntry } from "./src/types.js";
+import type { AgentContext, AgentEndEvent } from "./src/types.js";
+import type { createHookHandlers } from "./src/hooks.js";
+import { defaultStore } from "./src/session.js";
+import { getDiscordContextKey } from "./src/parser.js";
+
+/** Deliver logical completion separately from attempt and outbound hooks. */
+export async function settleRun(
+  handlers: ReturnType<typeof createHookHandlers>,
+  event: AgentEndEvent,
+  ctx: AgentContext,
+): Promise<void> {
+  const key = getDiscordContextKey(ctx.sessionKey);
+  const session = key ? defaultStore.sessions.get(key) : undefined;
+  const runId = ctx.runId ?? session?.runId ?? "fixture-run";
+  if (session && !session.runId && session.ownerSessionKey === ctx.sessionKey) {
+    await handlers.onBeforeAgentReply({ cleanedBody: "" }, { ...ctx, runId });
+  }
+  await handlers.onAgentLifecycleEvent({
+    sessionKey: ctx.sessionKey,
+    runId,
+    stream: "lifecycle",
+    data: {
+      phase: event.success === false || event.error ? "error" : "end",
+      executionSettled: true,
+      error: event.error,
+    },
+  });
+}
 
 export async function flushPromises(): Promise<void> {
   for (let i = 0; i < 20; i++) {

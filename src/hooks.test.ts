@@ -10,7 +10,7 @@ import {
 import { createHookHandlers } from "./hooks.js";
 import { createOrphanManager } from "./orphans.js";
 import { resolveConfig } from "./config.js";
-import { flushPromises } from "../test-helpers.js";
+import { flushPromises, settleRun } from "../test-helpers.js";
 import { defaultStore } from "./session.js";
 import type { HookDeps } from "./types.js";
 
@@ -117,6 +117,7 @@ describe("createHookHandlers", () => {
   let handlers: ReturnType<typeof createHookHandlers>;
 
   beforeEach(() => {
+    createDiscordFetchMock();
     defaultStore.sessions.clear();
     defaultStore.contexts.clear();
     store = defaultStore;
@@ -131,7 +132,15 @@ describe("createHookHandlers", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await flushPromises();
+    await Promise.allSettled(
+      [...defaultStore.sessions.values()].map((session) => session.pendingOp),
+    );
+    for (const session of defaultStore.sessions.values()) {
+      clearTimeout(session.clearTimer);
+      clearTimeout(session.maxDisplayTimer);
+    }
     defaultStore.sessions.clear();
     defaultStore.contexts.clear();
     vi.useRealTimers();
@@ -218,7 +227,8 @@ describe("createHookHandlers", () => {
               childContext,
             ),
           agent_end: () =>
-            handlers.onAgentEnd(
+            settleRun(
+              handlers,
               { success: false, error: "child failure" },
               childContext,
             ),
@@ -503,9 +513,13 @@ describe("createHookHandlers", () => {
     });
 
     it("does not stay pending while the Discord status update hangs", async () => {
+      let releaseFetch!: (response: Response) => void;
+      const heldFetch = new Promise<Response>((resolve) => {
+        releaseFetch = resolve;
+      });
       vi.stubGlobal(
         "fetch",
-        vi.fn(() => new Promise<Response>(() => {})),
+        vi.fn(() => heldFetch),
       );
       await handlers.onMessageReceived(
         { messageId: "user_msg_1", metadata: { to: "user:123" } },
@@ -533,6 +547,8 @@ describe("createHookHandlers", () => {
       await flushPromises();
       expect(settled).toBe(true);
       await pending;
+      releaseFetch(jsonResponse({ id: "status_1" }));
+      await store.sessions.get("discord:direct:123")?.pendingOp;
     });
 
     it("handles steer message while session is active without retiring card or resetting tool history", async () => {
@@ -648,7 +664,8 @@ describe("createHookHandlers", () => {
       );
       expect(activeSession?.finalized).toBe(false);
 
-      await handlers.onAgentEnd(
+      await settleRun(
+        handlers,
         { success: true },
         { channelId: "discord", sessionKey, runId: "run_turn1" },
       );
@@ -657,6 +674,11 @@ describe("createHookHandlers", () => {
       // Current run (run_turn2) finalizes session on completion
       await handlers.onMessageSending(
         { to: "user:123", content: "part 2" },
+        { channelId: "discord", sessionKey, runId: "run_turn2" },
+      );
+      await settleRun(
+        handlers,
+        { success: true },
         { channelId: "discord", sessionKey, runId: "run_turn2" },
       );
       expect(activeSession?.finalized).toBe(true);
@@ -702,7 +724,7 @@ describe("createHookHandlers", () => {
         ["bash", "steer", "read"],
       );
 
-      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+      await settleRun(handlers, { success: true }, { sessionKey, runId });
       await vi.advanceTimersByTimeAsync(1500);
       await flushPromises();
 
@@ -783,7 +805,7 @@ describe("createHookHandlers", () => {
         { toolCallId: "call_2", toolName: "read", params: {}, runId },
         { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
       );
-      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+      await settleRun(handlers, { success: true }, { sessionKey, runId });
       await vi.advanceTimersByTimeAsync(1500);
       await flushPromises();
 
@@ -1243,6 +1265,11 @@ describe("createHookHandlers", () => {
         { to: "user:123", content: "done" },
         { channelId: "discord", sessionKey, runId: "run_old" },
       );
+      await settleRun(
+        handlers,
+        { success: true },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
       expect(oldSession?.finalized).toBe(true);
 
       await handlers.onBeforeAgentReply(
@@ -1317,6 +1344,11 @@ describe("createHookHandlers", () => {
       );
       await handlers.onMessageSending(
         { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+      await settleRun(
+        handlers,
+        { success: true },
         { channelId: "discord", sessionKey, runId: "run_old" },
       );
       await handlers.onBeforeAgentReply(
@@ -1398,7 +1430,8 @@ describe("createHookHandlers", () => {
           runId: "run_old",
         },
       );
-      await handlers.onAgentEnd(
+      await settleRun(
+        handlers,
         { messages: [], success: true },
         { sessionKey, runId: "run_old" },
       );
@@ -1455,6 +1488,11 @@ describe("createHookHandlers", () => {
       );
       await handlers.onMessageSending(
         { to: "user:123", content: "done" },
+        { channelId: "discord", sessionKey, runId: "run_old" },
+      );
+      await settleRun(
+        handlers,
+        { success: true },
         { channelId: "discord", sessionKey, runId: "run_old" },
       );
 
@@ -2134,7 +2172,8 @@ describe("createHookHandlers", () => {
       const consoleSpy = vi
         .spyOn(console, "trace")
         .mockImplementation(() => {});
-      await handlers.onAgentEnd(
+      await settleRun(
+        handlers,
         { messages: [] },
         { sessionKey: "discord:channel:123:subagent:abc" },
       );
@@ -2251,7 +2290,7 @@ describe("createHookHandlers", () => {
           store.sessions.get("discord:direct:123")?.lastRenderedContent ?? "",
         ),
       ).toContain("🗜️ compaction ▾ ✔ [2.5s]");
-      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+      await settleRun(handlers, { success: true }, { sessionKey, runId });
       await vi.advanceTimersByTimeAsync(1500);
       await flushPromises();
 
@@ -2283,7 +2322,8 @@ describe("createHookHandlers", () => {
         { messageCount: 42 },
         { sessionKey, runId },
       );
-      await handlers.onAgentEnd(
+      await settleRun(
+        handlers,
         { success: false, error: "Compaction failed" },
         { sessionKey, runId },
       );
@@ -2384,7 +2424,7 @@ describe("createHookHandlers", () => {
         { toolCallId: "call_2", toolName: "read", durationMs: 50, runId },
         { sessionKey, runId, toolName: "read", toolCallId: "call_2" },
       );
-      await handlers.onAgentEnd({ success: true }, { sessionKey, runId });
+      await settleRun(handlers, { success: true }, { sessionKey, runId });
 
       await vi.advanceTimersByTimeAsync(1_500);
       await flushPromises();
@@ -2399,7 +2439,7 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
-    it("finalizes and cleans up context overflow session if grace period expires without recovery", async () => {
+    it("retains overflow progress past the old grace deadline until execution settles", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";
@@ -2461,6 +2501,17 @@ describe("createHookHandlers", () => {
       await vi.advanceTimersByTimeAsync(1_000);
       await flushPromises();
 
+      expect(store.sessions.get("discord:direct:123")?.finalized).toBe(false);
+      expect(countCalls(fetchMock, "DELETE", /messages/)).toBe(0);
+      await settleRun(
+        handlers,
+        {
+          success: false,
+          error: "Request size exceeds model context window",
+        },
+        { sessionKey, runId },
+      );
+      await vi.advanceTimersByTimeAsync(1500);
       const patchBodiesAfterTimeout = fetchMock.mock.calls
         .filter(([input, init]) => {
           const url = String(input);
@@ -2493,7 +2544,7 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
-    it("renders deferred overflow failure and cleans up when message_sending arrives without recovery", async () => {
+    it("renders overflow failure only on settled error after an intermediate reply", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";
@@ -2530,6 +2581,16 @@ describe("createHookHandlers", () => {
         { to: "user:123", content: "Context overflow error" },
         { channelId: "discord", sessionKey, runId, accountId: "default" },
       );
+      expect(session?.finalized).toBe(false);
+      expect(session?.overflowRecoveryPending).toBe(true);
+      await settleRun(
+        handlers,
+        {
+          success: false,
+          error: "Context overflow: prompt too large for the model.",
+        },
+        { sessionKey, runId },
+      );
 
       expect(session?.finalized).toBe(true);
       expect(session?.overflowRecoveryPending).toBe(false);
@@ -2552,7 +2613,7 @@ describe("createHookHandlers", () => {
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
-    it("suspends maxDisplayTimer during overflow recovery grace window and restores it after compaction", async () => {
+    it("preserves a live run beyond idle timeout before and after compaction", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
       const shortConfig = resolveConfig({ maxDisplaySeconds: 2 });
@@ -2615,20 +2676,18 @@ describe("createHookHandlers", () => {
       );
       expect(session?.maxDisplayTimer).toBeDefined();
 
-      // Normal idle timeout resumes after compaction completes
+      // Idle cleanup cannot terminate a known live logical execution.
       await vi.advanceTimersByTimeAsync(2_000);
       await flushPromises();
-      expect(
-        countCalls(
-          fetchMock,
-          "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
-        ),
-      ).toBe(1);
+      expect(store.sessions.get("discord:direct:123")).toBe(session);
+      expect(countCalls(fetchMock, "DELETE", /messages/)).toBe(0);
+      await settleRun(shortHandlers, { success: true }, { sessionKey, runId });
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(countCalls(fetchMock, "DELETE", /messages/)).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
     });
 
-    it("arms 30s grace timer and evicts session when context overflow occurs before any visible activity", async () => {
+    it("keeps an overflow before visible activity until a settled lifecycle arrives", async () => {
       vi.useFakeTimers();
       const fetchMock = createDiscordFetchMock();
       const sessionKey = "agent:main:discord:direct:123";
@@ -2649,18 +2708,21 @@ describe("createHookHandlers", () => {
 
       const session = store.sessions.get("discord:direct:123");
       expect(session?.overflowRecoveryPending).toBe(true);
-      expect(session?.clearTimer).toBeDefined();
+      expect(session?.clearTimer).toBeUndefined();
       expect(countChannelMessagePosts(fetchMock)).toBe(0);
 
       await vi.advanceTimersByTimeAsync(30_000);
       await flushPromises();
 
       expect(countChannelMessagePosts(fetchMock)).toBe(0);
+      expect(store.sessions.get("discord:direct:123")).toBe(session);
+      await settleRun(handlers, { success: true }, { sessionKey, runId });
+      await vi.advanceTimersByTimeAsync(1500);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
       expect(store.contexts.has("discord:direct:123")).toBe(false);
     });
 
-    it("cancels grace expiry deletion and eviction if before_compaction arrives while the expiry PATCH is in flight", async () => {
+    it("preserves successor compaction when settled cleanup PATCH is in flight", async () => {
       vi.useFakeTimers();
       let holdNextPatch = false;
       let releaseHeldPatch: (() => void) | undefined;
@@ -2733,21 +2795,29 @@ describe("createHookHandlers", () => {
         { sessionKey, runId },
       );
 
-      // Hold the expiry failure PATCH when the 30s grace timer fires
+      // The old execution settles while its final PATCH is held.
       holdNextPatch = true;
-      await vi.advanceTimersByTimeAsync(30_000);
+      const terminal = settleRun(
+        handlers,
+        { success: false, error: "Context overflow" },
+        { sessionKey, runId },
+      );
       await heldPatchStarted;
 
-      // Dispatch before_compaction while the expiry PATCH is still in flight
+      await handlers.onMessageReceived(
+        { messageId: "next-message", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId: "next-run" },
+      );
+      // Successor compaction must survive the old terminal operation.
       const beforeCompactionPromise = handlers.onBeforeCompaction(
         { messageCount: 90 },
-        { sessionKey, runId },
+        { sessionKey, runId: "next-run" },
       );
       await flushPromises();
 
       // Release the held expiry PATCH
       releaseHeldPatch?.();
-      await beforeCompactionPromise;
+      await Promise.all([beforeCompactionPromise, terminal]);
       await flushPromises();
 
       const session = store.sessions.get("discord:direct:123");
@@ -2759,7 +2829,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/dm_channel_123\/messages\/status_2$/,
         ),
       ).toBe(0);
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
@@ -2767,7 +2837,7 @@ describe("createHookHandlers", () => {
       );
     });
 
-    it("preserves resumed session, context, and compaction progress if before_compaction arrives while the expiry DELETE is in flight", async () => {
+    it("preserves successor context and compaction while settled cleanup DELETE is in flight", async () => {
       vi.useFakeTimers();
       let holdNextDelete = false;
       let releaseHeldDelete: (() => void) | undefined;
@@ -2840,15 +2910,24 @@ describe("createHookHandlers", () => {
         { sessionKey, runId },
       );
 
-      // Hold the expiry DELETE when the 30s grace timer fires
+      await settleRun(
+        handlers,
+        { success: false, error: "Context overflow" },
+        { sessionKey, runId },
+      );
+      // Hold the settled execution's cleanup DELETE.
       holdNextDelete = true;
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(1500);
       await heldDeleteStarted;
 
-      // Dispatch before_compaction while the expiry DELETE is still in flight
+      await handlers.onMessageReceived(
+        { messageId: "next-message", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, runId: "next-run" },
+      );
+      // Successor compaction must survive the old cleanup.
       const beforeCompactionPromise = handlers.onBeforeCompaction(
         { messageCount: 90 },
-        { sessionKey, runId },
+        { sessionKey, runId: "next-run" },
       );
       await flushPromises();
 
@@ -2951,7 +3030,8 @@ describe("createHookHandlers", () => {
       expect(session?.finalized).toBe(false);
       expect(session?.clearTimer).toBeUndefined();
 
-      await handlers.onAgentEnd(
+      await settleRun(
+        handlers,
         { messages: [], success: true },
         { sessionKey: "agent:main:discord:direct:123" },
       );
@@ -2997,13 +3077,18 @@ describe("createHookHandlers", () => {
         { to: "user:123", content: "done" },
         { channelId: "discord", sessionKey },
       );
+      await settleRun(
+        handlers,
+        { success: true },
+        { channelId: "discord", sessionKey },
+      );
       const patchesBefore = countCalls(
         fetchMock,
         "PATCH",
         /\/channels\/dm_channel_123\/messages\/status_1$/,
       );
 
-      await handlers.onAgentEnd({ success: true }, { sessionKey });
+      await settleRun(handlers, { success: true }, { sessionKey });
 
       expect(
         countCalls(
@@ -3050,6 +3135,14 @@ describe("createHookHandlers", () => {
 
       await handlers.onMessageSending(
         { to: "user:123", content: "done" },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+        },
+      );
+      await settleRun(
+        handlers,
+        { success: true },
         {
           channelId: "discord",
           sessionKey: "agent:main:discord:direct:123",
@@ -3517,6 +3610,14 @@ describe("createHookHandlers", () => {
           sessionKey: "agent:main:discord:direct:123",
         },
       );
+      await settleRun(
+        handlers,
+        { success: true },
+        {
+          channelId: "discord",
+          sessionKey: "agent:main:discord:direct:123",
+        },
+      );
 
       const session = store.sessions.get("discord:direct:123");
       const beforeLateEventHistoryLength = session?.toolHistory.length ?? 0;
@@ -3642,7 +3743,8 @@ describe("createHookHandlers", () => {
         afterSkillHarness!.lastRenderedContent!.indexOf("💡 skill-harness"),
       );
 
-      await handlers.onAgentEnd(
+      await settleRun(
+        handlers,
         { messages: [], success: true },
         { sessionKey: "agent:main:discord:direct:123" },
       );
