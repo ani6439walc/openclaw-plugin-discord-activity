@@ -68,6 +68,13 @@ describe("plugin", () => {
     );
     expect(
       mockApi.agent.events.registerAgentEventSubscription,
+    ).toHaveBeenCalledWith({
+      id: "discord-activity:lifecycle",
+      streams: ["lifecycle"],
+      handle: expect.any(Function),
+    });
+    expect(
+      mockApi.agent.events.registerAgentEventSubscription,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "discord-activity:skill-harness-pipeline",

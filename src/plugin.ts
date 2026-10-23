@@ -66,6 +66,11 @@ export default definePluginEntry({
       eligibleTriggers: ["user"],
     });
     api.on("agent_end", handlers.onAgentEnd);
+    api.agent.events.registerAgentEventSubscription({
+      id: "discord-activity:lifecycle",
+      streams: ["lifecycle"],
+      handle: handlers.onAgentLifecycleEvent,
+    });
     api.on("before_compaction", handlers.onBeforeCompaction);
     api.on("after_compaction", handlers.onAfterCompaction);
     api.agent.events.registerAgentEventSubscription({

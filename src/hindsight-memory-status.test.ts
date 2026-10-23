@@ -7,7 +7,7 @@ import { defaultStore } from "./session.js";
 import { parseHindsightMemoryRecallEvent } from "./hindsight-memory-status.js";
 import { getDiscordContextKey } from "./parser.js";
 import type { AgentPipelineEvent } from "./types.js";
-import { deferred, flushPromises } from "../test-helpers.js";
+import { deferred, flushPromises, settleRun } from "../test-helpers.js";
 
 const sessionKey = "agent:main:discord:channel:123456789012345678";
 const contextKey = getDiscordContextKey(sessionKey)!;
@@ -99,7 +99,7 @@ describe("Hindsight Memory recall status", () => {
     expect(
       fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH"),
     ).toHaveLength(1);
-    await handlers.onAgentEnd({ success: true }, ctx);
+    await settleRun(handlers, { success: true }, ctx);
     await vi.advanceTimersByTimeAsync(1500);
     expect(defaultStore.sessions.has(contextKey)).toBe(false);
     expect(
@@ -128,7 +128,7 @@ describe("Hindsight Memory recall status", () => {
       params: { command: "ls" },
       status: "completed",
     });
-    await handlers.onAgentEnd({ success: true }, ctx);
+    await settleRun(handlers, { success: true }, ctx);
     const rendered = session().lastRenderedContent?.replaceAll(
       /\u001b\[[0-9;]*m/g,
       "",
@@ -336,7 +336,7 @@ describe("Hindsight Memory recall status", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(["reply", "agent_end"])(
+  it.each(["reply", "settled error"])(
     "ends unobserved recall on %s and ignores late completion",
     async (finalizer) => {
       await handlers.onHindsightMemoryPipelineEvent(
@@ -347,8 +347,10 @@ describe("Hindsight Memory recall status", () => {
           { to: "channel:123456789012345678", content: "Reply" },
           ctx,
         );
+        await settleRun(handlers, { success: true }, ctx);
       } else {
-        await handlers.onAgentEnd(
+        await settleRun(
+          handlers,
           { success: false, error: "Agent interrupted" },
           ctx,
         );
