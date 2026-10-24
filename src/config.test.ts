@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
   orphanTtlSeconds: DEFAULT_ORPHAN_TTL_SECONDS,
   maxDisplaySeconds: DEFAULT_MAX_DISPLAY_SECONDS,
   replyMode: "all",
+  messageReaction: { enabled: true },
 };
 
 describe("resolveConfig", () => {
@@ -35,14 +36,26 @@ describe("resolveConfig", () => {
     ).toBeUndefined();
   });
 
-  it("keeps semantic reactions disabled unless explicitly enabled", () => {
-    expect(resolveConfig({}).messageReaction).toBeUndefined();
+  it("enables semantic reactions by default and honors explicit disable", () => {
+    expect(resolveConfig({}).messageReaction).toEqual({ enabled: true });
     expect(
       resolveConfig({ messageReaction: {} }).messageReaction?.enabled,
-    ).toBe(false);
+    ).toBe(true);
     expect(
-      resolveConfig({ messageReaction: { enabled: true } }).messageReaction,
-    ).toEqual({ enabled: true });
+      resolveConfig({ messageReaction: { enabled: false } }).messageReaction,
+    ).toEqual({ enabled: false });
+  });
+
+  it("trims messageReaction promptAppend and ignores invalid values", () => {
+    expect(
+      resolveConfig({ messageReaction: { promptAppend: " Be playful. " } })
+        .messageReaction,
+    ).toEqual({ enabled: true, promptAppend: "Be playful." });
+    for (const promptAppend of ["", "  ", 42, null]) {
+      expect(
+        resolveConfig({ messageReaction: { promptAppend } }).messageReaction,
+      ).toEqual({ enabled: true });
+    }
   });
 
   it("distinguishes an omitted emoji list from an empty override", () => {
@@ -220,6 +233,7 @@ describe("resolveConfig", () => {
         maxDisplaySeconds: 1,
       }),
     ).toEqual({
+      ...DEFAULT_CONFIG,
       maxToolHistoryLength: 1,
       maxStatusMessageLength: 100,
       orphanTtlSeconds: 1,

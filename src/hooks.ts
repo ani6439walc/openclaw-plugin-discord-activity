@@ -19,8 +19,9 @@ import type {
 import { clearMaxDisplayTimer, clearSessionTimer } from "./helpers.js";
 import {
   getDiscordContextKey,
-  isSkillHarnessReviewSessionKey,
-  isSubagentSessionKey,
+  isDiscordContext,
+  isInternalSessionKey,
+  resolveInboundChannelId,
   extractIdFromMetadata,
   extractSenderId,
 } from "./parser.js";
@@ -314,15 +315,6 @@ export function createHookHandlers(deps: HookDeps) {
     });
   }
 
-  function isDiscordContext(ctx: MessageContext): boolean {
-    if (ctx.trigger && ctx.trigger !== "user") return false;
-    return (
-      ctx.channelId === "discord" ||
-      ctx.messageProvider === "discord" ||
-      /^\d{17,20}$/.test(String(ctx.channelId))
-    );
-  }
-
   async function updateSessionStatus(
     session: SessionEntry,
     isFinal: boolean,
@@ -406,11 +398,7 @@ export function createHookHandlers(deps: HookDeps) {
     hookName: string,
   ): boolean {
     // Isolate background reviews and legacy internal sessions from user activity.
-    if (
-      ctx.sessionKey?.includes(":active-memory:") ||
-      isSkillHarnessReviewSessionKey(ctx.sessionKey) ||
-      isSubagentSessionKey(ctx.sessionKey)
-    ) {
+    if (isInternalSessionKey(ctx.sessionKey)) {
       logger.trace(`${hookName}: skip internal session.`, {
         sessionKey: ctx.sessionKey,
       });
@@ -518,13 +506,7 @@ export function createHookHandlers(deps: HookDeps) {
     const contextKey = getDiscordContextKey(ctx.sessionKey);
     if (!contextKey) return;
 
-    let actualChannelId = extractIdFromMetadata(event.metadata?.to as string);
-    if (!actualChannelId && ctx.conversationId) {
-      actualChannelId = extractIdFromMetadata(ctx.conversationId as string);
-    }
-    if (!actualChannelId && /^\d{17,20}$/.test(String(ctx.channelId))) {
-      actualChannelId = String(ctx.channelId);
-    }
+    const actualChannelId = resolveInboundChannelId(event, ctx);
     if (!actualChannelId) return;
 
     store.contexts.set(contextKey, {

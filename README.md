@@ -321,14 +321,15 @@ This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as th
 
 Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `skill-harness` and Hindsight group.
 
-### Semantic reactions in Discord DMs
+### Semantic reactions in Discord
 
-`messageReaction.enabled` defaults to `false`. When enabled, the plugin reads the current session's cached Activity recap and the latest incoming text, asks a decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Version 1 handles canonical Discord direct messages only; messages without text or a usable message ID are skipped.
+`messageReaction.enabled` defaults to `true`, including when the whole `messageReaction` section is omitted. Set it to `false` to disable reactions. The plugin reads the current session's cached Activity recap and the latest incoming text, asks a decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Reactions use the same Discord context and internal-session filters as status cards, supporting direct messages, channels, groups, and threads. The reaction targets the incoming message's channel; a DM channel is resolved only when the incoming target is a user ID. Messages without text, a usable message ID, or channel routing are skipped.
 
-| Property                  | Type    | Default | Description                                                                                                                                                                                                      |
-| ------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `messageReaction.enabled` | boolean | `false` | Opt in to semantic reactions.                                                                                                                                                                                    |
-| `messageReaction.emojis`  | array   | omitted | Omit for the built-in pool; provide a nonempty list to replace it, or `[]` to skip reactions. Each item is a Unicode emoji string or `{ "emoji": "…", "meaning": "…" }`. Custom Discord emoji are not supported. |
+| Property                       | Type    | Default | Description                                                                                                                                                                                                      |
+| ------------------------------ | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `messageReaction.enabled`      | boolean | `true`  | Enable semantic reactions; set to `false` to disable.                                                                                                                                                            |
+| `messageReaction.promptAppend` | string  | unset   | Extra instructions appended after the built-in reaction decision prompt. Applies to both OpenClaw decisions and the TypeSafe fallback.                                                                           |
+| `messageReaction.emojis`       | array   | omitted | Omit for the built-in pool; provide a nonempty list to replace it, or `[]` to skip reactions. Each item is a Unicode emoji string or `{ "emoji": "…", "meaning": "…" }`. Custom Discord emoji are not supported. |
 
 The built-in pool is a static snapshot taken on 2026-10-24 from [PiliApp's emoji list](https://tw.piliapp.com/emoji/list/): Smileys & People, Animals & Nature, Food & Drink, Activities, Travel & Places, Objects, and Symbols. Flags are excluded. It contains 1,644 distinct emoji and is bundled with the plugin; no website request occurs when a message arrives. For each message, the plugin samples up to 30 distinct emoji from the active pool, then adds `none` as another decision choice. An emoji omitted by that sample cannot be chosen for that message.
 
@@ -346,6 +347,7 @@ When the owning agent has a nonempty `decisionModel`, the plugin uses `api.runti
         "config": {
           "messageReaction": {
             "enabled": true,
+            "promptAppend": "Prefer a playful reaction when it fits the conversation.",
             "emojis": ["🎉", "👍", { "emoji": "🐶", "meaning": "dogs or pets" }]
           }
         }
@@ -355,7 +357,7 @@ When the owning agent has a nonempty `decisionModel`, the plugin uses `api.runti
 }
 ```
 
-Remove `emojis` from the example to use the built-in pool. The plugin limits decision evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation and are not logged.
+Remove `emojis` from the example to use the built-in pool. The plugin limits decision evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation. Diagnostic logs include the bounded `previousRecap`, selected choice and emoji, skip/failure reasons, and Discord outcome, correlated by message ID. Incoming message text and credentials are not logged.
 
 To use the plugin fallback, add this object alongside `messageReaction` under `plugins.entries.discord-activity.config`. Leave both OpenClaw decision roles unset, or set the agent's `decisionModel` to `""` to use this fallback even when a global decision model exists:
 

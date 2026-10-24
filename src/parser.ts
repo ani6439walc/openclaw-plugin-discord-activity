@@ -1,3 +1,42 @@
+import type { MessageContext, MessageReceivedEvent } from "./types.js";
+
+export function isDiscordContext(ctx: MessageContext): boolean {
+  if (ctx.trigger && ctx.trigger !== "user") return false;
+  return (
+    ctx.channelId === "discord" ||
+    ctx.messageProvider === "discord" ||
+    /^\d{17,20}$/.test(String(ctx.channelId))
+  );
+}
+
+export function isInternalSessionKey(sessionKey: string | undefined): boolean {
+  return (
+    sessionKey?.includes(":active-memory:") === true ||
+    isSkillHarnessReviewSessionKey(sessionKey) ||
+    isSubagentSessionKey(sessionKey)
+  );
+}
+
+export function resolveInboundChannelId(
+  event: MessageReceivedEvent,
+  ctx: MessageContext,
+): string | undefined {
+  const metadataTo = event.metadata?.to;
+  const conversationId = extractIdFromMetadata(ctx.conversationId);
+  if (ctx.sessionKey?.includes(":thread:") && conversationId) {
+    return conversationId;
+  }
+  return (
+    extractIdFromMetadata(
+      typeof metadataTo === "string" ? metadataTo : undefined,
+    ) ||
+    conversationId ||
+    (/^\d{17,20}$/.test(String(ctx.channelId))
+      ? String(ctx.channelId)
+      : undefined)
+  );
+}
+
 export function getDiscordContextKey(
   sessionKey: string | undefined,
 ): string | undefined {
