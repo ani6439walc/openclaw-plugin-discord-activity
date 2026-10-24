@@ -93,6 +93,70 @@ describe("plugin", () => {
     );
   });
 
+  it("registers a separate reaction hook only when enabled", () => {
+    mockApi.pluginConfig = {
+      messageReaction: { enabled: true, emojis: ["🎉"] },
+    };
+    plugin.register(mockApi);
+
+    expect(mockApi.on).toHaveBeenCalledTimes(11);
+    expect(
+      (mockApi.on as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([name]) => name === "message_received",
+      ),
+    ).toHaveLength(2);
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "gateway_stop",
+      expect.any(Function),
+    );
+  });
+
+  it("uses the global Jev decision model when the agent does not override it", async () => {
+    const evaluate = vi.fn(async () => ({
+      status: "ok",
+      result: {
+        model: "jev-latest",
+        answers: {
+          reaction: { type: "choice", choice: "none", probabilities: {} },
+        },
+      },
+      provenance: {
+        providerId: "typesafe",
+        rubricVersion: "1",
+        runtimeGeneration: "test",
+      },
+    }));
+    mockApi.config = {
+      ...mockApi.config,
+      agents: { defaults: { decisionModel: "typesafe/jev-latest" } },
+    } as OpenClawPluginApi["config"];
+    mockApi.pluginConfig = {
+      messageReaction: { enabled: true, emojis: ["🎉"] },
+    };
+    mockApi.runtime = {
+      agent: {
+        session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+      },
+      decisions: { evaluate },
+    } as unknown as OpenClawPluginApi["runtime"];
+    plugin.register(mockApi);
+
+    const reactionHook = (
+      mockApi.on as ReturnType<typeof vi.fn>
+    ).mock.calls.find(([name]) => name === "message_received")?.[1] as (
+      event: unknown,
+      context: unknown,
+    ) => void;
+    reactionHook(
+      { messageId: "234567890123456789", content: "Done!" },
+      {
+        channelId: "discord",
+        sessionKey: "agent:main:discord:direct:123456789012345678",
+      },
+    );
+    await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
+  });
+
   it("fails registration when agent event subscription is missing", () => {
     mockApi.agent = undefined as never;
 

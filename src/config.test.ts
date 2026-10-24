@@ -17,6 +17,38 @@ const DEFAULT_CONFIG = {
 };
 
 describe("resolveConfig", () => {
+  it("keeps semantic reactions disabled unless explicitly enabled", () => {
+    expect(resolveConfig({}).messageReaction).toBeUndefined();
+    expect(
+      resolveConfig({ messageReaction: {} }).messageReaction?.enabled,
+    ).toBe(false);
+    expect(
+      resolveConfig({ messageReaction: { enabled: true } }).messageReaction,
+    ).toEqual({ enabled: true });
+  });
+
+  it("distinguishes an omitted emoji list from an empty override", () => {
+    expect(
+      resolveConfig({ messageReaction: { enabled: true } }).messageReaction
+        ?.emojis,
+    ).toBeUndefined();
+    expect(
+      resolveConfig({ messageReaction: { enabled: true, emojis: [] } })
+        .messageReaction?.emojis,
+    ).toEqual([]);
+  });
+
+  it("accepts Unicode emoji entries and drops invalid candidates", () => {
+    expect(
+      resolveConfig({
+        messageReaction: {
+          enabled: true,
+          emojis: ["👍", { emoji: "🧑‍💻", meaning: "coding" }, "hello", "😀😀"],
+        },
+      }).messageReaction?.emojis,
+    ).toEqual(["👍", { emoji: "🧑‍💻", meaning: "coding" }]);
+  });
+
   it("returns defaults for an empty config object", () => {
     expect(resolveConfig({})).toEqual(DEFAULT_CONFIG);
   });

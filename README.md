@@ -320,11 +320,47 @@ This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as th
 
 Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `skill-harness` and Hindsight group.
 
+### Semantic reactions in Discord DMs
+
+`messageReaction.enabled` defaults to `false`. When enabled, the plugin reads the current session's cached Activity recap and the latest incoming text, asks the agent's Jev decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Version 1 handles canonical Discord direct messages only; messages without text or a usable message ID are skipped.
+
+| Property                  | Type    | Default | Description                                                                                                                                                                                                      |
+| ------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `messageReaction.enabled` | boolean | `false` | Opt in to semantic reactions.                                                                                                                                                                                    |
+| `messageReaction.emojis`  | array   | omitted | Omit for the built-in pool; provide a nonempty list to replace it, or `[]` to skip reactions. Each item is a Unicode emoji string or `{ "emoji": "…", "meaning": "…" }`. Custom Discord emoji are not supported. |
+
+The built-in pool is a static snapshot taken on 2026-10-24 from [PiliApp's emoji list](https://tw.piliapp.com/emoji/list/): Smileys & People, Animals & Nature, Food & Drink, Activities, Travel & Places, Objects, and Symbols. Flags are excluded. It contains 1,644 distinct emoji and is bundled with the plugin; no website request occurs when a message arrives. For each message, the plugin samples up to 30 distinct emoji from the active pool, then adds `none` as another decision choice. An emoji omitted by that sample cannot be chosen for that message.
+
+Configure a TypeSafe Jev `decisionModel` for the owning agent, for example `typesafe/jev-latest` in `agents.defaults.decisionModel` or the agent's entry. A per-agent empty string disables decision evaluation for that agent. This setting is independent of Skill Harness and the agent's conversational model. If Jev is unavailable, the decision is invalid, or `none` is selected, the plugin leaves the message without a reaction.
+
+```json
+{
+  "agents": {
+    "defaults": { "decisionModel": "typesafe/jev-latest" }
+  },
+  "plugins": {
+    "entries": {
+      "discord-activity": {
+        "enabled": true,
+        "config": {
+          "messageReaction": {
+            "enabled": true,
+            "emojis": ["🎉", "👍", { "emoji": "🐶", "meaning": "dogs or pets" }]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Remove `emojis` from the example to use the built-in pool. The plugin limits Jev evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation and are not logged.
+
 ## Companion workflows
 
 Discord Activity is useful beside plugins that run longer tool workflows from Discord. For example, if public X/Twitter automation is handled by TweetClaw, install and configure TweetClaw separately while using Discord Activity for progress visibility.
 
-Visible external actions such as posting tweets, sending replies, or direct messages should still use OpenClaw's normal approval flow. This plugin only reports progress; it does not grant approval or bypass safety controls.
+Visible external actions such as posting tweets, sending replies, or direct messages should still use OpenClaw's normal approval flow. This plugin reports progress and can optionally add reactions; it does not grant approval or bypass safety controls.
 
 ## Development guide
 

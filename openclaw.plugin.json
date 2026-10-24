@@ -73,6 +73,45 @@
             "description": "Extra instructions appended to the notice system prompt, for example the language of the message"
           }
         }
+      },
+      "messageReaction": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Optional Jev-selected reaction on incoming Discord direct messages",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable semantic reactions; disabled by default"
+          },
+          "emojis": {
+            "type": "array",
+            "maxItems": 2000,
+            "description": "Candidate Unicode emoji. Omit for the built-in seven-category PiliApp snapshot; [] disables reactions; a nonempty list replaces the snapshot. Up to 30 distinct emoji are sampled for each message.",
+            "items": {
+              "oneOf": [
+                { "type": "string", "minLength": 1, "maxLength": 64 },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["emoji"],
+                  "properties": {
+                    "emoji": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "meaning": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     }
   }

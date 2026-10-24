@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  addReactionWithResult,
   deleteMessageWithResult,
   editMessageWithResult,
+  resolveDmChannel,
   sendMessageWithResult,
 } from "./discord-api.js";
+import { MAX_RETRIES } from "./constants.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -15,6 +18,133 @@ function jsonResponse(body: unknown, status = 200): Response {
 function emptyResponse(status = 204): Response {
   return new Response(null, { status });
 }
+
+describe("resolveDmChannel", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps DM channel cache entries separate across Discord accounts", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: "111111111111111111" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "222222222222222222" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      resolveDmChannel("999999999999999999", "token-a", undefined, "a"),
+    ).resolves.toBe("111111111111111111");
+    await expect(
+      resolveDmChannel("999999999999999999", "token-b", undefined, "b"),
+    ).resolves.toBe("222222222222222222");
+    await expect(
+      resolveDmChannel("999999999999999999", "token-a", undefined, "a"),
+    ).resolves.toBe("111111111111111111");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("addReactionWithResult", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("adds a URL-encoded Unicode reaction to the source message", async () => {
+    const fetchMock = vi.fn(async () => emptyResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      addReactionWithResult("123", "456", "🧑‍💻", "token"),
+    ).resolves.toMatchObject({ outcome: "applied", status: 204 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://discord.com/api/v10/channels/123/messages/456/reactions/${encodeURIComponent("🧑‍💻")}/@me`,
+      expect.objectContaining({
+        method: "PUT",
+        headers: { Authorization: "Bot token" },
+      }),
+    );
+  });
+
+  it("fails open for rejected and cancelled requests", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => emptyResponse(403)),
+    );
+    await expect(
+      addReactionWithResult("123", "456", "😀", "token"),
+    ).resolves.toMatchObject({ outcome: "rejected", status: 403 });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => emptyResponse(400)),
+    );
+    await expect(
+      addReactionWithResult("123", "456", "🫪", "token"),
+    ).resolves.toMatchObject({ outcome: "rejected", status: 400 });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => emptyResponse(404)),
+    );
+    await expect(
+      addReactionWithResult("123", "456", "😀", "token"),
+    ).resolves.toMatchObject({ outcome: "rejected", status: 404 });
+
+    const controller = new AbortController();
+    controller.abort();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("aborted", "AbortError");
+      }),
+    );
+    await expect(
+      addReactionWithResult("123", "456", "😀", "token", controller.signal),
+    ).resolves.toMatchObject({ outcome: "uncertain", reason: "aborted" });
+  });
+
+  it("stops waiting on a rate limit when the deadline is aborted", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ retry_after: 30 }), {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = addReactionWithResult(
+      "123",
+      "456",
+      "😀",
+      "token",
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await expect(pending).resolves.toMatchObject({
+      outcome: "uncertain",
+      reason: "aborted",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns uncertainty after bounded network retries", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => {
+      throw new Error("offline");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = addReactionWithResult("123", "456", "😀", "token");
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({
+      outcome: "uncertain",
+      reason: "network-error",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_RETRIES + 1);
+  });
+});
 
 describe("sendMessageWithResult", () => {
   afterEach(() => {
