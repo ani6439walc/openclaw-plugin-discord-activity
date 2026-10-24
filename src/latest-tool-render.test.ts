@@ -62,12 +62,15 @@ function expectBounded(content: string, limit: number): void {
 
 describe("latest ordinary tool detail budget", () => {
   it("retains a partial expanded ordinary tool instead of collapsing its entire body", () => {
-    const latest = entry("latest", largeParams());
+    const title =
+      "Inspect current target sections and pre-existing baseline differences";
+    const latest = entry("latest", { title, ...largeParams() });
     const result = renderStatusContentWithState([latest], false, 500);
     const plain = stripAnsi(result.content);
 
     expectBounded(result.content, 500);
     expect(plain).toContain("tool_latest ▾ ✔");
+    expect(plain).toContain(`    │› ${title.slice(0, 32)}...`);
     expect(plain).toContain("detail_0");
     expect(plain).toContain("visible detail 0");
     expect(plain).toMatch(/…|\.\.\./u);
