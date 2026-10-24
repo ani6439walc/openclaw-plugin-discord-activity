@@ -210,11 +210,12 @@ function getSkillHarnessResultFields(entry: ToolEntry): DisplayField[] {
 
 function createEntryFieldNodes(
   entry: ToolEntry,
-  options?: { excludeKeys?: readonly string[] },
+  options?: { excludeKeys?: readonly string[]; valueLimit?: number },
 ): StatusNode[] {
   const nodes = packMainFields(
     formatDisplayFields(entry.params, {
       excludeKeys: options?.excludeKeys,
+      valueLimit: options?.valueLimit,
     }),
   ).map(createFieldNode);
 
@@ -224,7 +225,10 @@ function createEntryFieldNodes(
     entry.params?.error !== entry.error
   ) {
     const errorRows = packMainFields(
-      formatDisplayFields({ error: entry.error }),
+      formatDisplayFields(
+        { error: entry.error },
+        { valueLimit: options?.valueLimit },
+      ),
     );
     nodes.push(...errorRows.map(createFieldNode));
   }
@@ -305,6 +309,7 @@ type StatusBlock = {
   children: StatusNode[];
   bodyLines?: string[];
   compactBodyLines?: string[];
+  previewUnits?: (compact: boolean) => string[][];
   protected?: boolean;
 };
 
@@ -375,15 +380,37 @@ function renderStatusNodes(
   nodes: readonly StatusNode[],
   prefix = ROOT_TREE_PREFIX,
 ): string[] {
-  return nodes.flatMap((node, index) => {
-    const isLast = index === nodes.length - 1;
-    const connector = isLast ? "╰─" : "├─";
-    const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
-    return [
-      `${prefix} ${connector} ${node.text}`,
-      ...node.continuationLines.map((line) => `${childPrefix} ${line}`),
-      ...renderStatusNodes(node.children, childPrefix),
-    ];
+  return nodes.flatMap((node, index) =>
+    renderStatusNode(node, index === nodes.length - 1, prefix),
+  );
+}
+
+function renderStatusNode(
+  node: StatusNode,
+  isLast: boolean,
+  prefix = ROOT_TREE_PREFIX,
+): string[] {
+  const connector = isLast ? "╰─" : "├─";
+  const childPrefix = `${prefix}${isLast ? "    " : " │  "}`;
+  return [
+    `${prefix} ${connector} ${node.text}`,
+    ...node.continuationLines.map((line) => `${childPrefix} ${line}`),
+    ...renderStatusNodes(node.children, childPrefix),
+  ];
+}
+
+function createDecisionPreviewUnits(
+  nodes: readonly DecisionDisplayNode[],
+): string[][] {
+  return nodes.flatMap((node) => {
+    if (!node.isQuestion || node.children.length === 0)
+      return [renderDecisionNodes([node])];
+    // Keep a question with its first answer, and multiline answers with their probabilities.
+    const heading = renderDecisionNodes([{ ...node, children: [] }]);
+    return node.children.map((child, index) => [
+      ...(index === 0 ? heading : []),
+      ...renderStatusNode(child, index === node.children.length - 1),
+    ]);
   });
 }
 
@@ -859,6 +886,30 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
     },
     summaryLine,
     children,
+    previewUnits: (compact) => {
+      if (decisionNodes) {
+        // State can fill the entire budget; previews reserve it for questions and answers.
+        return createDecisionPreviewUnits(
+          compact ? createDecisionDisplayNodes(t, true) : decisionNodes,
+        );
+      }
+      const previewChildren = compact
+        ? createEntryFieldNodes(t, {
+            excludeKeys: intent ? [intent.key] : undefined,
+            valueLimit: 16,
+          })
+        : children;
+      const summary =
+        compact && intent
+          ? `    ${ansiSpan(ANSI.yellow, `» ${formatCollapsedTitle(intent.text)}`)}`
+          : summaryLine;
+      return [
+        ...(summary ? [[summary]] : []),
+        ...previewChildren.map((node, index) =>
+          renderStatusNode(node, index === previewChildren.length - 1),
+        ),
+      ];
+    },
     ...(decisionNodes
       ? {
           bodyLines: [
@@ -942,6 +993,7 @@ function renderBoundedStatus(
   blocks: readonly StatusBlock[],
   requestedMaxLength: number,
   priorState: StatusDisplayState,
+  latestToolKey?: string,
 ): StatefulStatusRenderResult {
   const minimumLength = OPENING_FENCE.length + CLOSING_FENCE.length;
   if (
@@ -967,10 +1019,61 @@ function renderBoundedStatus(
   let content = renderCurrent();
   if (content.length <= maxLength) return complete(content);
 
+  const latest = blocks.find(
+    (block) =>
+      block.key === latestToolKey &&
+      (displayState[block.key] ?? "expanded") === "expanded",
+  );
+
   for (const block of blocks) {
     if (block.protected || !block.header.disclosure) continue;
+    if (block === latest) continue;
     if ((displayState[block.key] ?? "expanded") !== "expanded") continue;
     advanceDisplayState(displayState, block.key, "collapsed");
+    content = renderCurrent();
+    if (content.length <= maxLength) return complete(content);
+  }
+
+  if (latest) {
+    for (const block of blocks) {
+      if (!SUBAGENT_GROUP_NAMES.some((name) => block.key === `group:${name}`))
+        continue;
+      if (displayState[block.key] === "removed") continue;
+      advanceDisplayState(displayState, block.key, "removed");
+      content = renderCurrent();
+      if (content.length <= maxLength) return complete(content);
+    }
+
+    const tryPreview = (): string | undefined => {
+      const headerOnly = { ...latest, summaryLine: undefined, bodyLines: [] };
+      const fixedLength = renderBlocks(
+        blocks.map((block) => (block === latest ? headerOnly : block)),
+        displayState,
+      ).length;
+      const preview = createBoundedPreview(latest, maxLength - fixedLength);
+      if (!preview) return;
+      latest.summaryLine = undefined;
+      latest.bodyLines = preview;
+      return renderCurrent();
+    };
+    const preview = tryPreview();
+    if (preview) return complete(preview);
+
+    // Headers and protected content can consume even the smallest useful preview.
+    for (const block of blocks) {
+      if (
+        block.protected ||
+        block === latest ||
+        displayState[block.key] === "removed"
+      )
+        continue;
+      advanceDisplayState(displayState, block.key, "removed");
+      content = renderCurrent();
+      if (content.length <= maxLength) return complete(content);
+      const preview = tryPreview();
+      if (preview) return complete(preview);
+    }
+    advanceDisplayState(displayState, latest.key, "collapsed");
     content = renderCurrent();
     if (content.length <= maxLength) return complete(content);
   }
@@ -993,6 +1096,30 @@ function renderBoundedStatus(
   return complete(
     content.length <= maxLength ? content : `${OPENING_FENCE}${CLOSING_FENCE}`,
   );
+}
+
+function createBoundedPreview(
+  block: StatusBlock,
+  budget: number,
+): string[] | undefined {
+  const marker = `    ${ansiSpan(ANSI.lightGray, "…")}`;
+  let best: { count: number; lines: string[] } | undefined;
+  for (const compact of [false, true]) {
+    let length = marker.length + 1;
+    const lines: string[] = [];
+    let count = 0;
+    const units = block.previewUnits?.(compact) ?? [];
+    for (const unit of units) {
+      const unitLength = unit.reduce((sum, line) => sum + line.length + 1, 0);
+      if (length + unitLength > budget) break;
+      lines.push(...unit);
+      length += unitLength;
+      count++;
+    }
+    if (count > 0 && count === units.length) return [...lines, marker];
+    if (count > 0 && (!best || count >= best.count)) best = { count, lines };
+  }
+  return best ? [...best.lines, marker] : undefined;
 }
 
 export function renderStatusContentWithState(
@@ -1049,6 +1176,7 @@ export function renderStatusContentWithState(
     ],
     maxLength,
     displayState,
+    normalBlocks.at(-1)?.key,
   );
 }
 

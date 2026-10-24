@@ -85,7 +85,7 @@ describe("bounded status rendering", () => {
     expect(plain).toContain("detail b");
   });
 
-  it("collapses every block before removing the oldest block", () => {
+  it("falls back to collapsed headers and removal when no preview fits", () => {
     const history = [
       makeEntry("first", { detail: "a".repeat(70) }),
       makeEntry("second", { detail: "b".repeat(70) }),
@@ -121,7 +121,12 @@ describe("bounded status rendering", () => {
       makeEntry("first", { detail: "a".repeat(70) }),
       makeEntry("second", { detail: "b".repeat(70) }),
     ];
-    const collapsed = renderStatusContentWithState(history, false, 120);
+    const collapsed = renderStatusContentWithState(
+      history,
+      false,
+      renderStatusContent(history, false).length - 1,
+    );
+    expect(collapsed.displayState["tool:first"]).toBe("collapsed");
     const nextCollapsed = renderStatusContentWithState(
       [makeEntry("first"), makeEntry("second")],
       false,
@@ -299,7 +304,7 @@ describe("bounded status rendering", () => {
     expect(plain).toContain("tool_old-tool ▸ ✔");
   });
 
-  it("bounds large field sets with one block-level collapse", () => {
+  it("bounds large latest field sets with a partial detail preview", () => {
     const params = Object.fromEntries(
       Array.from({ length: 1_000 }, (_, index) => [
         `field_${index}`,
@@ -312,8 +317,11 @@ describe("bounded status rendering", () => {
     );
 
     expect(result.content.length).toBeLessThanOrEqual(1_700);
-    expect(result.displayState["tool:bulk"]).toBe("collapsed");
-    expect(stripAnsi(result.content)).toContain("tool_bulk ▸ ✔");
+    expect(result.displayState["tool:bulk"]).toBeUndefined();
+    expect(stripAnsi(result.content)).toContain("tool_bulk ▾ ✔");
+    expect(stripAnsi(result.content)).toContain("field_0");
+    expect(stripAnsi(result.content)).toContain("…");
+    expect(stripAnsi(result.content)).not.toContain("field_999");
     assertNoGlobalOmissionMarker(result.content);
   });
 });

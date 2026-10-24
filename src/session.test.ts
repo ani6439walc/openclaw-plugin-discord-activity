@@ -358,7 +358,9 @@ describe("updateStatusMessage", () => {
     expect(session.lastRenderedContent).not.toMatch(
       /\(\+\d+ (?:items?|lines?)\)/u,
     );
-    expect(session.lastRenderedContent).toContain("▸");
+    expect(session.lastRenderedContent).toContain("▾");
+    expect(session.lastRenderedContent).toContain("ok");
+    expect(session.confirmedDisplayState?.["tool:call_drop"]).toBe("removed");
     expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
   });
 

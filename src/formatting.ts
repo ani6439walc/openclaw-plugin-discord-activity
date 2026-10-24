@@ -121,6 +121,7 @@ function omissionHint(count: number): string {
 
 function formatDisplayValue(
   value: unknown,
+  valueLimit = SINGLE_LINE_DISPLAY_LIMIT,
 ): Pick<
   DisplayField,
   "value" | "multilineLines" | "omittedHint" | "truncated"
@@ -139,10 +140,7 @@ function formatDisplayValue(
       ? sourceValue.replaceAll("\t", "\\t")
       : sanitizeInlineText(sourceValue)),
   ];
-  const retainedCharacters = sourceCharacters.slice(
-    0,
-    SINGLE_LINE_DISPLAY_LIMIT,
-  );
+  const retainedCharacters = sourceCharacters.slice(0, valueLimit);
   const omitted = sourceCharacters.length - retainedCharacters.length;
   const retainedValue = retainedCharacters.join("");
   const suffix = omitted > 0 ? "..." : "";
@@ -216,7 +214,7 @@ export function extractToolIntent(params: unknown): ToolIntent | undefined {
 
 export function formatDisplayFields(
   params: unknown,
-  options: { excludeKeys?: readonly string[] } = {},
+  options: { excludeKeys?: readonly string[]; valueLimit?: number } = {},
 ): DisplayField[] {
   if (!params || typeof params !== "object") return [];
 
@@ -234,7 +232,10 @@ export function formatDisplayFields(
         (typeof value !== "string" || value.trim() !== ""),
     )
     .map(([rawKey, value]) => {
-      const { isMultiline, ...formatted } = formatDisplayValue(value);
+      const { isMultiline, ...formatted } = formatDisplayValue(
+        value,
+        options.valueLimit,
+      );
       const key = sanitizeInlineText(rawKey);
       const width = [
         ...`${key} ${formatted.value}${formatted.omittedHint ?? ""}`,

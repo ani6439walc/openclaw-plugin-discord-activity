@@ -240,6 +240,7 @@ function validAnswer(
 
 export function createDecisionDisplayNodes(
   entry: ToolEntry,
+  compact = false,
 ): DecisionDisplayNode[] {
   const questions = record(record(entry.params)?.questions);
   const outcome =
@@ -261,7 +262,13 @@ export function createDecisionDisplayNodes(
           : "結果未提供";
   const nodes = Object.entries(questions ?? {}).map(([id, rawQuestion]) => {
     const question = record(rawQuestion) ?? {};
-    const node = valueNode(question.instructions, id, ANSI.yellow, "» ");
+    let instructions = question.instructions;
+    if (compact && typeof instructions === "string") {
+      const characters = [...sanitizeInlineText(instructions)];
+      instructions =
+        characters.slice(0, 32).join("") + (characters.length > 32 ? "…" : "");
+    }
+    const node = valueNode(instructions, id, ANSI.yellow, "» ");
     node.isQuestion = true;
     const criteria = criteriaFor(question);
     const answer = validAnswer(
@@ -281,8 +288,17 @@ export function createDecisionDisplayNodes(
         ` → ${ansiSpan(ANSI.magenta, "score")} ${ansiSpan(ANSI.green, `${(answer.score as number).toFixed(2)} / ${criteria.length - 1}`)}`,
       );
     }
-    node.children = criteria.map(([key, description], index) => {
-      const child = fieldNode(key, description);
+    const displayedCriteria =
+      compact && answer?.type === "choice"
+        ? [...criteria].sort(
+            ([a], [b]) =>
+              Number(b === answer.choice) - Number(a === answer.choice),
+          )
+        : criteria;
+    node.children = displayedCriteria.map(([key, description], index) => {
+      const child = compact
+        ? valueNode(key, "?", ANSI.magenta)
+        : fieldNode(key, description);
       let value: unknown;
       if (answer?.type === "boolean") {
         value =

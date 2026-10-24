@@ -86,13 +86,12 @@ while selected choices, scores and answer rows keep their result colors.
 State markers, question markers and answer tree connectors all use four-space
 indentation. Narrow Discord windows can still wrap lines.
 
-The display omits model, provenance and token usage. Sanitization, result parsing
-and monotonic message bounding rules are unchanged. Other tools
-keep their existing display.
+The display omits model, provenance and token usage. Sanitization and result parsing
+are unchanged. Latest-tool previews follow the bounding rules below.
 
 Status markers:
 
-- `▾` details are expanded.
+- `▾` details are expanded; a trailing gray `…` indicates a partial preview.
 - `▸` details were collapsed to fit the message.
 - `←` pending or currently visible as the latest non-final completed entry.
 - `✔` completed.
@@ -116,7 +115,9 @@ Rendering rules to preserve:
 - Every visible field keeps at most 70 Unicode code points after sanitization and serialization. Truncated values append an exact gray `(+N chars)` hint (`char` when singular) without splitting surrogate pairs. Producer field order and supplied line breaks are preserved within that fixed prefix; the renderer does not add hard wraps.
 - Compact metadata rows pack any single-line fields whose total formatted width (key + value + colon/space/omission hint) is less than or equal to 34 characters, regardless of their data types.
 - Every internal group and normal tool header shows a non-bold light-gray disclosure marker: `▾` while details are expanded and `▸` after bounding collapses the block. A stable per-entry display identity keeps each block monotonic within one session generation: `expanded → collapsed → removed`. Confirmed Discord mutations advance confirmed state; uncertain delivery advances a conservative safety floor; later frames cannot resurrect or re-expand a degraded block.
-- Bounded output counts ANSI sequences and fence overhead. If the fixed 70-code-point fields still exceed the configured length, the renderer first collapses eligible blocks from top to bottom. Only after every eligible block is collapsed does it remove blocks from top to bottom, while preserving a bottom main-agent failure. It emits no global `(+N items)` or `(+N lines)` marker and falls back to a complete empty ANSI fence only when even protected content cannot fit.
+- Bounded output counts ANSI sequences and fence overhead. When content exceeds the configured length, the renderer keeps the latest ordinary tool expanded and collapses other eligible blocks from top to bottom. If still oversized, it removes `hindsight-memory` and `skill-harness` one at a time in display order, then fits a partial preview of the latest tool with a gray `…`. Removed groups stay hidden for that session generation, including later updates and errors.
+- Partial previews keep complete fields or answer rows without cutting Unicode characters or ANSI sequences. Ordinary previews may shorten values to 16 code points and intent summaries to 32. Decision previews omit state first; if needed, they shorten question text to 32 code points and omit criterion descriptions while retaining answer labels and probabilities. Compact choice previews show the selected option first. Each question stays with at least one answer row. Preview size is recalculated per frame and may grow when space becomes available; it does not introduce a saved display level.
+- If no useful latest-tool preview fits, older ordinary blocks are removed before the latest tool is collapsed or removed. Protected progress and main-agent failure content keep their existing protection. An already collapsed or removed latest tool is never reopened; with no expanded latest tool, bounding follows the original top-to-bottom collapse/removal order. Output emits no global `(+N items)` or `(+N lines)` marker and falls back to a complete empty ANSI fence when nothing eligible can fit alongside protected content.
 
 ## How it works
 
