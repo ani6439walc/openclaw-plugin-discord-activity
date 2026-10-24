@@ -5,9 +5,14 @@ import type { OpenClawPluginApi } from "../api.js";
 describe("plugin", () => {
   let mockApi: OpenClawPluginApi;
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   beforeEach(() => {
+    vi.useFakeTimers();
     mockApi = {
       on: vi.fn(),
       config: {
@@ -161,8 +166,94 @@ describe("plugin", () => {
         sessionKey: "agent:main:discord:channel:123456789012345678",
       },
     );
+    await vi.advanceTimersByTimeAsync(5000);
     await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
   });
+
+  it.each([
+    ["secondary", "<a:hello:987654321098765432>"],
+    ["secondary", ""],
+    [undefined, "<a:hello:987654321098765432>"],
+  ] as const)(
+    "uses account %s ACK setting %s when replacing reactions",
+    async (accountId, ackReaction) => {
+      mockApi.config = {
+        channels: {
+          discord: {
+            token: "default-token",
+            ackReaction: "🌸",
+            accounts: {
+              [accountId ?? "default"]: { token: "account-token", ackReaction },
+            },
+          },
+        },
+        agents: { defaults: { decisionModel: "typesafe/jev-latest" } },
+      } as OpenClawPluginApi["config"];
+      mockApi.pluginConfig = { messageReaction: { emojis: ["🎉"] } };
+      mockApi.runtime = {
+        agent: {
+          session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+        },
+        decisions: {
+          evaluate: vi.fn(async () => ({
+            status: "ok",
+            result: {
+              answers: { reaction: { type: "choice", choice: "emoji_0" } },
+            },
+          })),
+        },
+      } as unknown as OpenClawPluginApi["runtime"];
+      const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
+        init.method === "GET"
+          ? Response.json({
+              reactions: [
+                {
+                  me: true,
+                  emoji: { id: "987654321098765432", name: "hello" },
+                },
+              ],
+            })
+          : new Response(null, { status: 204 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      plugin.register(mockApi);
+      const calls = (mockApi.on as ReturnType<typeof vi.fn>).mock.calls;
+      const reactionHook = calls.find(
+        ([name]) => name === "message_received",
+      )?.[1] as (event: unknown, context: unknown) => void;
+      const stop = calls.find(
+        ([name]) => name === "gateway_stop",
+      )?.[1] as () => void;
+      reactionHook(
+        { messageId: "234567890123456789", content: "Done!" },
+        {
+          accountId,
+          channelId: "discord",
+          conversationId: "channel:123456789012345678",
+          sessionKey: "agent:main:discord:channel:123456789012345678",
+        },
+      );
+      await vi.advanceTimersByTimeAsync(5000);
+      await vi.waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledTimes(ackReaction ? 3 : 1),
+      );
+      if (ackReaction) {
+        expect(fetchMock.mock.calls.map(([, init]) => init.method)).toEqual([
+          "PUT",
+          "GET",
+          "DELETE",
+        ]);
+        expect(fetchMock).toHaveBeenLastCalledWith(
+          `https://discord.com/api/v10/channels/123456789012345678/messages/234567890123456789/reactions/${encodeURIComponent("hello:987654321098765432")}/@me`,
+          expect.objectContaining({
+            method: "DELETE",
+            headers: { Authorization: "Bot account-token" },
+          }),
+        );
+      }
+      stop();
+    },
+  );
 
   it("uses the plugin Jev fallback when OpenClaw has no decision model", async () => {
     const fetchMock = vi.fn(async () =>
@@ -202,6 +293,7 @@ describe("plugin", () => {
         sessionKey: "agent:main:discord:direct:123456789012345678",
       },
     );
+    await vi.advanceTimersByTimeAsync(5000);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(evaluate).not.toHaveBeenCalled();
   });
@@ -250,6 +342,7 @@ describe("plugin", () => {
         sessionKey: "agent:main:discord:direct:123456789012345678",
       },
     );
+    await vi.advanceTimersByTimeAsync(5000);
     await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
     expect(evaluate.mock.calls[0]?.[1]).not.toHaveProperty("agentId");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -300,6 +393,7 @@ describe("plugin", () => {
         sessionKey: "agent:main:discord:direct:123456789012345678",
       },
     );
+    await vi.advanceTimersByTimeAsync(5000);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(evaluate).not.toHaveBeenCalled();
   });

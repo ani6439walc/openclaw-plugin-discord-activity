@@ -18,10 +18,18 @@ import {
   resolveAgentDir,
 } from "openclaw/plugin-sdk/agent-scope-runtime";
 import { resolveLearnedNoticeModel } from "./learned-notice-model.js";
-import { parseAgentSessionKey } from "openclaw/plugin-sdk/routing";
+import {
+  normalizeAccountId,
+  parseAgentSessionKey,
+} from "openclaw/plugin-sdk/routing";
 import { createMessageReactionHandler } from "./message-reaction.js";
-import { addReactionWithResult, resolveDmChannel } from "./discord-api.js";
+import {
+  addReactionWithResult,
+  removeAckReactionWithResult,
+  resolveDmChannel,
+} from "./discord-api.js";
 import { createFallbackDecisionEvaluator } from "./decision-model.js";
+import { resolveAckReaction } from "openclaw/plugin-sdk/channel-feedback";
 
 export default definePluginEntry({
   id: "discord-activity",
@@ -64,6 +72,12 @@ export default definePluginEntry({
           resolveDiscordToken(api.config, { accountId }).token,
         resolveDmChannel,
         addReaction: addReactionWithResult,
+        resolveAckReaction: (agentId, accountId) =>
+          resolveAckReaction(api.config, agentId, {
+            channel: "discord",
+            accountId: normalizeAccountId(accountId),
+          }),
+        removeAckReaction: removeAckReactionWithResult,
       });
       api.on("message_received", reactionHandler.onMessageReceived);
       api.on("gateway_stop", reactionHandler.stop);
