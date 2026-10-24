@@ -197,8 +197,11 @@ skills, a diff of each skill, and writes the whole message. The built-in system
 prompt is language-neutral; it requires a leading emoji, every skill name in
 backticks followed directly by its description (no colon after the name), what
 happened to each skill, what the assistant will now do differently, and a hint
-that the change can be undone. It asks for exactly one version of the message and
-includes one example. Set the language with `skillLearnedNotice.promptAppend`,
+that the change can be undone. It asks for one paragraph containing a single
+change-summary sentence and one closing undo sentence, then an immediate stop.
+The original notice and diffs must be merged into one summary, each distinct
+skill name appears once, and paraphrased or translated repetitions are excluded.
+The prompt includes one example. Set the language with `skillLearnedNotice.promptAppend`,
 for example:
 
 ```json
@@ -224,7 +227,9 @@ through `/proc/self/fd` to still lie inside its skill directory; hard links are
 refused. Any violation drops that skill's diff, and the notice is rewritten from
 its original text alone. Without `/proc` (non-Linux hosts), diffs are never sent.
 
-A reply that repeats the same message several times is cut to its first copy.
+A reply that repeats the exact same message several times, ignoring whitespace,
+is cut to its first copy. Wording differences are not removed by this filter;
+the prompt instructs the model to avoid those repetitions too.
 If the model call fails, or its reply is empty, longer than 1500 characters, or
 missing any skill name, the original notice is sent unchanged.
 
