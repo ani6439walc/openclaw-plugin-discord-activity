@@ -141,7 +141,12 @@ export async function sendDiscordStatusWithDmFallbackWithResult(
   if (userId && userId === session.channelId) {
     let dmChannelId: string | undefined;
     try {
-      dmChannelId = await resolveDmChannelApi(userId, token);
+      dmChannelId = await resolveDmChannelApi(
+        userId,
+        token,
+        undefined,
+        session.accountId,
+      );
     } catch (error) {
       logger.warn(
         "failed to resolve DM channel before sending status message.",

@@ -21,6 +21,41 @@ const DEFAULT_CONFIG = {
 };
 
 const OptionalText = z.string().trim().min(1).optional().catch(undefined);
+const emojiSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+const emojiCodePoint =
+  /\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]\uFE0F?\u20E3/u;
+
+const EmojiText = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine(
+    (value) =>
+      emojiCodePoint.test(value) &&
+      [...emojiSegmenter.segment(value)].length === 1,
+  );
+const EmojiConfigEntry = z.union([
+  EmojiText,
+  z.object({
+    emoji: EmojiText,
+    meaning: z.string().trim().min(1).max(120).optional().catch(undefined),
+  }),
+]);
+
+const SecretRefSchema = z.object({
+  source: z.literal("env"),
+  provider: z.string().trim().min(1),
+  id: z.string().trim().min(1),
+});
+
+const DecisionModelSchema = z.object({
+  baseUrl: z.url().optional(),
+  apiKey: z.union([z.string().trim().min(1), SecretRefSchema]),
+  model: z.string().trim().min(1),
+});
 
 /** OpenClaw's canonical thinking levels; the host maps each to what the selected model supports. */
 export const THINKING_LEVELS = [
@@ -62,11 +97,29 @@ const DiscordActivityConfigSchema = z
       .positive()
       .catch(DEFAULT_MAX_DISPLAY_SECONDS),
     replyMode: z.enum(["all", "direct"]).catch(DEFAULT_CONFIG.replyMode),
+    decisionModel: DecisionModelSchema.optional().catch(undefined),
     skillLearnedNotice: z
       .object({
         model: OptionalText,
         promptAppend: OptionalText,
         thinking: z.enum(THINKING_LEVELS).optional().catch(undefined),
+      })
+      .optional()
+      .catch(undefined),
+    messageReaction: z
+      .object({
+        enabled: z.boolean().catch(false),
+        emojis: z
+          .array(z.unknown())
+          .max(2000)
+          .transform((items) =>
+            items.flatMap((item) => {
+              const parsed = EmojiConfigEntry.safeParse(item);
+              return parsed.success ? [parsed.data] : [];
+            }),
+          )
+          .optional()
+          .catch([]),
       })
       .optional()
       .catch(undefined),

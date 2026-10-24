@@ -51,6 +51,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "dependencies": {
+    "@typesafe-ai/sdk": "0.7.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {

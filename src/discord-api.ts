@@ -1,18 +1,40 @@
 import { logger } from "../api.js";
 import { MAX_RETRIES, RETRY_FALLBACK_MS } from "./constants.js";
 
-export function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+export function sleep(ms: number, signal?: AbortSignal) {
+  if (!signal) return new Promise<void>((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("aborted", "AbortError"));
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
+const MAX_DM_CHANNEL_CACHE_ENTRIES = 1024;
+const SNOWFLAKE = /^\d{17,20}$/;
 const dmChannelCache = new Map<string, string>();
 
 export async function resolveDmChannel(
   userId: string,
   token: string,
+  signal?: AbortSignal,
+  accountId = "default",
 ): Promise<string | undefined> {
-  const cached = dmChannelCache.get(userId);
-  if (cached) return cached;
+  const cacheKey = `${accountId}:${userId}`;
+  const cached = dmChannelCache.get(cacheKey);
+  if (cached) {
+    if (SNOWFLAKE.test(cached)) return cached;
+    dmChannelCache.delete(cacheKey);
+  }
 
   const res = await discordApiRequest(
     `https://discord.com/api/v10/users/@me/channels`,
@@ -23,13 +45,24 @@ export async function resolveDmChannel(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ recipient_id: userId }),
+      signal,
     },
     "resolveDmChannel",
   );
 
-  const data = (await res.json().catch(() => ({}))) as any;
-  if (res.ok && data.id) {
-    dmChannelCache.set(userId, data.id);
+  const data: unknown = await res.json().catch(() => ({}));
+  if (
+    res.ok &&
+    data &&
+    typeof data === "object" &&
+    "id" in data &&
+    typeof data.id === "string" &&
+    SNOWFLAKE.test(data.id)
+  ) {
+    dmChannelCache.set(cacheKey, data.id);
+    if (dmChannelCache.size > MAX_DM_CHANNEL_CACHE_ENTRIES) {
+      dmChannelCache.delete(dmChannelCache.keys().next().value!);
+    }
     return data.id;
   }
   return undefined;
@@ -60,6 +93,9 @@ export async function discordApiRequest(
   operation: string,
 ): Promise<Response> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    if (init.signal?.aborted) {
+      throw new DOMException("aborted", "AbortError");
+    }
     try {
       const res = await fetch(url, init);
 
@@ -77,7 +113,7 @@ export async function discordApiRequest(
         if (attempt === MAX_RETRIES) {
           return res;
         }
-        await sleep(delayMs);
+        await sleep(delayMs, init.signal ?? undefined);
         continue;
       }
 
@@ -91,12 +127,13 @@ export async function discordApiRequest(
           retryInMs: backoffMs,
           attempt,
         });
-        await sleep(backoffMs);
+        await sleep(backoffMs, init.signal ?? undefined);
         continue;
       }
 
       return res;
     } catch (err) {
+      if (init.signal?.aborted) throw err;
       if (attempt === MAX_RETRIES) {
         throw err;
       }
@@ -106,7 +143,7 @@ export async function discordApiRequest(
         retryInMs: backoffMs,
         attempt,
       });
-      await sleep(backoffMs);
+      await sleep(backoffMs, init.signal ?? undefined);
     }
   }
 
@@ -118,6 +155,40 @@ export type DiscordMutationResult = {
   reason: string;
   status?: number;
 };
+
+export async function addReactionWithResult(
+  channelId: string,
+  messageId: string,
+  emoji: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<DiscordMutationResult> {
+  try {
+    const res = await discordApiRequest(
+      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`,
+      {
+        method: "PUT",
+        headers: { Authorization: `Bot ${token}` },
+        signal,
+      },
+      "addReaction",
+    );
+    if (!res.ok) {
+      logger.warn("addReaction failed.", { status: res.status });
+      return {
+        outcome:
+          res.status >= 500 || res.status === 429 ? "uncertain" : "rejected",
+        status: res.status,
+        reason: `http-${res.status}`,
+      };
+    }
+    return { outcome: "applied", status: res.status, reason: "created" };
+  } catch (err) {
+    if (signal?.aborted) return { outcome: "uncertain", reason: "aborted" };
+    logger.warn("addReaction network error.");
+    return { outcome: "uncertain", reason: "network-error" };
+  }
+}
 
 export type SendMessageResult = DiscordMutationResult & {
   messageId?: string;

@@ -19,6 +19,9 @@ import {
 } from "openclaw/plugin-sdk/agent-scope-runtime";
 import { resolveLearnedNoticeModel } from "./learned-notice-model.js";
 import { parseAgentSessionKey } from "openclaw/plugin-sdk/routing";
+import { createMessageReactionHandler } from "./message-reaction.js";
+import { addReactionWithResult, resolveDmChannel } from "./discord-api.js";
+import { createFallbackDecisionEvaluator } from "./decision-model.js";
 
 export default definePluginEntry({
   id: "discord-activity",
@@ -39,6 +42,32 @@ export default definePluginEntry({
       config,
     });
 
+    if (config.messageReaction?.enabled) {
+      const reactionHandler = createMessageReactionHandler({
+        config: config.messageReaction,
+        resolveDecisionModel: (agentId) =>
+          resolveAgentConfig(api.config, agentId)?.decisionModel,
+        resolveGlobalDecisionModel: () =>
+          api.config.agents?.defaults?.decisionModel,
+        getSessionEntry: (agentId, sessionKey) =>
+          api.runtime.agent.session.getSessionEntryAsync({
+            agentId,
+            sessionKey,
+            readConsistency: "latest",
+          }),
+        evaluate: (batch, options) =>
+          api.runtime.decisions.evaluate(batch, options),
+        evaluateFallback: config.decisionModel
+          ? createFallbackDecisionEvaluator(config.decisionModel, api.config)
+          : undefined,
+        getToken: (accountId) =>
+          resolveDiscordToken(api.config, { accountId }).token,
+        resolveDmChannel,
+        addReaction: addReactionWithResult,
+      });
+      api.on("message_received", reactionHandler.onMessageReceived);
+      api.on("gateway_stop", reactionHandler.stop);
+    }
     api.on("message_received", handlers.onMessageReceived);
     api.on("before_tool_call", handlers.onBeforeToolCall);
     api.on("after_tool_call", handlers.onAfterToolCall);
