@@ -70,7 +70,7 @@ describe("latest ordinary tool detail budget", () => {
 
     expectBounded(result.content, 500);
     expect(plain).toContain("tool_latest ▾ ✔");
-    expect(plain).toContain(`    │› ${title.slice(0, 32)}...`);
+    expect(plain).toContain(`    │▫︎ ${title.slice(0, 32)}...`);
     expect(plain).toContain("detail_0");
     expect(plain).toContain("visible detail 0");
     expect(plain).toMatch(/…|\.\.\./u);

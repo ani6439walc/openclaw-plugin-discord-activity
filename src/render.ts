@@ -860,7 +860,7 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
     ? `${toolName} · ${formatCollapsedTitle(intent.text)}`
     : undefined;
   const summaryLine = intent
-    ? `    │${ansiSpan(ANSI.yellow, `› ${formatExpandedTitle(intent.text)}`)}`
+    ? `    │▫︎ ${ansiSpan(ANSI.yellow, formatExpandedTitle(intent.text))}`
     : undefined;
   const isDecision =
     canonicalToolNameForDedupe(t.toolName) === "decision_evaluate";
@@ -901,7 +901,7 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
         : children;
       const summary =
         compact && intent
-          ? `    │${ansiSpan(ANSI.yellow, `› ${formatCollapsedTitle(intent.text)}`)}`
+          ? `    │▫︎ ${ansiSpan(ANSI.yellow, formatCollapsedTitle(intent.text))}`
           : summaryLine;
       return [
         ...(summary ? [[summary]] : []),
