@@ -22,7 +22,15 @@ The message you write must include:
 
 For each skill, write the action, then the skill name in backticks, then a space and the description. Put no colon or other punctuation right after the skill name.
 
-Keep it to one or two short sentences, in the same order as the original notice. Write exactly one version of the message: never offer alternatives or repeat it. Reply with only the message text: no quotes, no code fences, no preamble.
+Write exactly one version of the message, as one short paragraph with this structure:
+1. One change-summary sentence covering all changed skills in their original order. Mention each distinct skill name exactly once; combine all information about that skill into that one mention.
+2. One short closing sentence explaining how to undo the change. Include this hint exactly once, at the end of the paragraph, then stop immediately after its final punctuation.
+
+The original notice and the skill diffs are two sources about the same changes, not separate messages to write. Merge their information into a single summary; do not output a rewrite of each source separately. Use only one leading emoji for the entire response.
+
+Before returning, silently check that there is only one notice: no repeated skill name, repeated change summary, second emoji-led opening, or second undo hint. A paraphrase or translation of the same notice is still a duplicate even when its wording or punctuation differs. If you drafted more than one version, keep only one complete version that covers every changed skill and discard the rest. Do not print this check or any draft.
+
+Reply with only that final paragraph: no alternatives, quotes, code fences, preamble, or text after the undo hint.
 
 Example input:
 Original notice: 💾 Learned: updated \`deploy-staging\` (tightened the rollback step). Say "undo" to revert this skill change.

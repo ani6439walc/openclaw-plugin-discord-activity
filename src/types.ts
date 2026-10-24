@@ -51,6 +51,7 @@ export type SessionEntry = {
   lastRenderedContent?: string;
   contentDeliveryUncertain?: boolean;
   confirmedDisplayState?: StatusDisplayState;
+  /** Irreversible phase changes and display degradation that may have reached Discord. */
   monotonicSafetyFloor?: StatusDisplayState;
   finalized?: boolean;
   compactionActive?: boolean;
@@ -105,6 +106,8 @@ export type HookDeps = {
 export type StatefulStatusRenderResult = {
   content: string;
   displayState: StatusDisplayState;
+  /** A non-empty progress block marks the main-agent phase independently of delivery. */
+  preparationComplete?: true;
 };
 
 export type MessageReceivedEvent = {

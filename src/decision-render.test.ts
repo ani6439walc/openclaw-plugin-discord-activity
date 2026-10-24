@@ -254,7 +254,7 @@ describe("decision_evaluate rendering", () => {
     expect(text).not.toContain("%");
   });
 
-  it("bounds large inputs and keeps monotonic collapse on later results", () => {
+  it("previews large inputs and can show later results without a saved collapse", () => {
     const questions = Object.fromEntries(
       Array.from({ length: 20 }, (_, i) => [
         `q${i}`,
@@ -268,15 +268,17 @@ describe("decision_evaluate rendering", () => {
     const e = entry({ params: { questions }, status: "pending" });
     const first = renderStatusContentWithState([e], false, 450);
     expect(first.content.length).toBeLessThanOrEqual(450);
-    expect(first.displayState["tool:decision"]).toBe("collapsed");
+    expect(first.displayState["tool:decision"]).toBeUndefined();
+    expect(first.content).toContain("…");
+    expect(first.content).toContain("等待結果");
     const next = renderStatusContentWithState(
       [entry({ result: booleanResult })],
       true,
       450,
       first.displayState,
     );
-    expect(next.displayState["tool:decision"]).toBe("collapsed");
-    expect(next.content).not.toContain("82.0%");
+    expect(next.displayState["tool:decision"]).toBeUndefined();
+    expect(next.content).toContain("82.0%");
     expect(
       visible(
         entry({
@@ -694,14 +696,16 @@ describe("decision_evaluate shared state", () => {
     );
     const first = renderStatusContentWithState([e], false, 250);
     expect(first.content.length).toBeLessThanOrEqual(250);
-    expect(first.displayState["tool:decision"]).toBe("collapsed");
+    expect(first.displayState["tool:decision"]).toBeUndefined();
+    expect(first.content).toContain("…");
+    expect(first.content).toContain("82.0%");
     const next = renderStatusContentWithState(
       [withState(null)],
       true,
       1700,
       first.displayState,
     );
-    expect(next.displayState["tool:decision"]).toBe("collapsed");
-    expect(next.content).not.toContain("82.0%");
+    expect(next.displayState["tool:decision"]).toBeUndefined();
+    expect(next.content).toContain("82.0%");
   });
 });

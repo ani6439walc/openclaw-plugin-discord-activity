@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
   orphanTtlSeconds: DEFAULT_ORPHAN_TTL_SECONDS,
   maxDisplaySeconds: DEFAULT_MAX_DISPLAY_SECONDS,
   replyMode: "all" as const,
+  skillLearnedNotice: { thinking: "medium" as const },
   messageReaction: { enabled: true },
 };
 
@@ -103,10 +104,12 @@ const DiscordActivityConfigSchema = z
       .object({
         model: OptionalText,
         promptAppend: OptionalText,
-        thinking: z.enum(THINKING_LEVELS).optional().catch(undefined),
+        thinking: z
+          .enum(THINKING_LEVELS)
+          .catch(DEFAULT_CONFIG.skillLearnedNotice.thinking),
       })
-      .optional()
-      .catch(undefined),
+      .default(DEFAULT_CONFIG.skillLearnedNotice)
+      .catch(DEFAULT_CONFIG.skillLearnedNotice),
     messageReaction: z
       .object({
         enabled: z.boolean().catch(true),

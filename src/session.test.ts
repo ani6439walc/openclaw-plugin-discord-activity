@@ -358,7 +358,9 @@ describe("updateStatusMessage", () => {
     expect(session.lastRenderedContent).not.toMatch(
       /\(\+\d+ (?:items?|lines?)\)/u,
     );
-    expect(session.lastRenderedContent).toContain("▸");
+    expect(session.lastRenderedContent).toContain("▾");
+    expect(session.lastRenderedContent).toContain("ok");
+    expect(session.confirmedDisplayState?.["tool:call_drop"]).toBe("removed");
     expect(session.lastRenderedContent?.endsWith("\n```")).toBe(true);
   });
 
@@ -417,6 +419,129 @@ describe("updateStatusMessage", () => {
     );
     expect(session.monotonicSafetyFloor).toBeUndefined();
   });
+
+  it("keeps preparation groups removed after a delivered progress card is cleared", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = createToolEntry({
+      toolCallId: "progress",
+      toolName: "progress_card",
+      params: { markdown: "Main agent work" },
+    });
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: [progress],
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token");
+    expect(session.lastRenderedContent).toContain("📋 progress");
+    expect(session.confirmedDisplayState).toEqual({
+      "group:hindsight-memory": "removed",
+      "group:skill-harness": "removed",
+    });
+
+    session.toolHistory = [
+      { ...progress, params: {} },
+      ...createBoundedHistory(),
+    ];
+    await updateStatusMessage(session, () => "token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(body.content).not.toContain("📋 progress");
+    expect(body.content).not.toContain("hindsight-memory");
+    expect(body.content).not.toContain("skill-harness");
+    expect(body.content).toContain("terminal");
+    expect(session.toolHistory).toHaveLength(4);
+    expect(session.confirmedDisplayState).toEqual({
+      "group:hindsight-memory": "removed",
+      "group:skill-harness": "removed",
+    });
+  });
+
+  it.each([undefined, "status_1"])(
+    "keeps the main-agent phase after a rejected progress update with message id %s",
+    async (statusMessageId) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ message: "Forbidden" }, 403))
+        .mockResolvedValueOnce(jsonResponse({ id: "status_new", ok: true }));
+      vi.stubGlobal("fetch", fetchMock);
+      const progress = createToolEntry({
+        toolCallId: "progress",
+        toolName: "progress_card",
+        params: { markdown: "Main agent work" },
+      });
+      const history = [
+        createToolEntry({
+          toolCallId: "older",
+          params: { command: "a".repeat(70) },
+        }),
+        createToolEntry({
+          toolCallId: "latest",
+          params: Object.fromEntries(
+            Array.from({ length: 20 }, (_, i) => [
+              `detail_${i}`,
+              "b".repeat(70),
+            ]),
+          ),
+        }),
+        progress,
+      ];
+      const candidate = renderStatusContentWithState(history, false, 500);
+      expect(candidate.displayState["tool:older"]).toBeDefined();
+      const session = createMockSessionEntry({
+        statusMessageId,
+        lastRenderedContent: statusMessageId ? "old-content" : undefined,
+        toolHistory: history,
+      });
+      defaultStore.sessions.set(session.contextKey, session);
+
+      await updateStatusMessage(session, () => "token", false, undefined, 500);
+
+      expect(session.statusMessageId).toBe(statusMessageId);
+      expect(session.lastRenderedContent).toBe(
+        statusMessageId ? "old-content" : undefined,
+      );
+      expect(session.confirmedDisplayState).toBeUndefined();
+      expect(session.monotonicSafetyFloor).toEqual({
+        "group:hindsight-memory": "removed",
+        "group:skill-harness": "removed",
+      });
+      expect(session.contentDeliveryUncertain).toBeUndefined();
+
+      session.toolHistory = [
+        { ...progress, params: {} },
+        createToolEntry({
+          toolCallId: "late-memory",
+          toolName: "hindsight-memory",
+          status: "error",
+          error: "Late preparation error",
+        }),
+        createToolEntry({
+          toolCallId: "late-harness",
+          toolName: "skill-harness",
+          status: "error",
+          error: "Late preparation error",
+        }),
+        createToolEntry({
+          toolCallId: "older",
+          params: { command: "Now fits" },
+        }),
+      ];
+      await updateStatusMessage(session, () => "token");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const sent = JSON.parse(
+        String(fetchMock.mock.calls[1]?.[1]?.body),
+      ).content;
+      expect(sent).not.toContain("hindsight-memory");
+      expect(sent).not.toContain("skill-harness");
+      expect(sent).not.toContain("Late preparation error");
+      expect(sent).toContain("Now fits");
+      expect(sent).toContain("▾");
+    },
+  );
 
   it("keeps an applied ordinary-tool removal after dedupe rewrites its toolCallId", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
