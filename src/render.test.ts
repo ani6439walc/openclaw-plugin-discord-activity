@@ -328,6 +328,105 @@ describe("ANSI main-tool contract", () => {
 });
 
 describe("progress card rendering", () => {
+  const preparationGroups = [
+    makeEntry({
+      toolCallId: "memory",
+      toolName: "hindsight-memory",
+      params: { status: "Memory recalled" },
+      status: "completed",
+    }),
+    makeEntry({
+      toolCallId: "harness",
+      toolName: "skill-harness",
+      params: { status: "Skills selected" },
+      status: "pending",
+    }),
+  ];
+
+  it.each(["progress_card", "openclawprogress_card"])(
+    "removes preparation groups as soon as %s is visible, even below the length limit",
+    (toolName) => {
+      const history = [
+        ...preparationGroups,
+        makeEntry({
+          toolCallId: "progress",
+          toolName,
+          params: { markdown: "Main agent is working" },
+        }),
+        makeEntry(),
+      ];
+      const result = renderStatusContentWithState(history, false);
+      const text = stripAnsi(result.content);
+
+      expect(text).toContain("📋 progress");
+      expect(text).toContain("Main agent is working");
+      expect(text).toContain("bash ▾");
+      expect(text).not.toContain("hindsight-memory");
+      expect(text).not.toContain("skill-harness");
+      expect(result.content.length).toBeLessThan(1700);
+      expect(result.displayState).toEqual({
+        "group:hindsight-memory": "removed",
+        "group:skill-harness": "removed",
+      });
+      expect(history).toHaveLength(4);
+    },
+  );
+
+  it("keeps preparation groups visible before a non-empty progress card exists", () => {
+    const result = renderStatusContentWithState(
+      [
+        ...preparationGroups,
+        makeEntry({
+          toolCallId: "empty-progress",
+          toolName: "progress_card",
+          params: {},
+        }),
+      ],
+      false,
+    );
+    const text = stripAnsi(result.content);
+
+    expect(text).toContain("hindsight-memory ▾");
+    expect(text).toContain("skill-harness ▾");
+    expect(text).not.toContain("📋 progress");
+    expect(result.displayState).toEqual({});
+  });
+
+  it("removes both group identities before they arrive and keeps them hidden after progress is cleared", () => {
+    const progress = makeEntry({
+      toolCallId: "progress",
+      toolName: "progress_card",
+      params: { title: "Main agent work" },
+    });
+    const first = renderStatusContentWithState([progress], false);
+    expect(first.displayState).toEqual({
+      "group:hindsight-memory": "removed",
+      "group:skill-harness": "removed",
+    });
+    const lateGroups = preparationGroups.map((entry) => ({
+      ...entry,
+      status: "error" as const,
+      error: "Late preparation error",
+    }));
+    const cleared = renderStatusContentWithState(
+      [...lateGroups, { ...progress, params: {} }, makeEntry()],
+      false,
+      1700,
+      Object.freeze(first.displayState),
+    );
+    const text = stripAnsi(cleared.content);
+
+    expect(text).not.toContain("📋 progress");
+    expect(text).not.toContain("hindsight-memory");
+    expect(text).not.toContain("skill-harness");
+    expect(text).not.toContain("Late preparation error");
+    expect(text).toContain("bash ▾");
+    expect(cleared.displayState).toEqual(first.displayState);
+    const nextGeneration = stripAnsi(renderStatusContent(lateGroups, false));
+    expect(nextGeneration).toContain("hindsight-memory");
+    expect(nextGeneration).toContain("skill-harness");
+  });
+
   it("pins the latest progress note and complete plan above ordinary tools", () => {
     const result = stripAnsi(
       renderStatusContent(

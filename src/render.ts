@@ -1140,6 +1140,12 @@ export function renderStatusContentWithState(
     toolHistory.filter(isProgressCardEntry).at(-1),
     toolHistory,
   );
+  if (progressBlock) {
+    // Progress marks the main-agent phase, so preparation status must not reappear.
+    for (const name of SUBAGENT_GROUP_NAMES) {
+      advanceDisplayState(displayState, `group:${name}`, "removed");
+    }
+  }
   const normalBlocks = toolHistory
     .filter(
       (entry) =>

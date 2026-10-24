@@ -420,6 +420,46 @@ describe("updateStatusMessage", () => {
     expect(session.monotonicSafetyFloor).toBeUndefined();
   });
 
+  it("keeps preparation groups removed after a delivered progress card is cleared", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = createToolEntry({
+      toolCallId: "progress",
+      toolName: "progress_card",
+      params: { markdown: "Main agent work" },
+    });
+    const session = createMockSessionEntry({
+      statusMessageId: "status_1",
+      toolHistory: [progress],
+    });
+    defaultStore.sessions.set(session.contextKey, session);
+
+    await updateStatusMessage(session, () => "token");
+    expect(session.lastRenderedContent).toContain("📋 progress");
+    expect(session.confirmedDisplayState).toEqual({
+      "group:hindsight-memory": "removed",
+      "group:skill-harness": "removed",
+    });
+
+    session.toolHistory = [
+      { ...progress, params: {} },
+      ...createBoundedHistory(),
+    ];
+    await updateStatusMessage(session, () => "token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(body.content).not.toContain("📋 progress");
+    expect(body.content).not.toContain("hindsight-memory");
+    expect(body.content).not.toContain("skill-harness");
+    expect(body.content).toContain("terminal");
+    expect(session.toolHistory).toHaveLength(4);
+    expect(session.confirmedDisplayState).toEqual({
+      "group:hindsight-memory": "removed",
+      "group:skill-harness": "removed",
+    });
+  });
+
   it("keeps an applied ordinary-tool removal after dedupe rewrites its toolCallId", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
     vi.stubGlobal("fetch", fetchMock);
