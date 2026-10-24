@@ -45,6 +45,18 @@ const EmojiConfigEntry = z.union([
   }),
 ]);
 
+const SecretRefSchema = z.object({
+  source: z.literal("env"),
+  provider: z.string().trim().min(1),
+  id: z.string().trim().min(1),
+});
+
+const DecisionModelSchema = z.object({
+  baseUrl: z.url().optional(),
+  apiKey: z.union([z.string().trim().min(1), SecretRefSchema]),
+  model: z.string().trim().min(1),
+});
+
 /** OpenClaw's canonical thinking levels; the host maps each to what the selected model supports. */
 export const THINKING_LEVELS = [
   "off",
@@ -85,6 +97,7 @@ const DiscordActivityConfigSchema = z
       .positive()
       .catch(DEFAULT_MAX_DISPLAY_SECONDS),
     replyMode: z.enum(["all", "direct"]).catch(DEFAULT_CONFIG.replyMode),
+    decisionModel: DecisionModelSchema.optional().catch(undefined),
     skillLearnedNotice: z
       .object({
         model: OptionalText,

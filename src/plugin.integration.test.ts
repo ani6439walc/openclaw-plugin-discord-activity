@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../index.js";
 import type { OpenClawPluginApi } from "../api.js";
 
 describe("plugin", () => {
   let mockApi: OpenClawPluginApi;
+
+  afterEach(() => vi.unstubAllGlobals());
 
   beforeEach(() => {
     mockApi = {
@@ -155,6 +157,88 @@ describe("plugin", () => {
       },
     );
     await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
+  });
+
+  it("uses the plugin Jev fallback when OpenClaw has no decision model", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        answers: { reaction: { type: "choice", choice: "none" } },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const evaluate = vi.fn();
+    mockApi.pluginConfig = {
+      decisionModel: {
+        baseUrl: "https://example.test/typesafe",
+        apiKey: "test-key",
+        model: "jev-latest",
+      },
+      messageReaction: { enabled: true, emojis: ["🎉"] },
+    };
+    mockApi.runtime = {
+      agent: {
+        session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+      },
+      decisions: { evaluate },
+    } as unknown as OpenClawPluginApi["runtime"];
+    plugin.register(mockApi);
+
+    const reactionHook = (
+      mockApi.on as ReturnType<typeof vi.fn>
+    ).mock.calls.find(([name]) => name === "message_received")?.[1] as (
+      event: unknown,
+      context: unknown,
+    ) => void;
+    reactionHook(
+      { messageId: "234567890123456789", content: "Done!" },
+      {
+        channelId: "discord",
+        sessionKey: "agent:main:discord:direct:123456789012345678",
+      },
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("honors an explicit empty agent decision model over the plugin fallback", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const evaluate = vi.fn();
+    mockApi.config = {
+      ...mockApi.config,
+      agents: { entries: { main: { decisionModel: "" } } },
+    } as OpenClawPluginApi["config"];
+    mockApi.pluginConfig = {
+      decisionModel: {
+        baseUrl: "https://example.test/typesafe",
+        apiKey: "test-key",
+        model: "jev-latest",
+      },
+      messageReaction: { enabled: true, emojis: ["🎉"] },
+    };
+    mockApi.runtime = {
+      agent: {
+        session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+      },
+      decisions: { evaluate },
+    } as unknown as OpenClawPluginApi["runtime"];
+    plugin.register(mockApi);
+
+    const reactionHook = (
+      mockApi.on as ReturnType<typeof vi.fn>
+    ).mock.calls.find(([name]) => name === "message_received")?.[1] as (
+      event: unknown,
+      context: unknown,
+    ) => void;
+    reactionHook(
+      { messageId: "234567890123456789", content: "Done!" },
+      {
+        channelId: "discord",
+        sessionKey: "agent:main:discord:direct:123456789012345678",
+      },
+    );
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fails registration when agent event subscription is missing", () => {

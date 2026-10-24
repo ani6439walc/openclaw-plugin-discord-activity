@@ -42,6 +42,40 @@
         "default": "all",
         "description": "Whether status messages reply to all source messages when available or only in canonical private-message sessions; channel and group statuses remain standalone"
       },
+      "decisionModel": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["apiKey", "model"],
+        "description": "TypeSafe Jev fallback for message reactions when the owning agent has no OpenClaw decisionModel. An explicit empty agent decisionModel disables reactions.",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "TypeSafe API root; omit to use the SDK default. A trailing /v1 is accepted."
+          },
+          "apiKey": {
+            "description": "TypeSafe API key or environment SecretRef.",
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["source", "provider", "id"],
+                "properties": {
+                  "source": { "const": "env" },
+                  "provider": { "type": "string", "minLength": 1 },
+                  "id": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "TypeSafe model ID, for example jev-latest."
+          }
+        }
+      },
       "skillLearnedNotice": {
         "type": "object",
         "additionalProperties": false,

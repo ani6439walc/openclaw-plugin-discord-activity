@@ -314,6 +314,7 @@ This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as th
 | `maxDisplaySeconds`               | `number` | `180`   | Idle timeout for status activity without an admitted run. Known live runs remain visible until settled lifecycle completion.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `orphanTtlSeconds`                | `number` | `300`   | Time to keep orphaned tool calls while waiting for a session link.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `replyMode`                       | `string` | `all`   | `all` replies wherever a source message exists; `direct` replies only in canonical private-message sessions, while channel/group statuses remain standalone.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `decisionModel`                   | object   | unset   | Optional TypeSafe Jev fallback for semantic reactions when the owning agent has no OpenClaw decision model. Requires `model` and `apiKey`; `baseUrl` is optional.                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `skillLearnedNotice.model`        | `string` | unset   | Model ref that writes the learned-skill notice, for example `bifrost/gpt-6-luna`. Unset falls back to the agent's explicit `utilityModel` (`agents.entries.<id>.utilityModel`, then `agents.defaults.utilityModel`); an empty or unset utility model leaves the choice to the host, which uses its default model (the ambient owner agent's, not necessarily the notice agent's own). Any resolved model, including a utility fallback, requires `plugins.entries.discord-activity.llm.allowModelOverride: true` and, when present, an `llm.allowedModels` entry for that ref. |
 | `skillLearnedNotice.thinking`     | `string` | unset   | Requested thinking level for the notice rewrite: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `adaptive`, `max`, or `ultra`. Unset sends none, so the host and model decide. It is a request: the host and provider may map or clamp it to what the selected model supports (for example down to `off`) without an error or warning, so an unsupported level is not rejected. Only an actual completion failure logs a `learned notice:` warning with its error code and sends the original notice.                                                                     |
 | `skillLearnedNotice.promptAppend` | `string` | unset   | Extra instructions appended to the notice system prompt. The built-in prompt sets the format but no language, so use this for the language.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -322,7 +323,7 @@ Runtime display limits are stricter than `maxToolHistoryLength`: the renderer ke
 
 ### Semantic reactions in Discord DMs
 
-`messageReaction.enabled` defaults to `false`. When enabled, the plugin reads the current session's cached Activity recap and the latest incoming text, asks the agent's Jev decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Version 1 handles canonical Discord direct messages only; messages without text or a usable message ID are skipped.
+`messageReaction.enabled` defaults to `false`. When enabled, the plugin reads the current session's cached Activity recap and the latest incoming text, asks a decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Version 1 handles canonical Discord direct messages only; messages without text or a usable message ID are skipped.
 
 | Property                  | Type    | Default | Description                                                                                                                                                                                                      |
 | ------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -331,7 +332,7 @@ Runtime display limits are stricter than `maxToolHistoryLength`: the renderer ke
 
 The built-in pool is a static snapshot taken on 2026-10-24 from [PiliApp's emoji list](https://tw.piliapp.com/emoji/list/): Smileys & People, Animals & Nature, Food & Drink, Activities, Travel & Places, Objects, and Symbols. Flags are excluded. It contains 1,644 distinct emoji and is bundled with the plugin; no website request occurs when a message arrives. For each message, the plugin samples up to 30 distinct emoji from the active pool, then adds `none` as another decision choice. An emoji omitted by that sample cannot be chosen for that message.
 
-Configure a TypeSafe Jev `decisionModel` for the owning agent, for example `typesafe/jev-latest` in `agents.defaults.decisionModel` or the agent's entry. A per-agent empty string disables decision evaluation for that agent. This setting is independent of Skill Harness and the agent's conversational model. If Jev is unavailable, the decision is invalid, or `none` is selected, the plugin leaves the message without a reaction.
+When the owning agent has an effective OpenClaw `decisionModel`, the plugin uses `api.runtime.decisions.evaluate`, regardless of the configured decision provider. An empty string in the agent's entry or `agents.defaults.decisionModel` disables reactions for that agent. If neither is configured, the plugin can use its own top-level `decisionModel` as a direct TypeSafe Jev fallback. It does not use the agent's conversational model or Skill Harness settings. If the selected decision path is unavailable, the answer is invalid, or `none` is selected, the plugin leaves the message without a reaction.
 
 ```json
 {
@@ -354,7 +355,26 @@ Configure a TypeSafe Jev `decisionModel` for the owning agent, for example `type
 }
 ```
 
-Remove `emojis` from the example to use the built-in pool. The plugin limits Jev evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation and are not logged.
+Remove `emojis` from the example to use the built-in pool. The plugin limits decision evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation and are not logged.
+
+To use the plugin fallback instead of configuring an OpenClaw agent decision role, omit `agents.defaults.decisionModel` and the agent's `decisionModel`, then add this object alongside `messageReaction` under `plugins.entries.discord-activity.config`:
+
+```json
+{
+  "decisionModel": {
+    "baseUrl": "https://bifrost.home-infra.weii.cloud/typesafe",
+    "apiKey": {
+      "source": "env",
+      "provider": "default",
+      "id": "BIFROST_VIRTUAL_KEY_OPENCLAW"
+    },
+    "model": "jev-latest"
+  },
+  "messageReaction": { "enabled": true }
+}
+```
+
+The fallback resolves the SecretRef when each request starts, sends the bounded recap and latest message directly to the configured TypeSafe endpoint, and skips the reaction if the key is unavailable. It has no retry; a failed fallback request does not switch to another model.
 
 ## Companion workflows
 

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "./config.js";
-import { createMessageReactionHandler } from "./message-reaction.js";
+import {
+  createMessageReactionHandler,
+  type ReactionDecisionBatch,
+} from "./message-reaction.js";
 
 const message = {
   messageId: "234567890123456789",
@@ -35,7 +38,11 @@ function decision(choice: string) {
 
 function setup(
   emojis: unknown[] = ["🎉", "🐶"],
-  decisionModel = "typesafe/jev-latest",
+  decisionModel: string | null = "typesafe/jev-latest",
+  evaluateFallback?: (
+    batch: ReactionDecisionBatch,
+    signal: AbortSignal,
+  ) => Promise<string | undefined>,
 ) {
   const evaluate = vi.fn(async () => decision("emoji_0"));
   const getSessionEntry = vi.fn(async () => ({
@@ -49,15 +56,22 @@ function setup(
   const handler = createMessageReactionHandler({
     config: resolveConfig({ messageReaction: { enabled: true, emojis } })
       .messageReaction,
-    resolveDecisionModel: () => decisionModel,
+    resolveDecisionModel: () => decisionModel ?? undefined,
     getSessionEntry,
     evaluate,
+    evaluateFallback,
     getToken: () => "token",
     resolveDmChannel,
     addReaction,
     random: () => 0,
   });
-  return { handler, evaluate, getSessionEntry, resolveDmChannel, addReaction };
+  return {
+    handler,
+    evaluate,
+    getSessionEntry,
+    resolveDmChannel,
+    addReaction,
+  };
 }
 
 describe("message reaction handler", () => {
@@ -286,7 +300,7 @@ describe("message reaction handler", () => {
     handler.stop();
   });
 
-  it("skips disabled, non-DM, and non-Jev messages", async () => {
+  it("skips disabled and non-DM messages while accepting any configured host decision model", async () => {
     const { handler, evaluate } = setup();
     await handler.onMessageReceived(message, {
       ...context,
@@ -308,7 +322,38 @@ describe("message reaction handler", () => {
 
     const otherModel = setup(["🎉"], "openai/gpt-6-luna");
     await otherModel.handler.onMessageReceived(message, context);
-    expect(otherModel.evaluate).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(otherModel.evaluate).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("uses plugin fallback only when no host decision model is configured", async () => {
+    const evaluateFallback = vi.fn(async () => "emoji_0");
+    const fallback = setup(["🎉"], null, evaluateFallback);
+    fallback.handler.onMessageReceived(message, context);
+    await vi.waitFor(() =>
+      expect(fallback.addReaction).toHaveBeenCalledTimes(1),
+    );
+    expect(fallback.evaluate).not.toHaveBeenCalled();
+    expect(evaluateFallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: {
+          previousRecap: "The user was preparing a release.",
+          latestMessage: message.content,
+        },
+      }),
+      expect.any(AbortSignal),
+    );
+
+    const host = setup(["🎉"], "typesafe/jev-latest", evaluateFallback);
+    host.handler.onMessageReceived(message, context);
+    await vi.waitFor(() => expect(host.evaluate).toHaveBeenCalledTimes(1));
+    expect(evaluateFallback).toHaveBeenCalledTimes(1);
+
+    const disabled = setup(["🎉"], "", evaluateFallback);
+    disabled.handler.onMessageReceived(message, context);
+    expect(disabled.evaluate).not.toHaveBeenCalled();
+    expect(evaluateFallback).toHaveBeenCalledTimes(1);
   });
 
   it("skips missing token or source message ID before evaluating", async () => {

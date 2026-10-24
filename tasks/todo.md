@@ -107,7 +107,7 @@
 **驗收：**
 
 - [x] README、manifest、runtime 設定的名稱、預設值、七類來源與限制一致。
-- [x] 未設定 Jev 時功能安靜略過，README 不暗示會使用 Skill Harness 的設定。
+- [x] 原始版本未設定 Jev 時安靜略過，README 不暗示會使用 Skill Harness 的設定；後續外掛 fallback 見 Task 6。
 - [x] 全部專案檢查通過，無 token、recap 或訊息內容進入 log。
 
 **驗證：** `pnpm run format`、`pnpm run typecheck`、`pnpm run test`、`pnpm run build`、`pnpm pack --dry-run`；檢查 `git diff`。
@@ -129,3 +129,13 @@
 - 測試涵蓋七類靜態資料、30 個不重複抽樣、recap 缺席、`none`／無效 key／Jev unavailable、逾時、重複與並行訊息、Discord 204／400／403／404／429 與網路失敗。
 - 逐項對照 PiliApp 七個分類頁，靜態清單順序及內容完全一致；各類分別有 315、155、136、293、219、266、265 筆，跨類去重後 1,644 筆。
 - 尚未對真實 Jev 與 Discord 送出 reaction；需在啟用後以測試 DM 確認 provider 可用與較新 Unicode emoji 的實際相容性。
+
+## Task 6: 外掛決策模型 fallback
+
+- [x] 新增第一層 `decisionModel` 設定與 TypeSafe SDK 請求；環境 SecretRef 在呼叫當下解析。
+- [x] 宿主有有效決策模型時使用 `api.runtime.decisions.evaluate`；完全未設定時才使用外掛 fallback；明確空字串停用。
+- [x] 兩條路徑共用同一份 recap、最新訊息與 emoji choice，保留 deadline、去重及 fail-open。
+- [x] README、manifest 與設定解析器同步，並補路由、SecretRef、請求形狀測試。
+- [x] 執行完整格式、型別、測試、build、pack 及 diff 檢查。
+
+**驗證（2026-10-24）：** `pnpm run format`、`pnpm run typecheck`、`pnpm run test`（676 tests）、`pnpm run build`、`pnpm pack --dry-run`、`git diff --check` 均通過；pack 已確認包含 `dist/src/decision-model.js`。以受控 SDK/fetch mock 驗證路由與請求，未使用真實 API key 或發送 Discord reaction。

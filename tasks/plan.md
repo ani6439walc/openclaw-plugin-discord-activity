@@ -4,6 +4,10 @@
 
 收到 Discord 使用者訊息後，讀取該 session 已快取的 `activitySummary.text`，連同最新訊息交給 OpenClaw 的 `api.runtime.decisions.evaluate`（Jev）判斷，並在原始訊息上加一個表情，或選擇不按。功能啟用且未設定清單時，使用 [PiliApp Emoji 列表](https://tw.piliapp.com/emoji/list/)指定七個類別的內建 Unicode emoji 清單；使用者也可自行覆蓋。每則訊息先去重，再不重複地隨機抽最多 30 個，最後加上固定的 `none` 選項。整條流程不能拖慢或阻擋正常回覆。
 
+## 後續擴充：外掛決策模型 fallback
+
+在外掛設定第一層新增 `decisionModel: { baseUrl?, apiKey, model }`。若所屬 agent 或 `agents.defaults` 設有非空 `decisionModel`，仍由 OpenClaw `api.runtime.decisions.evaluate` 評估；兩者皆未設定時，才以 TypeSafe SDK 直接呼叫外掛設定的 Jev。明確空字串表示停用，不觸發 fallback。SecretRef 於請求當下解析；缺少金鑰、錯誤、逾時或無效答案皆不按表情，原本回覆不受影響。
+
 ## 已確認的接點
 
 - `src/plugin.ts` 已註冊 `message_received`；新功能可掛獨立 handler，避免改動現有狀態訊息生命週期。
@@ -18,8 +22,8 @@
 3. `messageReaction.emojis` 未填時使用內建清單；明確填 `[]` 時視為空清單並略過 Jev；填入清單則完整取代內建清單。自訂項目接受 Unicode emoji 字串，或 `{ "emoji": "…", "meaning": "…" }`；`meaning` 是可選的挑選提示。v1 不處理 Discord 自訂 emoji。
 4. 每則訊息對有效清單去重後均勻隨機抽樣，不重複，最多 30 個；不足 30 個就全給 Jev。Jev 只看到本次抽到的選項及 `none`，因此清單大於 30 時，未抽中的 emoji 在該則訊息不可能被選到。
 5. Decision 用固定 choice key（例如 `emoji_0` 到 `emoji_29`、`none`）映射本次候選，不接受模型自行產出的 emoji。Jev 選 `none`、回傳無效、無可用模型、超時或例外時都不按。不要把 provider 的 `confidence` 當成「選對」機率。
-6. 使用所屬 agent 的 `decisionModel`；未設定成可用的 Jev provider 時直接略過，不改用一般對話模型。預計給 decision 約 5 秒上限，並為 Discord 請求設定剩餘時限；過期結果不可補按。
-7. recap 與使用者訊息只送至目前 OpenClaw 決策 runtime，不寫入 log；限制輸入長度並將訊息視為資料。非 Discord、非 DM、缺少訊息 ID、缺少可用文字或 token 時略過。
+6. 使用所屬 agent 的有效 `decisionModel`，由 OpenClaw 決策 runtime 呼叫；未設定時可用外掛 `decisionModel` 直接呼叫 TypeSafe Jev，兩者皆缺席或明確設空字串時略過。不改用一般對話模型。預計給 decision 約 5 秒上限，並為 Discord 請求設定剩餘時限；過期結果不可補按。
+7. recap 與使用者訊息只送至選定的決策路徑（OpenClaw runtime 或外掛 TypeSafe fallback），不寫入 log；限制輸入長度並將訊息視為資料。非 Discord、非 DM、缺少訊息 ID、缺少可用文字或 token 時略過。
 
 ## 執行順序
 

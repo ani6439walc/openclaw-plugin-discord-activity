@@ -21,6 +21,7 @@ import { resolveLearnedNoticeModel } from "./learned-notice-model.js";
 import { parseAgentSessionKey } from "openclaw/plugin-sdk/routing";
 import { createMessageReactionHandler } from "./message-reaction.js";
 import { addReactionWithResult, resolveDmChannel } from "./discord-api.js";
+import { createFallbackDecisionEvaluator } from "./decision-model.js";
 
 export default definePluginEntry({
   id: "discord-activity",
@@ -55,6 +56,9 @@ export default definePluginEntry({
           }),
         evaluate: (batch, options) =>
           api.runtime.decisions.evaluate(batch, options),
+        evaluateFallback: config.decisionModel
+          ? createFallbackDecisionEvaluator(config.decisionModel, api.config)
+          : undefined,
         getToken: (accountId) =>
           resolveDiscordToken(api.config, { accountId }).token,
         resolveDmChannel,
