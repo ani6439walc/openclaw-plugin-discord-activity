@@ -80,6 +80,7 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Settings for the LLM-written background skill-review notice",
+        "default": { "thinking": "medium" },
         "properties": {
           "model": {
             "type": "string",
@@ -88,6 +89,7 @@
           },
           "thinking": {
             "type": "string",
+            "default": "medium",
             "enum": [
               "off",
               "minimal",
@@ -99,7 +101,7 @@
               "max",
               "ultra"
             ],
-            "description": "Requested thinking level for the notice rewrite; omit to send none so the host and model decide. The host and provider may map or clamp the request to what the selected model supports (for example down to off), without an error. Only an actual completion failure logs a warning and sends the original notice"
+            "description": "Requested thinking level for the notice rewrite; defaults to medium, including when the skillLearnedNotice section is omitted. The host and provider may map or clamp the request to what the selected model supports (for example down to off), without an error. Only an actual completion failure logs a warning and sends the original notice"
           },
           "promptAppend": {
             "type": "string",

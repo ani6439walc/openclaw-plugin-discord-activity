@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
   orphanTtlSeconds: DEFAULT_ORPHAN_TTL_SECONDS,
   maxDisplaySeconds: DEFAULT_MAX_DISPLAY_SECONDS,
   replyMode: "all",
+  skillLearnedNotice: { thinking: "medium" },
   messageReaction: { enabled: true },
 };
 
@@ -185,14 +186,20 @@ describe("resolveConfig", () => {
     ).toEqual({
       ...DEFAULT_CONFIG,
       skillLearnedNotice: {
+        thinking: "medium",
         model: "bifrost/gpt-6-luna",
         promptAppend: "用中文寫摘要",
       },
     });
-    expect(resolveConfig({}).skillLearnedNotice).toBeUndefined();
+    expect(resolveConfig({}).skillLearnedNotice).toEqual({
+      thinking: "medium",
+    });
+    expect(
+      resolveConfig({ skillLearnedNotice: {} }).skillLearnedNotice,
+    ).toEqual({ thinking: "medium" });
   });
 
-  it("accepts each thinking level and drops anything else", () => {
+  it("accepts each thinking level and defaults invalid levels to medium", () => {
     for (const level of THINKING_LEVELS) {
       expect(
         resolveConfig({ skillLearnedNotice: { thinking: level } }),
@@ -203,7 +210,7 @@ describe("resolveConfig", () => {
         resolveConfig({
           skillLearnedNotice: { thinking: bad, model: "bifrost/gpt-6-luna" },
         }).skillLearnedNotice,
-      ).toEqual({ model: "bifrost/gpt-6-luna" });
+      ).toEqual({ model: "bifrost/gpt-6-luna", thinking: "medium" });
     }
   });
 
@@ -216,12 +223,12 @@ describe("resolveConfig", () => {
     ).toEqual({
       ...DEFAULT_CONFIG,
       maxDisplaySeconds: 30,
-      skillLearnedNotice: {},
+      skillLearnedNotice: { thinking: "medium" },
     });
     expect(
       resolveConfig({ skillLearnedNotice: "bifrost/gpt-6-luna" })
         .skillLearnedNotice,
-    ).toBeUndefined();
+    ).toEqual({ thinking: "medium" });
   });
 
   it("accepts boundary-valid numeric values", () => {

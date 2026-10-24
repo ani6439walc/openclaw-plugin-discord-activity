@@ -122,6 +122,45 @@ describe("plugin", () => {
     );
   });
 
+  it.each([
+    [{}, "medium"],
+    [{ skillLearnedNotice: {} }, "medium"],
+    [{ skillLearnedNotice: { thinking: "off" } }, "off"],
+    [{ skillLearnedNotice: { thinking: "high" } }, "high"],
+  ])(
+    "passes learned-notice thinking from config %j as reasoning %s",
+    async (pluginConfig, expectedThinking) => {
+      const complete = vi.fn(async () => ({
+        text: "🔧 Updated `alpha` to check results. Say undo to revert.",
+      }));
+      mockApi.pluginConfig = pluginConfig;
+      mockApi.runtime = {
+        llm: { complete },
+      } as unknown as OpenClawPluginApi["runtime"];
+      plugin.register(mockApi);
+      const learnedHook = (
+        mockApi.on as ReturnType<typeof vi.fn>
+      ).mock.calls.find(
+        ([name, , options]) =>
+          name === "message_sending" && options?.timeoutMs === 60_000,
+      )?.[1];
+      expect(learnedHook).toBeTypeOf("function");
+
+      await learnedHook(
+        {
+          to: "channel:123",
+          content:
+            '💾 Learned: updated `alpha` (tweak). Say "undo" to revert this skill change.',
+        },
+        { channelId: "discord" },
+      );
+
+      expect(complete).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ reasoning: expectedThinking }),
+      );
+    },
+  );
+
   it("uses the global Jev decision model for Discord channel messages", async () => {
     const evaluate = vi.fn(async () => ({
       status: "ok",
