@@ -1174,7 +1174,7 @@ export function renderStatusContentWithState(
     }
   }
 
-  return renderBoundedStatus(
+  const result = renderBoundedStatus(
     [
       ...(progressBlock ? [progressBlock] : []),
       ...selectedBlocks,
@@ -1184,6 +1184,8 @@ export function renderStatusContentWithState(
     displayState,
     normalBlocks.at(-1)?.key,
   );
+  if (progressBlock) result.preparationComplete = true;
+  return result;
 }
 
 export function renderStatusContent(

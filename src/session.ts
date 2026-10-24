@@ -12,6 +12,7 @@ import { isCanonicalDirectSessionKey } from "./parser.js";
 import {
   mergeStatusDisplayStates,
   renderStatusContentWithState,
+  SUBAGENT_GROUP_NAMES,
 } from "./render.js";
 import {
   clearSessionTimer,
@@ -435,12 +436,22 @@ export async function updateStatusMessage(
 
     if (!isExpectedCurrentSession()) return;
 
-    const { content, displayState } = renderStatusContentWithState(
-      session.toolHistory,
-      isFinal,
-      maxStatusMessageLength,
-      getSessionDisplayFloor(session),
-    );
+    const { content, displayState, preparationComplete } =
+      renderStatusContentWithState(
+        session.toolHistory,
+        isFinal,
+        maxStatusMessageLength,
+        getSessionDisplayFloor(session),
+      );
+
+    if (preparationComplete) {
+      // Phase transitions survive even rejected sends; length-based degradation still follows delivery.
+      const floor = mergeStatusDisplayStates(session.monotonicSafetyFloor);
+      for (const name of SUBAGENT_GROUP_NAMES) {
+        floor[`group:${name}`] = "removed";
+      }
+      session.monotonicSafetyFloor = floor;
+    }
 
     if (isEmptyStatusContent(content)) return;
 
