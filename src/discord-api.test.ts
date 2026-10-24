@@ -40,6 +40,47 @@ describe("resolveDmChannel", () => {
     ).resolves.toBe("111111111111111111");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("evicts older DM channels after many distinct users", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ id: "333333333333333333" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const userIds = Array.from({ length: 1100 }, (_, index) =>
+      String(index).padStart(18, "0"),
+    );
+
+    for (const userId of userIds) {
+      await resolveDmChannel(userId, "token", undefined, "bounded-cache");
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(userIds.length);
+
+    await resolveDmChannel(
+      userIds.at(-1)!,
+      "token",
+      undefined,
+      "bounded-cache",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(userIds.length);
+    await resolveDmChannel(userIds[0]!, "token", undefined, "bounded-cache");
+    expect(fetchMock).toHaveBeenCalledTimes(userIds.length + 1);
+  });
+
+  it("ignores a successful DM response without a string channel ID", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(null))
+      .mockResolvedValueOnce(jsonResponse({ id: 42 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      resolveDmChannel("888888888888888888", "token", undefined, "bad-id"),
+    ).resolves.toBeUndefined();
+    await expect(
+      resolveDmChannel("888888888888888888", "token", undefined, "bad-id"),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("addReactionWithResult", () => {

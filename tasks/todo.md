@@ -138,4 +138,4 @@
 - [x] README、manifest 與設定解析器同步，並補路由、SecretRef、請求形狀測試。
 - [x] 執行完整格式、型別、測試、build、pack 及 diff 檢查。
 
-**驗證（2026-10-24）：** `pnpm run format`、`pnpm run typecheck`、`pnpm run test`（677 tests）、`pnpm run build`、`pnpm pack --dry-run`、`git diff --check` 均通過；pack 已確認包含 `dist/src/decision-model.js`。以受控 SDK/fetch mock 驗證路由與請求，未使用真實 API key 或發送 Discord reaction。
+**驗證（2026-10-24）：** `pnpm run format`、`pnpm run typecheck`、`pnpm run test`（679 tests）、`pnpm run build`、`pnpm pack --dry-run`、`git diff --check` 均通過；pack 已確認包含 `dist/src/decision-model.js`。以受控 SDK/fetch mock 驗證路由與請求，未使用真實 API key 或發送 Discord reaction。PR review 後另加 DM channel 快取上限與回歸測試。

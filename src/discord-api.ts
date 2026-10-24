@@ -19,6 +19,7 @@ export function sleep(ms: number, signal?: AbortSignal) {
   });
 }
 
+const MAX_DM_CHANNEL_CACHE_ENTRIES = 1024;
 const dmChannelCache = new Map<string, string>();
 
 export async function resolveDmChannel(
@@ -45,9 +46,19 @@ export async function resolveDmChannel(
     "resolveDmChannel",
   );
 
-  const data = (await res.json().catch(() => ({}))) as any;
-  if (res.ok && data.id) {
+  const data: unknown = await res.json().catch(() => ({}));
+  if (
+    res.ok &&
+    data &&
+    typeof data === "object" &&
+    "id" in data &&
+    typeof data.id === "string" &&
+    data.id
+  ) {
     dmChannelCache.set(cacheKey, data.id);
+    if (dmChannelCache.size > MAX_DM_CHANNEL_CACHE_ENTRIES) {
+      dmChannelCache.delete(dmChannelCache.keys().next().value!);
+    }
     return data.id;
   }
   return undefined;
