@@ -156,6 +156,99 @@ export type DiscordMutationResult = {
   status?: number;
 };
 
+export function normalizeReactionIdentifier(emoji: string): string {
+  const trimmed = emoji.trim();
+  const custom = trimmed.match(/^<a?:([^:>]+):(\d+)>$/);
+  return custom
+    ? `${custom[1]}:${custom[2]}`
+    : trimmed.replace(/[\uFE0E\uFE0F]/g, "");
+}
+
+function hasOwnReaction(message: unknown, identifier: string): boolean {
+  if (
+    !message ||
+    typeof message !== "object" ||
+    !("reactions" in message) ||
+    !Array.isArray(message.reactions)
+  )
+    return false;
+  return message.reactions.some((reaction: unknown) => {
+    if (
+      !reaction ||
+      typeof reaction !== "object" ||
+      !("me" in reaction) ||
+      reaction.me !== true ||
+      !("emoji" in reaction)
+    )
+      return false;
+    const emoji = reaction.emoji;
+    if (!emoji || typeof emoji !== "object") return false;
+    if ("id" in emoji && typeof emoji.id === "string") {
+      return identifier.endsWith(`:${emoji.id}`);
+    }
+    return (
+      "name" in emoji &&
+      typeof emoji.name === "string" &&
+      normalizeReactionIdentifier(emoji.name) === identifier
+    );
+  });
+}
+
+/** Confirm the independently queued ACK is present before deleting our own reaction. */
+export async function removeAckReactionWithResult(
+  channelId: string,
+  messageId: string,
+  emoji: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<DiscordMutationResult> {
+  const identifier = normalizeReactionIdentifier(emoji);
+  const messageUrl = `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`;
+  const headers = { Authorization: `Bot ${token}` };
+  try {
+    // ACK and semantic reactions use separate REST queues; allow a slow ACK to arrive.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const message = await discordApiRequest(
+        messageUrl,
+        { method: "GET", headers, signal },
+        "readAckReaction",
+      );
+      if (!message.ok)
+        return {
+          outcome:
+            message.status >= 500 || message.status === 429
+              ? "uncertain"
+              : "rejected",
+          reason: `http-${message.status}`,
+          status: message.status,
+        };
+      if (hasOwnReaction(await message.json(), identifier)) {
+        const res = await discordApiRequest(
+          `${messageUrl}/reactions/${encodeURIComponent(identifier)}/@me`,
+          { method: "DELETE", headers, signal },
+          "removeAckReaction",
+        );
+        return {
+          outcome: res.ok
+            ? "applied"
+            : res.status >= 500 || res.status === 429
+              ? "uncertain"
+              : "rejected",
+          reason: res.ok ? "removed" : `http-${res.status}`,
+          status: res.status,
+        };
+      }
+      if (attempt < 3) await sleep(250, signal);
+    }
+    return { outcome: "uncertain", reason: "ack-not-observed" };
+  } catch {
+    return {
+      outcome: "uncertain",
+      reason: signal?.aborted ? "aborted" : "network-error",
+    };
+  }
+}
+
 export async function addReactionWithResult(
   channelId: string,
   messageId: string,

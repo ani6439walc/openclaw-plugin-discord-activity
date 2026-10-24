@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../api.js";
 import { resolveConfig } from "./config.js";
-import { resolveDmChannel } from "./discord-api.js";
+import { resolveDmChannel, sleep } from "./discord-api.js";
 import {
   createMessageReactionHandler,
   type ReactionDecisionBatch,
@@ -48,6 +48,11 @@ function setup(
   ) => Promise<string | undefined>,
   globalDecisionModel: string | null = null,
   promptAppend?: string,
+  ackReaction = "🌸",
+  timing: {
+    wait?: (ms: number, signal: AbortSignal) => Promise<void>;
+    random?: () => number;
+  } = {},
 ) {
   const evaluate = vi.fn(async () => decision("emoji_0"));
   const getSessionEntry = vi.fn(async () => ({
@@ -58,6 +63,11 @@ function setup(
     outcome: "applied" as const,
     reason: "created",
   }));
+  const removeAckReaction = vi.fn(async () => ({
+    outcome: "applied" as const,
+    reason: "removed",
+  }));
+  const resolveAckReaction = vi.fn(() => ackReaction);
   const handler = createMessageReactionHandler({
     config: resolveConfig({
       messageReaction: { enabled: true, emojis, promptAppend },
@@ -70,7 +80,10 @@ function setup(
     getToken: () => "token",
     resolveDmChannel,
     addReaction,
-    random: () => 0,
+    resolveAckReaction,
+    removeAckReaction,
+    wait: timing.wait ?? vi.fn(async () => {}),
+    random: timing.random ?? (() => 0),
   });
   return {
     handler,
@@ -78,6 +91,8 @@ function setup(
     getSessionEntry,
     resolveDmChannel,
     addReaction,
+    resolveAckReaction,
+    removeAckReaction,
   };
 }
 
@@ -86,6 +101,186 @@ describe("message reaction handler", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it.each([
+    { random: 0, delay: 3000 },
+    { random: 0.9999, delay: 5000 },
+  ])(
+    "waits $delay ms before reading recap or calling Jev",
+    async ({ random, delay }) => {
+      vi.useFakeTimers();
+      const { handler, getSessionEntry, evaluate, addReaction } = setup(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { wait: sleep, random: () => random },
+      );
+      handler.onMessageReceived(message, context);
+      expect(getSessionEntry).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(getSessionEntry).not.toHaveBeenCalled();
+      expect(evaluate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(getSessionEntry).toHaveBeenCalledOnce();
+      expect(addReaction).toHaveBeenCalledOnce();
+      handler.stop();
+    },
+  );
+
+  it("cancels the human delay on stop without contacting recap, Jev or Discord", async () => {
+    vi.useFakeTimers();
+    const {
+      handler,
+      getSessionEntry,
+      evaluate,
+      addReaction,
+      removeAckReaction,
+    } = setup(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { wait: sleep },
+    );
+    handler.onMessageReceived(message, context);
+    handler.stop();
+    await vi.advanceTimersByTimeAsync(12000);
+    expect(getSessionEntry).not.toHaveBeenCalled();
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(addReaction).not.toHaveBeenCalled();
+    expect(removeAckReaction).not.toHaveBeenCalled();
+  });
+
+  it("starts the seven-second processing deadline after the human delay", async () => {
+    vi.useFakeTimers();
+    const { handler, evaluate, addReaction } = setup(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { wait: sleep, random: () => 0.9999 },
+    );
+    let finishDecision!: (value: ReturnType<typeof decision>) => void;
+    evaluate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishDecision = resolve;
+        }),
+    );
+    handler.onMessageReceived(message, context);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(evaluate).toHaveBeenCalledOnce();
+    const signal = evaluate.mock.calls[0]?.[1]?.signal;
+    await vi.advanceTimersByTimeAsync(6999);
+    expect(signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal?.aborted).toBe(true);
+    finishDecision(decision("emoji_0"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(addReaction).not.toHaveBeenCalled();
+    handler.stop();
+  });
+
+  it("removes the account's ACK only after the selected reaction succeeds", async () => {
+    const { handler, addReaction, removeAckReaction, resolveAckReaction } =
+      setup();
+    let finishAdd!: () => void;
+    addReaction.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishAdd = () => resolve({ outcome: "applied", reason: "created" });
+        }),
+    );
+    handler.onMessageReceived(message, { ...context, accountId: "secondary" });
+    await vi.waitFor(() => expect(addReaction).toHaveBeenCalledOnce());
+    expect(removeAckReaction).not.toHaveBeenCalled();
+    finishAdd();
+    await vi.waitFor(() => expect(removeAckReaction).toHaveBeenCalledOnce());
+    expect(resolveAckReaction).toHaveBeenCalledWith("main", "secondary");
+    expect(removeAckReaction).toHaveBeenCalledWith(
+      "345678901234567890",
+      message.messageId,
+      "🌸",
+      "token",
+      expect.any(AbortSignal),
+    );
+    handler.stop();
+  });
+
+  it.each(["rejected", "uncertain"] as const)(
+    "keeps the ACK when adding the reaction is %s",
+    async (outcome) => {
+      const { handler, addReaction, removeAckReaction } = setup();
+      addReaction.mockResolvedValueOnce({
+        outcome,
+        reason: "http-403",
+      } as never);
+      handler.onMessageReceived(message, context);
+      await vi.waitFor(() => expect(addReaction).toHaveBeenCalledOnce());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(removeAckReaction).not.toHaveBeenCalled();
+      handler.stop();
+    },
+  );
+
+  it.each(["none", "not-a-candidate"])(
+    "keeps the ACK for decision %s",
+    async (choice) => {
+      const { handler, evaluate, addReaction, removeAckReaction } = setup();
+      evaluate.mockResolvedValueOnce(decision(choice));
+      handler.onMessageReceived(message, context);
+      await vi.waitFor(() => expect(evaluate).toHaveBeenCalledOnce());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(addReaction).not.toHaveBeenCalled();
+      expect(removeAckReaction).not.toHaveBeenCalled();
+      handler.stop();
+    },
+  );
+
+  it.each(["", "🎉", "✌"])(
+    "does not remove an empty or equivalent ACK %s",
+    async (ackReaction) => {
+      const emoji = ackReaction === "✌" ? "✌️" : "🎉";
+      const { handler, addReaction, removeAckReaction } = setup(
+        [emoji],
+        "typesafe/jev-latest",
+        undefined,
+        null,
+        undefined,
+        ackReaction,
+      );
+      handler.onMessageReceived(message, context);
+      await vi.waitFor(() => expect(addReaction).toHaveBeenCalledOnce());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(removeAckReaction).not.toHaveBeenCalled();
+      handler.stop();
+    },
+  );
+
+  it("logs ACK cleanup failures without repeating the selected reaction", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const { handler, addReaction, removeAckReaction } = setup();
+    removeAckReaction.mockRejectedValueOnce(new Error("offline"));
+    handler.onMessageReceived(message, context);
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        "message reaction ACK cleanup failed.",
+        expect.objectContaining({
+          messageId: message.messageId,
+          errorName: "Error",
+        }),
+      ),
+    );
+    expect(addReaction).toHaveBeenCalledOnce();
+    handler.stop();
   });
 
   it.each(["host", "fallback"] as const)(
@@ -322,6 +517,9 @@ describe("message reaction handler", () => {
       getToken: () => "token",
       resolveDmChannel,
       addReaction,
+      wait: vi.fn(async () => {}),
+      resolveAckReaction: () => "",
+      removeAckReaction: vi.fn(),
     });
     const dmContext = { ...context, accountId: "malformed-recovery" };
 
@@ -543,6 +741,9 @@ describe("message reaction handler", () => {
       getToken: () => "token",
       resolveDmChannel: vi.fn(),
       addReaction: vi.fn(),
+      wait: vi.fn(async () => {}),
+      resolveAckReaction: () => "",
+      removeAckReaction: vi.fn(),
       random: () => 0,
     });
 
@@ -562,7 +763,7 @@ describe("message reaction handler", () => {
         context,
       );
     }
-    expect(getSessionEntry).toHaveBeenCalledTimes(8);
+    await vi.waitFor(() => expect(getSessionEntry).toHaveBeenCalledTimes(8));
     expect(evaluate).not.toHaveBeenCalled();
     handler.stop();
   });
@@ -586,6 +787,9 @@ describe("message reaction handler", () => {
       getToken: () => "token",
       resolveDmChannel: vi.fn(),
       addReaction: vi.fn(),
+      wait: vi.fn(async () => {}),
+      resolveAckReaction: () => "",
+      removeAckReaction: vi.fn(),
     });
     await disabled.onMessageReceived(message, context);
     expect(evaluate).not.toHaveBeenCalled();
@@ -676,6 +880,9 @@ describe("message reaction handler", () => {
       getToken: () => "",
       resolveDmChannel: vi.fn(),
       addReaction: vi.fn(),
+      wait: vi.fn(async () => {}),
+      resolveAckReaction: () => "",
+      removeAckReaction: vi.fn(),
     });
     await handler.onMessageReceived(message, context);
     await handler.onMessageReceived({ content: message.content }, context);

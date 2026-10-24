@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addReactionWithResult,
+  removeAckReactionWithResult,
   deleteMessageWithResult,
   editMessageWithResult,
   resolveDmChannel,
@@ -210,6 +211,140 @@ describe("addReactionWithResult", () => {
       reason: "network-error",
     });
     expect(fetchMock).toHaveBeenCalledTimes(MAX_RETRIES + 1);
+  });
+});
+
+describe("removeAckReactionWithResult", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    "🌸",
+    "<:hello:987654321098765432>",
+    "<a:hello:987654321098765432>",
+  ])("removes only the bot's own ACK %s", async (emoji) => {
+    const custom = emoji.startsWith("<");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          reactions: [
+            {
+              me: true,
+              emoji: custom
+                ? { id: "987654321098765432", name: "hello" }
+                : { id: null, name: emoji },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(emptyResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      removeAckReactionWithResult("123", "456", emoji, "token"),
+    ).resolves.toMatchObject({
+      outcome: "applied",
+      reason: "removed",
+      status: 204,
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `https://discord.com/api/v10/channels/123/messages/456/reactions/${encodeURIComponent(custom ? "hello:987654321098765432" : emoji)}/@me`,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: { Authorization: "Bot token" },
+      }),
+    );
+  });
+
+  it("waits for a slow initial ACK before deleting it", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ reactions: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ reactions: [{ me: true, emoji: { name: "🌸" } }] }),
+      )
+      .mockResolvedValueOnce(emptyResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = removeAckReactionWithResult("123", "456", "🌸", "token");
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({
+      outcome: "applied",
+      reason: "removed",
+    });
+    expect(fetchMock.mock.calls.map(([, init]) => init.method)).toEqual([
+      "GET",
+      "GET",
+      "DELETE",
+    ]);
+  });
+
+  it("bounds checks and leaves other users' reactions untouched", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ reactions: [{ me: false, emoji: { name: "🌸" } }] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = removeAckReactionWithResult("123", "456", "🌸", "token");
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({
+      outcome: "uncertain",
+      reason: "ack-not-observed",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(
+      fetchMock.mock.calls.every(([, init]) => init.method === "GET"),
+    ).toBe(true);
+  });
+
+  it("fails open on rejected removal and cancelled polling", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ reactions: [{ me: true, emoji: { name: "🌸" } }] }),
+      )
+      .mockResolvedValueOnce(emptyResponse(403));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      removeAckReactionWithResult("123", "456", "🌸", "token"),
+    ).resolves.toMatchObject({ outcome: "rejected", status: 403 });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      removeAckReactionWithResult(
+        "123",
+        "456",
+        "🌸",
+        "token",
+        controller.signal,
+      ),
+    ).resolves.toMatchObject({ outcome: "uncertain", reason: "aborted" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a pending ACK poll without further requests", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async () => jsonResponse({ reactions: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = removeAckReactionWithResult(
+      "123",
+      "456",
+      "🌸",
+      "token",
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    controller.abort();
+    await expect(pending).resolves.toMatchObject({
+      outcome: "uncertain",
+      reason: "aborted",
+    });
+    await vi.runAllTimersAsync();
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
 
