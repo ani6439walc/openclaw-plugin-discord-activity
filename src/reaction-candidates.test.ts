@@ -6,15 +6,15 @@ import {
 } from "./reaction-candidates.js";
 
 describe("reaction candidates", () => {
-  it("uses the built-in pool only when enabled and no override is present", () => {
-    expect(resolveReactionEmojiPool(resolveConfig({}).messageReaction)).toEqual(
-      [],
-    );
+  it("uses the built-in pool by default and honors explicit disable or an empty list", () => {
+    expect(
+      resolveReactionEmojiPool(resolveConfig({}).messageReaction),
+    ).toHaveLength(1644);
     expect(
       resolveReactionEmojiPool(
-        resolveConfig({ messageReaction: { enabled: true } }).messageReaction,
+        resolveConfig({ messageReaction: { enabled: false } }).messageReaction,
       ),
-    ).toHaveLength(1644);
+    ).toEqual([]);
     expect(
       resolveReactionEmojiPool(
         resolveConfig({ messageReaction: { enabled: true, emojis: [] } })

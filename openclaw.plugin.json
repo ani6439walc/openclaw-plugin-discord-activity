@@ -111,12 +111,18 @@
       "messageReaction": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Optional Jev-selected reaction on incoming Discord messages, using the same context filters as status cards",
+        "default": { "enabled": true },
+        "description": "Jev-selected reaction on incoming Discord messages, using the same context filters as status cards",
         "properties": {
           "enabled": {
             "type": "boolean",
-            "default": false,
-            "description": "Enable semantic reactions; disabled by default"
+            "default": true,
+            "description": "Enable semantic reactions; enabled by default"
+          },
+          "promptAppend": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Extra instructions appended to the built-in reaction decision prompt"
           },
           "emojis": {
             "type": "array",

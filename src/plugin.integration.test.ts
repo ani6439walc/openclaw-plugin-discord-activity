@@ -32,7 +32,11 @@ describe("plugin", () => {
 
     plugin.register(mockApi);
 
-    expect(mockApi.on).toHaveBeenCalledTimes(9);
+    expect(mockApi.on).toHaveBeenCalledTimes(11);
+    expect(mockApi.on).toHaveBeenCalledWith(
+      "gateway_stop",
+      expect.any(Function),
+    );
     expect(mockApi.on).toHaveBeenCalledWith(
       "message_received",
       expect.any(Function),
@@ -95,19 +99,19 @@ describe("plugin", () => {
     );
   });
 
-  it("registers a separate reaction hook only when enabled", () => {
+  it("omits the reaction hook when explicitly disabled", () => {
     mockApi.pluginConfig = {
-      messageReaction: { enabled: true, emojis: ["🎉"] },
+      messageReaction: { enabled: false },
     };
     plugin.register(mockApi);
 
-    expect(mockApi.on).toHaveBeenCalledTimes(11);
+    expect(mockApi.on).toHaveBeenCalledTimes(9);
     expect(
       (mockApi.on as ReturnType<typeof vi.fn>).mock.calls.filter(
         ([name]) => name === "message_received",
       ),
-    ).toHaveLength(2);
-    expect(mockApi.on).toHaveBeenCalledWith(
+    ).toHaveLength(1);
+    expect(mockApi.on).not.toHaveBeenCalledWith(
       "gateway_stop",
       expect.any(Function),
     );

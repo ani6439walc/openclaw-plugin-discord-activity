@@ -323,12 +323,13 @@ Runtime display limits are stricter than `maxToolHistoryLength`: the renderer ke
 
 ### Semantic reactions in Discord
 
-`messageReaction.enabled` defaults to `false`. When enabled, the plugin reads the current session's cached Activity recap and the latest incoming text, asks a decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Reactions use the same Discord context and internal-session filters as status cards, supporting direct messages, channels, groups, and threads. The reaction targets the incoming message's channel; a DM channel is resolved only when the incoming target is a user ID. Messages without text, a usable message ID, or channel routing are skipped.
+`messageReaction.enabled` defaults to `true`, including when the whole `messageReaction` section is omitted. Set it to `false` to disable reactions. The plugin reads the current session's cached Activity recap and the latest incoming text, asks a decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Reactions use the same Discord context and internal-session filters as status cards, supporting direct messages, channels, groups, and threads. The reaction targets the incoming message's channel; a DM channel is resolved only when the incoming target is a user ID. Messages without text, a usable message ID, or channel routing are skipped.
 
-| Property                  | Type    | Default | Description                                                                                                                                                                                                      |
-| ------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `messageReaction.enabled` | boolean | `false` | Opt in to semantic reactions.                                                                                                                                                                                    |
-| `messageReaction.emojis`  | array   | omitted | Omit for the built-in pool; provide a nonempty list to replace it, or `[]` to skip reactions. Each item is a Unicode emoji string or `{ "emoji": "…", "meaning": "…" }`. Custom Discord emoji are not supported. |
+| Property                       | Type    | Default | Description                                                                                                                                                                                                      |
+| ------------------------------ | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `messageReaction.enabled`      | boolean | `true`  | Enable semantic reactions; set to `false` to disable.                                                                                                                                                            |
+| `messageReaction.promptAppend` | string  | unset   | Extra instructions appended after the built-in reaction decision prompt. Applies to both OpenClaw decisions and the TypeSafe fallback.                                                                           |
+| `messageReaction.emojis`       | array   | omitted | Omit for the built-in pool; provide a nonempty list to replace it, or `[]` to skip reactions. Each item is a Unicode emoji string or `{ "emoji": "…", "meaning": "…" }`. Custom Discord emoji are not supported. |
 
 The built-in pool is a static snapshot taken on 2026-10-24 from [PiliApp's emoji list](https://tw.piliapp.com/emoji/list/): Smileys & People, Animals & Nature, Food & Drink, Activities, Travel & Places, Objects, and Symbols. Flags are excluded. It contains 1,644 distinct emoji and is bundled with the plugin; no website request occurs when a message arrives. For each message, the plugin samples up to 30 distinct emoji from the active pool, then adds `none` as another decision choice. An emoji omitted by that sample cannot be chosen for that message.
 
@@ -346,6 +347,7 @@ When the owning agent has a nonempty `decisionModel`, the plugin uses `api.runti
         "config": {
           "messageReaction": {
             "enabled": true,
+            "promptAppend": "Prefer a playful reaction when it fits the conversation.",
             "emojis": ["🎉", "👍", { "emoji": "🐶", "meaning": "dogs or pets" }]
           }
         }

@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
   orphanTtlSeconds: DEFAULT_ORPHAN_TTL_SECONDS,
   maxDisplaySeconds: DEFAULT_MAX_DISPLAY_SECONDS,
   replyMode: "all" as const,
+  messageReaction: { enabled: true },
 };
 
 const OptionalText = z.string().trim().min(1).optional().catch(undefined);
@@ -108,7 +109,8 @@ const DiscordActivityConfigSchema = z
       .catch(undefined),
     messageReaction: z
       .object({
-        enabled: z.boolean().catch(false),
+        enabled: z.boolean().catch(true),
+        promptAppend: OptionalText,
         emojis: z
           .array(z.unknown())
           .max(2000)
@@ -121,8 +123,8 @@ const DiscordActivityConfigSchema = z
           .optional()
           .catch([]),
       })
-      .optional()
-      .catch(undefined),
+      .default(DEFAULT_CONFIG.messageReaction)
+      .catch(DEFAULT_CONFIG.messageReaction),
   })
   .catch(DEFAULT_CONFIG);
 
