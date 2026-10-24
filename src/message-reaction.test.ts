@@ -197,6 +197,23 @@ describe("message reaction handler", () => {
       expectedChannel: "567890123456789012",
     },
     {
+      name: "thread from conversation ID despite parent metadata",
+      sessionKey:
+        "agent:main:discord:channel:456789012345678901:thread:567890123456789012",
+      channelId: "discord",
+      conversationId: "channel:567890123456789012",
+      to: "channel:456789012345678901",
+      expectedChannel: "567890123456789012",
+    },
+    {
+      name: "thread with only metadata routing available",
+      sessionKey:
+        "agent:main:discord:channel:456789012345678901:thread:567890123456789012",
+      channelId: "discord",
+      to: "channel:567890123456789012",
+      expectedChannel: "567890123456789012",
+    },
+    {
       name: "channel with malformed metadata and valid conversation routing",
       sessionKey: "agent:main:discord:channel:456789012345678901",
       channelId: "discord",

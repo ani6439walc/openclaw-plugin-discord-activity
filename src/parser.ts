@@ -22,11 +22,15 @@ export function resolveInboundChannelId(
   ctx: MessageContext,
 ): string | undefined {
   const metadataTo = event.metadata?.to;
+  const conversationId = extractIdFromMetadata(ctx.conversationId);
+  if (ctx.sessionKey?.includes(":thread:") && conversationId) {
+    return conversationId;
+  }
   return (
     extractIdFromMetadata(
       typeof metadataTo === "string" ? metadataTo : undefined,
     ) ||
-    extractIdFromMetadata(ctx.conversationId) ||
+    conversationId ||
     (/^\d{17,20}$/.test(String(ctx.channelId))
       ? String(ctx.channelId)
       : undefined)
