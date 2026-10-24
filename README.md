@@ -29,8 +29,9 @@ Colored tool field labels use a single space before the green value, without a
 separator colon. Colons inside field names and values are preserved. Plain context
 rows and internal workflow details retain their own formatting.
 
-Tool intent summaries use `│›` above the parameter tree. The vertical line aligns
-with `├─` and `╰─` in the default text color; the single chevron and summary stay yellow.
+Tool intent summaries use `│▫︎` above the parameter tree. The vertical line aligns
+with `├─` and `╰─`; the line and hollow-square marker use the default text color,
+while the summary stays yellow.
 Bounded previews use the same layout.
 
 A simplified live status message looks like this:
