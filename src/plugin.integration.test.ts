@@ -200,13 +200,19 @@ describe("plugin", () => {
     expect(evaluate).not.toHaveBeenCalled();
   });
 
-  it("honors an explicit empty agent decision model over the plugin fallback", () => {
+  it("uses the global decision model when the agent value is absent", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const evaluate = vi.fn();
+    const evaluate = vi.fn(async () => ({
+      status: "unavailable" as const,
+      reason: "not-configured" as const,
+    }));
     mockApi.config = {
       ...mockApi.config,
-      agents: { entries: { main: { decisionModel: "" } } },
+      agents: {
+        defaults: { decisionModel: "typesafe/jev-latest" },
+        entries: { main: {} },
+      },
     } as OpenClawPluginApi["config"];
     mockApi.pluginConfig = {
       decisionModel: {
@@ -237,8 +243,57 @@ describe("plugin", () => {
         sessionKey: "agent:main:discord:direct:123456789012345678",
       },
     );
-    expect(evaluate).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
+    expect(evaluate.mock.calls[0]?.[1]).not.toHaveProperty("agentId");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the plugin fallback when the agent is empty, even with a global model", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        answers: { reaction: { type: "choice", choice: "none" } },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const evaluate = vi.fn();
+    mockApi.config = {
+      ...mockApi.config,
+      agents: {
+        defaults: { decisionModel: "typesafe/jev-latest" },
+        entries: { main: { decisionModel: "" } },
+      },
+    } as OpenClawPluginApi["config"];
+    mockApi.pluginConfig = {
+      decisionModel: {
+        baseUrl: "https://example.test/typesafe",
+        apiKey: "test-key",
+        model: "jev-latest",
+      },
+      messageReaction: { enabled: true, emojis: ["🎉"] },
+    };
+    mockApi.runtime = {
+      agent: {
+        session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+      },
+      decisions: { evaluate },
+    } as unknown as OpenClawPluginApi["runtime"];
+    plugin.register(mockApi);
+
+    const reactionHook = (
+      mockApi.on as ReturnType<typeof vi.fn>
+    ).mock.calls.find(([name]) => name === "message_received")?.[1] as (
+      event: unknown,
+      context: unknown,
+    ) => void;
+    reactionHook(
+      { messageId: "234567890123456789", content: "Done!" },
+      {
+        channelId: "discord",
+        sessionKey: "agent:main:discord:direct:123456789012345678",
+      },
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(evaluate).not.toHaveBeenCalled();
   });
 
   it("fails registration when agent event subscription is missing", () => {

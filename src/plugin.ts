@@ -46,7 +46,8 @@ export default definePluginEntry({
       const reactionHandler = createMessageReactionHandler({
         config: config.messageReaction,
         resolveDecisionModel: (agentId) =>
-          resolveAgentConfig(api.config, agentId)?.decisionModel ??
+          resolveAgentConfig(api.config, agentId)?.decisionModel,
+        resolveGlobalDecisionModel: () =>
           api.config.agents?.defaults?.decisionModel,
         getSessionEntry: (agentId, sessionKey) =>
           api.runtime.agent.session.getSessionEntryAsync({

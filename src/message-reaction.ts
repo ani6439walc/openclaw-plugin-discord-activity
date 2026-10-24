@@ -36,6 +36,7 @@ export type ReactionDecisionBatch = {
 type MessageReactionDeps = {
   config: PluginConfig["messageReaction"];
   resolveDecisionModel: (agentId: string) => unknown;
+  resolveGlobalDecisionModel: () => unknown;
   getSessionEntry: (
     agentId: string,
     sessionKey: string,
@@ -127,7 +128,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     text: string;
     candidates: ReactionEmoji[];
     controller: AbortController;
-    useFallback: boolean;
+    decisionRoute: "agent" | "global" | "fallback";
   }): Promise<void> {
     const { signal } = params.controller;
     const token = deps.getToken(params.accountId);
@@ -160,7 +161,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
           },
         },
       };
-      if (params.useFallback) {
+      if (params.decisionRoute === "fallback") {
         selected = await raceAbort(
           deps.evaluateFallback!(batch, signal),
           signal,
@@ -168,7 +169,9 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       } else {
         const outcome = await raceAbort(
           deps.evaluate(batch, {
-            agentId: params.agentId,
+            ...(params.decisionRoute === "agent"
+              ? { agentId: params.agentId }
+              : {}),
             purpose: "discord-activity.message-reaction",
             rubricVersion: "1",
             timeoutMs: DECISION_DEADLINE_MS,
@@ -230,11 +233,20 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     ) {
       return;
     }
-    const model = deps.resolveDecisionModel(agentId);
-    if (model === "" || (typeof model === "string" && !model.trim())) return;
-    const useFallback = model == null;
-    if (useFallback ? !deps.evaluateFallback : typeof model !== "string")
-      return;
+    const agentModel = deps.resolveDecisionModel(agentId);
+    const hasAgentSetting = typeof agentModel === "string";
+    const globalModel = hasAgentSetting
+      ? undefined
+      : deps.resolveGlobalDecisionModel();
+    const decisionRoute =
+      hasAgentSetting && agentModel.trim()
+        ? "agent"
+        : typeof globalModel === "string" && globalModel.trim()
+          ? "global"
+          : deps.evaluateFallback
+            ? "fallback"
+            : undefined;
+    if (!decisionRoute) return;
     const key = `${ctx.accountId ?? "default"}:${userId}:${messageId}`;
     if (!remember(key, Date.now())) return;
     const candidates = sampleReactionCandidates(pool, deps.random);
@@ -251,7 +263,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       text: messageText,
       candidates,
       controller,
-      useFallback,
+      decisionRoute,
     })
       .catch(() => {
         logger.warn("message reaction failed.");

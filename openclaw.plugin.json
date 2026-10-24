@@ -46,7 +46,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["apiKey", "model"],
-        "description": "TypeSafe Jev fallback for message reactions when the owning agent has no OpenClaw decisionModel. An explicit empty agent decisionModel disables reactions.",
+        "description": "TypeSafe Jev fallback for message reactions when OpenClaw has no selected decision model. An explicit empty agent decisionModel bypasses the global model and selects this fallback, if configured.",
         "properties": {
           "baseUrl": {
             "type": "string",

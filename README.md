@@ -332,7 +332,7 @@ Runtime display limits are stricter than `maxToolHistoryLength`: the renderer ke
 
 The built-in pool is a static snapshot taken on 2026-10-24 from [PiliApp's emoji list](https://tw.piliapp.com/emoji/list/): Smileys & People, Animals & Nature, Food & Drink, Activities, Travel & Places, Objects, and Symbols. Flags are excluded. It contains 1,644 distinct emoji and is bundled with the plugin; no website request occurs when a message arrives. For each message, the plugin samples up to 30 distinct emoji from the active pool, then adds `none` as another decision choice. An emoji omitted by that sample cannot be chosen for that message.
 
-When the owning agent has an effective OpenClaw `decisionModel`, the plugin uses `api.runtime.decisions.evaluate`, regardless of the configured decision provider. An empty string in the agent's entry or `agents.defaults.decisionModel` disables reactions for that agent. If neither is configured, the plugin can use its own top-level `decisionModel` as a direct TypeSafe Jev fallback. It does not use the agent's conversational model or Skill Harness settings. If the selected decision path is unavailable, the answer is invalid, or `none` is selected, the plugin leaves the message without a reaction.
+When the owning agent has a nonempty `decisionModel`, the plugin uses `api.runtime.decisions.evaluate` for that agent, regardless of the configured decision provider. An explicit `""` in the agent's entry bypasses OpenClaw's global decision model and uses the plugin's top-level TypeSafe Jev `decisionModel` fallback; without that fallback, the plugin skips the reaction. If the agent field is absent, a nonempty `agents.defaults.decisionModel` is used through OpenClaw's global decision role; otherwise the plugin fallback is used. It does not use the agent's conversational model or Skill Harness settings. If the selected decision path is unavailable, the answer is invalid, or `none` is selected, the plugin leaves the message without a reaction.
 
 ```json
 {
@@ -357,7 +357,7 @@ When the owning agent has an effective OpenClaw `decisionModel`, the plugin uses
 
 Remove `emojis` from the example to use the built-in pool. The plugin limits decision evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation and are not logged.
 
-To use the plugin fallback instead of configuring an OpenClaw agent decision role, omit `agents.defaults.decisionModel` and the agent's `decisionModel`, then add this object alongside `messageReaction` under `plugins.entries.discord-activity.config`:
+To use the plugin fallback, add this object alongside `messageReaction` under `plugins.entries.discord-activity.config`. Leave both OpenClaw decision roles unset, or set the agent's `decisionModel` to `""` to use this fallback even when a global decision model exists:
 
 ```json
 {

@@ -133,9 +133,9 @@
 ## Task 6: 外掛決策模型 fallback
 
 - [x] 新增第一層 `decisionModel` 設定與 TypeSafe SDK 請求；環境 SecretRef 在呼叫當下解析。
-- [x] 宿主有有效決策模型時使用 `api.runtime.decisions.evaluate`；完全未設定時才使用外掛 fallback；明確空字串停用。
+- [x] agent 有非空決策模型時使用 OpenClaw agent role；agent 明確空字串時直接選外掛 fallback；agent 欄位未設定時使用非空全域 role，否則選外掛 fallback；最後才略過。
 - [x] 兩條路徑共用同一份 recap、最新訊息與 emoji choice，保留 deadline、去重及 fail-open。
 - [x] README、manifest 與設定解析器同步，並補路由、SecretRef、請求形狀測試。
 - [x] 執行完整格式、型別、測試、build、pack 及 diff 檢查。
 
-**驗證（2026-10-24）：** `pnpm run format`、`pnpm run typecheck`、`pnpm run test`（676 tests）、`pnpm run build`、`pnpm pack --dry-run`、`git diff --check` 均通過；pack 已確認包含 `dist/src/decision-model.js`。以受控 SDK/fetch mock 驗證路由與請求，未使用真實 API key 或發送 Discord reaction。
+**驗證（2026-10-24）：** `pnpm run format`、`pnpm run typecheck`、`pnpm run test`（677 tests）、`pnpm run build`、`pnpm pack --dry-run`、`git diff --check` 均通過；pack 已確認包含 `dist/src/decision-model.js`。以受控 SDK/fetch mock 驗證路由與請求，未使用真實 API key 或發送 Discord reaction。

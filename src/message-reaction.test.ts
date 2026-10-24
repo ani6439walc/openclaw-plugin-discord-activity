@@ -43,6 +43,7 @@ function setup(
     batch: ReactionDecisionBatch,
     signal: AbortSignal,
   ) => Promise<string | undefined>,
+  globalDecisionModel: string | null = null,
 ) {
   const evaluate = vi.fn(async () => decision("emoji_0"));
   const getSessionEntry = vi.fn(async () => ({
@@ -57,6 +58,7 @@ function setup(
     config: resolveConfig({ messageReaction: { enabled: true, emojis } })
       .messageReaction,
     resolveDecisionModel: () => decisionModel ?? undefined,
+    resolveGlobalDecisionModel: () => globalDecisionModel ?? undefined,
     getSessionEntry,
     evaluate,
     evaluateFallback,
@@ -271,6 +273,7 @@ describe("message reaction handler", () => {
       config: resolveConfig({ messageReaction: { enabled: true } })
         .messageReaction,
       resolveDecisionModel: () => "typesafe/jev-latest",
+      resolveGlobalDecisionModel: () => undefined,
       getSessionEntry: vi.fn(async () => undefined),
       evaluate,
       getToken: () => "token",
@@ -311,6 +314,7 @@ describe("message reaction handler", () => {
     const disabled = createMessageReactionHandler({
       config: resolveConfig({}).messageReaction,
       resolveDecisionModel: () => "typesafe/jev-latest",
+      resolveGlobalDecisionModel: () => undefined,
       getSessionEntry: vi.fn(),
       evaluate,
       getToken: () => "token",
@@ -345,15 +349,52 @@ describe("message reaction handler", () => {
       expect.any(AbortSignal),
     );
 
-    const host = setup(["🎉"], "typesafe/jev-latest", evaluateFallback);
+    const host = setup(
+      ["🎉"],
+      "typesafe/jev-latest",
+      evaluateFallback,
+      "typesafe/jev-preview",
+    );
     host.handler.onMessageReceived(message, context);
     await vi.waitFor(() => expect(host.evaluate).toHaveBeenCalledTimes(1));
+    expect(host.evaluate.mock.calls[0]?.[1]).toHaveProperty("agentId", "main");
     expect(evaluateFallback).toHaveBeenCalledTimes(1);
 
-    const disabled = setup(["🎉"], "", evaluateFallback);
-    disabled.handler.onMessageReceived(message, context);
-    expect(disabled.evaluate).not.toHaveBeenCalled();
-    expect(evaluateFallback).toHaveBeenCalledTimes(1);
+    const emptyAgent = setup(["🎉"], "", evaluateFallback);
+    emptyAgent.handler.onMessageReceived(message, context);
+    await vi.waitFor(() => expect(evaluateFallback).toHaveBeenCalledTimes(2));
+    expect(emptyAgent.evaluate).not.toHaveBeenCalled();
+
+    const emptyWithGlobal = setup(
+      ["🎉"],
+      "",
+      evaluateFallback,
+      "typesafe/jev-latest",
+    );
+    emptyWithGlobal.handler.onMessageReceived(message, context);
+    await vi.waitFor(() => expect(evaluateFallback).toHaveBeenCalledTimes(3));
+    expect(emptyWithGlobal.evaluate).not.toHaveBeenCalled();
+
+    const global = setup(["🎉"], null, evaluateFallback, "typesafe/jev-latest");
+    global.handler.onMessageReceived(message, context);
+    await vi.waitFor(() => expect(global.evaluate).toHaveBeenCalledTimes(1));
+    expect(global.evaluate.mock.calls[0]?.[1]).not.toHaveProperty("agentId");
+    expect(evaluateFallback).toHaveBeenCalledTimes(3);
+
+    const emptyGlobal = setup(["🎉"], null, evaluateFallback, "");
+    emptyGlobal.handler.onMessageReceived(message, context);
+    await vi.waitFor(() => expect(evaluateFallback).toHaveBeenCalledTimes(4));
+    expect(emptyGlobal.evaluate).not.toHaveBeenCalled();
+
+    const emptyWithoutFallback = setup(
+      ["🎉"],
+      "",
+      undefined,
+      "typesafe/jev-latest",
+    );
+    emptyWithoutFallback.handler.onMessageReceived(message, context);
+    expect(emptyWithoutFallback.evaluate).not.toHaveBeenCalled();
+    expect(emptyWithoutFallback.getSessionEntry).not.toHaveBeenCalled();
   });
 
   it("skips missing token or source message ID before evaluating", async () => {
@@ -363,6 +404,7 @@ describe("message reaction handler", () => {
         messageReaction: { enabled: true, emojis: ["🎉"] },
       }).messageReaction,
       resolveDecisionModel: () => "typesafe/jev-latest",
+      resolveGlobalDecisionModel: () => undefined,
       getSessionEntry: vi.fn(),
       evaluate,
       getToken: () => "",
