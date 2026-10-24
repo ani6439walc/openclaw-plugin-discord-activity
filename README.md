@@ -321,9 +321,9 @@ This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as th
 
 Runtime display limits are stricter than `maxToolHistoryLength`: the renderer keeps up to 6 outer blocks shared by internal groups, normal tools, and a protected bottom main-agent failure, plus up to 3 children independently inside each `skill-harness` and Hindsight group.
 
-### Semantic reactions in Discord DMs
+### Semantic reactions in Discord
 
-`messageReaction.enabled` defaults to `false`. When enabled, the plugin reads the current session's cached Activity recap and the latest incoming text, asks a decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Version 1 handles canonical Discord direct messages only; messages without text or a usable message ID are skipped.
+`messageReaction.enabled` defaults to `false`. When enabled, the plugin reads the current session's cached Activity recap and the latest incoming text, asks a decision model to select one candidate emoji or `none`, and reacts to the original user message. This runs in the background and never delays the agent reply. Reactions use the same Discord context and internal-session filters as status cards, supporting direct messages, channels, groups, and threads. The reaction targets the incoming message's channel; a DM channel is resolved only when the incoming target is a user ID. Messages without text, a usable message ID, or channel routing are skipped.
 
 | Property                  | Type    | Default | Description                                                                                                                                                                                                      |
 | ------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

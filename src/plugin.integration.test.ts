@@ -113,7 +113,7 @@ describe("plugin", () => {
     );
   });
 
-  it("uses the global Jev decision model when the agent does not override it", async () => {
+  it("uses the global Jev decision model for Discord channel messages", async () => {
     const evaluate = vi.fn(async () => ({
       status: "ok",
       result: {
@@ -153,7 +153,8 @@ describe("plugin", () => {
       { messageId: "234567890123456789", content: "Done!" },
       {
         channelId: "discord",
-        sessionKey: "agent:main:discord:direct:123456789012345678",
+        conversationId: "channel:123456789012345678",
+        sessionKey: "agent:main:discord:channel:123456789012345678",
       },
     );
     await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
@@ -193,6 +194,7 @@ describe("plugin", () => {
       { messageId: "234567890123456789", content: "Done!" },
       {
         channelId: "discord",
+        conversationId: "user:123456789012345678",
         sessionKey: "agent:main:discord:direct:123456789012345678",
       },
     );
@@ -240,6 +242,7 @@ describe("plugin", () => {
       { messageId: "234567890123456789", content: "Done!" },
       {
         channelId: "discord",
+        conversationId: "user:123456789012345678",
         sessionKey: "agent:main:discord:direct:123456789012345678",
       },
     );
@@ -289,6 +292,7 @@ describe("plugin", () => {
       { messageId: "234567890123456789", content: "Done!" },
       {
         channelId: "discord",
+        conversationId: "user:123456789012345678",
         sessionKey: "agent:main:discord:direct:123456789012345678",
       },
     );

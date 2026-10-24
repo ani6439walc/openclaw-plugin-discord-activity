@@ -2,7 +2,10 @@ import { logger, type OpenClawPluginApi } from "../api.js";
 import type { PluginConfig } from "./config.js";
 import type { DiscordMutationResult } from "./discord-api.js";
 import {
-  isCanonicalDirectSessionKey,
+  getDiscordContextKey,
+  isDiscordContext,
+  isInternalSessionKey,
+  resolveInboundChannelId,
   extractUserIdFromDirectSessionKey,
 } from "./parser.js";
 import {
@@ -122,7 +125,8 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
   async function processMessage(params: {
     agentId: string;
     sessionKey: string;
-    userId: string;
+    userId?: string;
+    channelId: string;
     accountId?: string;
     messageId: string;
     text: string;
@@ -194,14 +198,16 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     const emoji = params.candidates[selectedIndex]?.emoji;
     if (!emoji) return;
 
-    let channelId: string | undefined;
-    try {
-      channelId = await raceAbort(
-        deps.resolveDmChannel(params.userId, token, signal, params.accountId),
-        signal,
-      );
-    } catch {
-      return;
+    let channelId: string | undefined = params.channelId;
+    if (params.userId && params.userId === channelId) {
+      try {
+        channelId = await raceAbort(
+          deps.resolveDmChannel(params.userId, token, signal, params.accountId),
+          signal,
+        );
+      } catch {
+        return;
+      }
     }
     if (!channelId || !SNOWFLAKE.test(channelId) || signal.aborted) return;
     await raceAbort(
@@ -215,18 +221,19 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     ctx: MessageContext,
   ): void {
     if (stopped || pool.length === 0 || active >= MAX_CONCURRENT) return;
-    if (ctx.channelId !== "discord" && !SNOWFLAKE.test(ctx.channelId)) return;
-    if (ctx.trigger && ctx.trigger !== "user") return;
-    if (!isCanonicalDirectSessionKey(ctx.sessionKey)) return;
+    if (!isDiscordContext(ctx) || isInternalSessionKey(ctx.sessionKey)) return;
+    const contextKey = getDiscordContextKey(ctx.sessionKey);
+    if (!contextKey) return;
     const sessionKey = ctx.sessionKey!;
     const agentId = parseAgentSessionKey(sessionKey)?.agentId;
     const userId = extractUserIdFromDirectSessionKey(sessionKey);
+    const channelId = resolveInboundChannelId(event, ctx);
     const messageId = event.messageId ?? ctx.messageId;
     const messageText = event.content?.trim();
     if (
       !agentId ||
-      !userId ||
-      !SNOWFLAKE.test(userId) ||
+      !channelId ||
+      !SNOWFLAKE.test(channelId) ||
       !messageId ||
       !SNOWFLAKE.test(messageId) ||
       !messageText
@@ -247,7 +254,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
             ? "fallback"
             : undefined;
     if (!decisionRoute) return;
-    const key = `${ctx.accountId ?? "default"}:${userId}:${messageId}`;
+    const key = `${ctx.accountId ?? "default"}:${contextKey}:${messageId}`;
     if (!remember(key, Date.now())) return;
     const candidates = sampleReactionCandidates(pool, deps.random);
     const controller = new AbortController();
@@ -258,6 +265,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       agentId,
       sessionKey,
       userId,
+      channelId,
       accountId: ctx.accountId,
       messageId,
       text: messageText,

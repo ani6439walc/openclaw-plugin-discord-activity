@@ -111,7 +111,7 @@
       "messageReaction": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Optional Jev-selected reaction on incoming Discord direct messages",
+        "description": "Optional Jev-selected reaction on incoming Discord messages, using the same context filters as status cards",
         "properties": {
           "enabled": {
             "type": "boolean",

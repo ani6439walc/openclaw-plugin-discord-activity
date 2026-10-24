@@ -13,6 +13,7 @@ const message = {
 const context = {
   channelId: "discord",
   accountId: "default",
+  conversationId: "user:123456789012345678",
   sessionKey: "agent:main:discord:direct:123456789012345678",
 };
 
@@ -81,6 +82,103 @@ describe("message reaction handler", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it.each([
+    {
+      name: "channel from message metadata",
+      sessionKey: "agent:main:discord:channel:456789012345678901",
+      channelId: "discord",
+      conversationId: "channel:567890123456789012",
+      to: "channel:456789012345678901",
+      expectedChannel: "456789012345678901",
+    },
+    {
+      name: "thread from conversation ID instead of its parent session",
+      sessionKey:
+        "agent:main:discord:channel:456789012345678901:thread:567890123456789012",
+      channelId: "discord",
+      conversationId: "channel:567890123456789012",
+      expectedChannel: "567890123456789012",
+    },
+    {
+      name: "channel with malformed metadata and valid conversation routing",
+      sessionKey: "agent:main:discord:channel:456789012345678901",
+      channelId: "discord",
+      conversationId: "channel:456789012345678901",
+      to: 42,
+      expectedChannel: "456789012345678901",
+    },
+    {
+      name: "group with a numeric channel ID",
+      sessionKey: "agent:main:discord:group:456789012345678901",
+      channelId: "456789012345678901",
+      expectedChannel: "456789012345678901",
+    },
+    {
+      name: "Discord provider with a legacy chat session",
+      sessionKey: "agent:main:discord:chat:456789012345678901",
+      channelId: "other",
+      messageProvider: "discord",
+      conversationId: "chat:456789012345678901",
+      expectedChannel: "456789012345678901",
+    },
+    {
+      name: "DM with an already resolved channel",
+      sessionKey: context.sessionKey,
+      channelId: "discord",
+      conversationId: "channel:345678901234567890",
+      expectedChannel: "345678901234567890",
+    },
+  ])(
+    "reacts in the original $name",
+    async ({ expectedChannel, to, ...ctx }) => {
+      const { handler, addReaction, resolveDmChannel, getSessionEntry } =
+        setup();
+      handler.onMessageReceived({ ...message, metadata: { to } }, ctx);
+
+      await vi.waitFor(() => expect(addReaction).toHaveBeenCalledTimes(1));
+      expect(addReaction).toHaveBeenCalledWith(
+        expectedChannel,
+        message.messageId,
+        "🎉",
+        "token",
+        expect.any(AbortSignal),
+      );
+      expect(resolveDmChannel).not.toHaveBeenCalled();
+      expect(getSessionEntry).toHaveBeenCalledWith("main", ctx.sessionKey);
+      handler.stop();
+    },
+  );
+
+  it.each([
+    ":subagent:child",
+    ":skill-harness-review:review",
+    ":active-memory:child",
+  ])("skips internal Discord sessions ending in %s", async (suffix) => {
+    const { handler, evaluate, getSessionEntry, addReaction } = setup();
+    handler.onMessageReceived(message, {
+      ...context,
+      sessionKey: `agent:main:discord:channel:456789012345678901${suffix}`,
+      conversationId: "channel:456789012345678901",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getSessionEntry).not.toHaveBeenCalled();
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(addReaction).not.toHaveBeenCalled();
+  });
+
+  it("skips non-user triggers and missing channel routing", async () => {
+    const { handler, evaluate, getSessionEntry } = setup();
+    handler.onMessageReceived(message, { ...context, trigger: "cron" });
+    handler.onMessageReceived(message, {
+      channelId: "discord",
+      sessionKey: "agent:main:discord:channel:456789012345678901",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getSessionEntry).not.toHaveBeenCalled();
+    expect(evaluate).not.toHaveBeenCalled();
+    handler.stop();
   });
 
   it("retries DM resolution on a later message after a malformed channel ID", async () => {
@@ -357,11 +455,12 @@ describe("message reaction handler", () => {
     handler.stop();
   });
 
-  it("skips disabled and non-DM messages while accepting any configured host decision model", async () => {
+  it("skips disabled and non-Discord messages while accepting any configured host decision model", async () => {
     const { handler, evaluate } = setup();
     await handler.onMessageReceived(message, {
       ...context,
-      sessionKey: "agent:main:discord:channel:123456789012345678",
+      channelId: "telegram",
+      sessionKey: "agent:main:telegram:direct:123456789012345678",
     });
     expect(evaluate).not.toHaveBeenCalled();
 
