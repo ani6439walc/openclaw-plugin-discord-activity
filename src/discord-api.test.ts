@@ -81,6 +81,32 @@ describe("resolveDmChannel", () => {
     ).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("retries after Discord returns a malformed string channel ID", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: "not-a-snowflake" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "345678901234567890" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      resolveDmChannel(
+        "777777777777777777",
+        "token",
+        undefined,
+        "malformed-id",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      resolveDmChannel(
+        "777777777777777777",
+        "token",
+        undefined,
+        "malformed-id",
+      ),
+    ).resolves.toBe("345678901234567890");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("addReactionWithResult", () => {

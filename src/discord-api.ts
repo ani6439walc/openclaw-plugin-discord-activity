@@ -20,6 +20,7 @@ export function sleep(ms: number, signal?: AbortSignal) {
 }
 
 const MAX_DM_CHANNEL_CACHE_ENTRIES = 1024;
+const SNOWFLAKE = /^\d{17,20}$/;
 const dmChannelCache = new Map<string, string>();
 
 export async function resolveDmChannel(
@@ -30,7 +31,10 @@ export async function resolveDmChannel(
 ): Promise<string | undefined> {
   const cacheKey = `${accountId}:${userId}`;
   const cached = dmChannelCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    if (SNOWFLAKE.test(cached)) return cached;
+    dmChannelCache.delete(cacheKey);
+  }
 
   const res = await discordApiRequest(
     `https://discord.com/api/v10/users/@me/channels`,
@@ -53,7 +57,7 @@ export async function resolveDmChannel(
     typeof data === "object" &&
     "id" in data &&
     typeof data.id === "string" &&
-    data.id
+    SNOWFLAKE.test(data.id)
   ) {
     dmChannelCache.set(cacheKey, data.id);
     if (dmChannelCache.size > MAX_DM_CHANNEL_CACHE_ENTRIES) {

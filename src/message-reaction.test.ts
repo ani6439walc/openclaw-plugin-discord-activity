@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "./config.js";
+import { resolveDmChannel } from "./discord-api.js";
 import {
   createMessageReactionHandler,
   type ReactionDecisionBatch,
@@ -77,7 +78,60 @@ function setup(
 }
 
 describe("message reaction handler", () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("retries DM resolution on a later message after a malformed channel ID", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "not-a-snowflake" }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "345678901234567890" }), {
+          status: 200,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const addReaction = vi.fn(async () => ({
+      outcome: "applied" as const,
+      reason: "created",
+    }));
+    const handler = createMessageReactionHandler({
+      config: resolveConfig({
+        messageReaction: { enabled: true, emojis: ["🎉"] },
+      }).messageReaction,
+      resolveDecisionModel: () => "typesafe/jev-latest",
+      resolveGlobalDecisionModel: () => undefined,
+      getSessionEntry: vi.fn(async () => undefined),
+      evaluate: vi.fn(async () => decision("emoji_0")),
+      getToken: () => "token",
+      resolveDmChannel,
+      addReaction,
+    });
+    const dmContext = { ...context, accountId: "malformed-recovery" };
+
+    handler.onMessageReceived(message, dmContext);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    handler.onMessageReceived(
+      { ...message, messageId: "234567890123456780" },
+      dmContext,
+    );
+    await vi.waitFor(() => expect(addReaction).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(addReaction).toHaveBeenCalledWith(
+      "345678901234567890",
+      "234567890123456780",
+      "🎉",
+      "token",
+      expect.any(AbortSignal),
+    );
+    handler.stop();
+  });
 
   it("uses recap and latest text, then reacts on the original DM message", async () => {
     const {

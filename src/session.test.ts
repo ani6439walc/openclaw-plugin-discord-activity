@@ -211,10 +211,10 @@ describe("updateStatusMessage", () => {
       const url = String(input);
       const method = init?.method ?? "GET";
       if (url.includes("/users/@me/channels") && method === "POST") {
-        return jsonResponse({ id: "dm_channel_123" });
+        return jsonResponse({ id: "345678901234567890" });
       }
       if (
-        url.includes("/channels/dm_channel_123/messages") &&
+        url.includes("/channels/345678901234567890/messages") &&
         method === "POST"
       ) {
         return jsonResponse({ id: "status_1" });
@@ -235,7 +235,7 @@ describe("updateStatusMessage", () => {
     await updateStatusMessage(session, () => "token", true, 60_000);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(session.channelId).toBe("dm_channel_123");
+    expect(session.channelId).toBe("345678901234567890");
     expect(session.statusMessageId).toBe("status_1");
   });
 

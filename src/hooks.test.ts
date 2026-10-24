@@ -32,7 +32,7 @@ function createDiscordFetchMock() {
     const method = init?.method ?? "GET";
 
     if (url.includes("/users/@me/channels") && method === "POST") {
-      return jsonResponse({ id: "dm_channel_123" });
+      return jsonResponse({ id: "345678901234567890" });
     }
 
     if (
@@ -702,7 +702,7 @@ describe("createHookHandlers", () => {
 
       const activeSession = store.sessions.get("discord:direct:123");
       expect(activeSession?.statusMessageId).toBe("status_1");
-      expect(activeSession?.channelId).toBe("dm_channel_123");
+      expect(activeSession?.channelId).toBe("345678901234567890");
 
       // A steer in a DM arrives addressed to the user, not the DM channel.
       await handlers.onMessageReceived(
@@ -719,7 +719,7 @@ describe("createHookHandlers", () => {
       );
       await flushPromises();
 
-      expect(activeSession?.channelId).toBe("dm_channel_123");
+      expect(activeSession?.channelId).toBe("345678901234567890");
       expect(activeSession?.toolHistory.map((entry) => entry.toolName)).toEqual(
         ["bash", "steer", "read"],
       );
@@ -734,14 +734,14 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBeGreaterThan(0);
       expect(
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
     });
@@ -757,7 +757,7 @@ describe("createHookHandlers", () => {
           const url = String(input);
           const method = init?.method ?? "GET";
           if (url.includes("/users/@me/channels") && method === "POST") {
-            return jsonResponse({ id: "dm_channel_123" });
+            return jsonResponse({ id: "345678901234567890" });
           }
           if (url.endsWith("/messages") && method === "POST") {
             postStarted = true;
@@ -799,7 +799,7 @@ describe("createHookHandlers", () => {
 
       const activeSession = store.sessions.get("discord:direct:123");
       expect(activeSession?.statusMessageId).toBe("status_1");
-      expect(activeSession?.channelId).toBe("dm_channel_123");
+      expect(activeSession?.channelId).toBe("345678901234567890");
 
       await handlers.onBeforeToolCall(
         { toolCallId: "call_2", toolName: "read", params: {}, runId },
@@ -815,14 +815,14 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBeGreaterThan(0);
       expect(
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
     });
@@ -1403,7 +1403,7 @@ describe("createHookHandlers", () => {
       const patchCountBeforeLateEvents = countCalls(
         fetchMock,
         "PATCH",
-        /\/channels\/dm_channel_123\/messages\/status_2$/,
+        /\/channels\/345678901234567890\/messages\/status_2$/,
       );
       await handlers.onSkillHarnessPipelineEvent({
         runId: "run_old",
@@ -1447,14 +1447,14 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_2$/,
+          /\/channels\/345678901234567890\/messages\/status_2$/,
         ),
       ).toBe(patchCountBeforeLateEvents);
       expect(
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_2$/,
+          /\/channels\/345678901234567890\/messages\/status_2$/,
         ),
       ).toBe(0);
     });
@@ -2277,7 +2277,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(0);
 
@@ -2298,7 +2298,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
@@ -2341,7 +2341,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
@@ -2391,7 +2391,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(0);
 
@@ -2433,7 +2433,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
@@ -2472,7 +2472,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(0);
 
@@ -2482,7 +2482,7 @@ describe("createHookHandlers", () => {
           const method = (init as RequestInit | undefined)?.method ?? "GET";
           return (
             method === "PATCH" &&
-            /\/channels\/dm_channel_123\/messages\/status_1$/.test(url)
+            /\/channels\/345678901234567890\/messages\/status_1$/.test(url)
           );
         })
         .map(([, init]) =>
@@ -2518,7 +2518,7 @@ describe("createHookHandlers", () => {
           const method = (init as RequestInit | undefined)?.method ?? "GET";
           return (
             method === "PATCH" &&
-            /\/channels\/dm_channel_123\/messages\/status_1$/.test(url)
+            /\/channels\/345678901234567890\/messages\/status_1$/.test(url)
           );
         })
         .map(([, init]) =>
@@ -2538,7 +2538,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
@@ -2607,7 +2607,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
@@ -2659,7 +2659,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(0);
 
@@ -2734,7 +2734,7 @@ describe("createHookHandlers", () => {
             const method = init?.method ?? "GET";
 
             if (url.includes("/users/@me/channels") && method === "POST") {
-              return jsonResponse({ id: "dm_channel_123" });
+              return jsonResponse({ id: "345678901234567890" });
             }
             if (
               url.includes("/channels/") &&
@@ -2829,7 +2829,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_2$/,
+          /\/channels\/345678901234567890\/messages\/status_2$/,
         ),
       ).toBe(0);
       expect(stripAnsi(session?.lastRenderedContent ?? "")).toContain(
@@ -2849,7 +2849,7 @@ describe("createHookHandlers", () => {
             const method = init?.method ?? "GET";
 
             if (url.includes("/users/@me/channels") && method === "POST") {
-              return jsonResponse({ id: "dm_channel_123" });
+              return jsonResponse({ id: "345678901234567890" });
             }
             if (
               url.includes("/channels/") &&
@@ -3041,7 +3041,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(0);
       expect(
@@ -3055,7 +3055,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
       expect(store.sessions.has("discord:direct:123")).toBe(false);
@@ -3085,7 +3085,7 @@ describe("createHookHandlers", () => {
       const patchesBefore = countCalls(
         fetchMock,
         "PATCH",
-        /\/channels\/dm_channel_123\/messages\/status_1$/,
+        /\/channels\/345678901234567890\/messages\/status_1$/,
       );
 
       await settleRun(handlers, { success: true }, { sessionKey });
@@ -3094,7 +3094,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(patchesBefore);
       expect(
@@ -3107,7 +3107,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
     });
@@ -3171,7 +3171,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "DELETE",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
     });
@@ -3266,7 +3266,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(1);
     });
@@ -3434,7 +3434,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(0);
     });
@@ -3625,7 +3625,7 @@ describe("createHookHandlers", () => {
       const patchCountBefore = countCalls(
         fetchMock,
         "PATCH",
-        /\/channels\/dm_channel_123\/messages\/status_1$/,
+        /\/channels\/345678901234567890\/messages\/status_1$/,
       );
 
       await handlers.onBeforeToolCall(
@@ -3658,7 +3658,7 @@ describe("createHookHandlers", () => {
         countCalls(
           fetchMock,
           "PATCH",
-          /\/channels\/dm_channel_123\/messages\/status_1$/,
+          /\/channels\/345678901234567890\/messages\/status_1$/,
         ),
       ).toBe(patchCountBefore);
     });
