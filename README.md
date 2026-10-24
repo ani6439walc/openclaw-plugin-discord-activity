@@ -355,7 +355,7 @@ When the owning agent has a nonempty `decisionModel`, the plugin uses `api.runti
 }
 ```
 
-Remove `emojis` from the example to use the built-in pool. The plugin limits decision evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation and are not logged.
+Remove `emojis` from the example to use the built-in pool. The plugin limits decision evaluation to five seconds and the entire reaction attempt to seven seconds; late outcomes are ignored. Discord's Create Reaction endpoint requires URL-encoded emoji and returns HTTP 204 on success. Its documented permission requirements are `READ_MESSAGE_HISTORY`, plus `ADD_REACTIONS` when the emoji has not already been used on that message. Recap and message text are bounded before evaluation. Diagnostic logs include the bounded `previousRecap`, selected choice and emoji, skip/failure reasons, and Discord outcome, correlated by message ID. Incoming message text and credentials are not logged.
 
 To use the plugin fallback, add this object alongside `messageReaction` under `plugins.entries.discord-activity.config`. Leave both OpenClaw decision roles unset, or set the agent's `decisionModel` to `""` to use this fallback even when a global decision model exists:
 

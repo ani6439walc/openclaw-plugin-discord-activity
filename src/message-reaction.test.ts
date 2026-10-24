@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../api.js";
 import { resolveConfig } from "./config.js";
 import { resolveDmChannel } from "./discord-api.js";
 import {
@@ -82,6 +83,68 @@ describe("message reaction handler", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("logs the bounded recap, selected emoji, and Discord outcome", async () => {
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const { handler, getSessionEntry, addReaction } = setup();
+    const recap = "Recap context. ".repeat(400);
+    getSessionEntry.mockResolvedValueOnce({ activitySummary: { text: recap } });
+
+    handler.onMessageReceived(message, context);
+    await vi.waitFor(() =>
+      expect(info).toHaveBeenCalledWith(
+        "message reaction Discord result.",
+        expect.objectContaining({
+          messageId: message.messageId,
+          outcome: "applied",
+        }),
+      ),
+    );
+    expect(info).toHaveBeenCalledWith(
+      "message reaction recap loaded.",
+      expect.objectContaining({ previousRecap: recap.slice(0, 4000) }),
+    );
+    expect(info).toHaveBeenCalledWith(
+      "message reaction choice.",
+      expect.objectContaining({ selected: "emoji_0", emoji: "🎉" }),
+    );
+    expect(JSON.stringify(info.mock.calls)).not.toContain(message.content);
+    expect(JSON.stringify(info.mock.calls)).not.toContain('"token"');
+    expect(addReaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs unavailable decisions and none as different outcomes", async () => {
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const { handler, evaluate, addReaction } = setup();
+    evaluate.mockResolvedValueOnce({
+      status: "unavailable",
+      reason: "not-configured",
+    } as never);
+    handler.onMessageReceived(message, context);
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        "message reaction decision unavailable.",
+        expect.objectContaining({
+          reason: "not-configured",
+          decisionRoute: "agent",
+        }),
+      ),
+    );
+    evaluate.mockResolvedValueOnce(decision("none"));
+    handler.onMessageReceived(
+      { ...message, messageId: "234567890123456780" },
+      context,
+    );
+    await vi.waitFor(() =>
+      expect(info).toHaveBeenCalledWith(
+        "message reaction choice.",
+        expect.objectContaining({ selected: "none", emoji: null }),
+      ),
+    );
+    expect(addReaction).not.toHaveBeenCalled();
   });
 
   it.each([
