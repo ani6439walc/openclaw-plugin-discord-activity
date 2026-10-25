@@ -70,13 +70,34 @@ describe("latest ordinary tool detail budget", () => {
 
     expectBounded(result.content, 500);
     expect(plain).toContain("tool_latest ▾ ✔");
-    expect(plain).toContain(`    │▫︎ ${title.slice(0, 32)}...`);
+    expect(plain).toContain(`    │› ${title.slice(0, 32)}...`);
     expect(plain).toContain("detail_0");
     expect(plain).toContain("visible detail 0");
     expect(plain).toMatch(/…|\.\.\./u);
     expect(plain).not.toContain("detail_29");
     expect(result.displayState["tool:latest"] ?? "expanded").toBe("expanded");
   });
+
+  it.each([
+    { toolName: "steer", prefix: "\n    \u001b[33m» " },
+    { toolName: "message", prefix: "\n    │› \u001b[33m" },
+    { toolName: "openclaw.steer", prefix: "\n    \u001b[33m» " },
+    { toolName: "openclaw.message", prefix: "\n    │› \u001b[33m" },
+  ])(
+    "keeps the correct summary marker and color for a compact $toolName preview",
+    ({ toolName, prefix }) => {
+      const title =
+        "Inspect current target sections and pre-existing baseline differences";
+      const latest = entry("latest", { title, ...largeParams() }, { toolName });
+      const result = renderStatusContentWithState([latest], false, 500);
+      expectBounded(result.content, 500);
+      expect(result.content).toContain(
+        `${prefix}${title.slice(0, 32)}...\u001b[0m`,
+      );
+      expect(stripAnsi(result.content)).toContain("detail_0");
+      expect(result.displayState["tool:latest"] ?? "expanded").toBe("expanded");
+    },
+  );
 
   it("keeps a decision question and probabilities ahead of oversized state", () => {
     const essential = decision();

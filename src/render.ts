@@ -329,6 +329,13 @@ function formatExpandedTitle(title: string, maxLength = 120): string {
   return `${chars.slice(0, maxLength).join("")}...`;
 }
 
+function formatToolIntentSummary(toolName: string, text: string): string {
+  const name = canonicalToolNameForDedupe(toolName);
+  return name === "steer"
+    ? `    ${ansiSpan(ANSI.yellow, `» ${text}`)}`
+    : `    │› ${ansiSpan(ANSI.yellow, text)}`;
+}
+
 function renderStatusHeader(header: StatusHeader, collapsed = false): string {
   const name =
     collapsed && header.collapsedName ? header.collapsedName : header.name;
@@ -860,7 +867,7 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
     ? `${toolName} · ${formatCollapsedTitle(intent.text)}`
     : undefined;
   const summaryLine = intent
-    ? `    │▫︎ ${ansiSpan(ANSI.yellow, formatExpandedTitle(intent.text))}`
+    ? formatToolIntentSummary(t.toolName, formatExpandedTitle(intent.text))
     : undefined;
   const isDecision =
     canonicalToolNameForDedupe(t.toolName) === "decision_evaluate";
@@ -901,7 +908,10 @@ function createEntryBlock(t: ToolEntry): StatusBlock {
         : children;
       const summary =
         compact && intent
-          ? `    │▫︎ ${ansiSpan(ANSI.yellow, formatCollapsedTitle(intent.text))}`
+          ? formatToolIntentSummary(
+              t.toolName,
+              formatCollapsedTitle(intent.text),
+            )
           : summaryLine;
       return [
         ...(summary ? [[summary]] : []),
