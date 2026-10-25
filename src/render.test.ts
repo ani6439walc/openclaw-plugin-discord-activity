@@ -2234,7 +2234,7 @@ describe("renderStatusContent", () => {
 });
 
 describe("tool intent and title rendering", () => {
-  it("renders expanded tool entry with title as a yellow summary with a default-color hollow-square marker connected to the parameter tree and omits title from parameter tree", () => {
+  it("renders expanded tool entry with title as a yellow summary with a default-color single-chevron marker connected to the parameter tree and omits title from parameter tree", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "call_1",
@@ -2250,12 +2250,12 @@ describe("tool intent and title rendering", () => {
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔ [2.15s]");
     expect(stripAnsi(result)).toContain(
-      "    │▫︎ Search Japantown San Jose cafes\n    ╰─ command",
+      "    │› Search Japantown San Jose cafes\n    ╰─ command",
     );
     expect(stripAnsi(result)).toContain("╰─ command curl https://example.com");
     expect(stripAnsi(result)).not.toContain("title:");
     expect(result).toContain(
-      `    │▫︎ ${YELLOW}Search Japantown San Jose cafes${RESET}`,
+      `    │› ${YELLOW}Search Japantown San Jose cafes${RESET}`,
     );
   });
 
@@ -2314,7 +2314,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain(`    │▫︎ ${"a".repeat(120)}...`);
+    expect(stripAnsi(result)).toContain(`    │› ${"a".repeat(120)}...`);
   });
 
   it("falls back through candidate keys in priority order", () => {
@@ -2327,7 +2327,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const resultLabel = renderStatusContent(entryWithLabel, true);
-    expect(stripAnsi(resultLabel)).toContain("    │▫︎ Spawn subagent worker");
+    expect(stripAnsi(resultLabel)).toContain("    │› Spawn subagent worker");
     expect(stripAnsi(resultLabel)).not.toContain("label:");
     expect(stripAnsi(resultLabel)).toContain("agentId worker-1");
 
@@ -2340,7 +2340,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const resultDesc = renderStatusContent(entryWithDesc, true);
-    expect(stripAnsi(resultDesc)).toContain("    │▫︎ Poll build logs");
+    expect(stripAnsi(resultDesc)).toContain("    │› Poll build logs");
     expect(stripAnsi(resultDesc)).not.toContain("description:");
     expect(stripAnsi(resultDesc)).toContain("sessionId s1");
   });
@@ -2355,7 +2355,7 @@ describe("tool intent and title rendering", () => {
       },
     ];
     const result = renderStatusContent(entries, true);
-    expect(stripAnsi(result)).toContain("    │▫︎ Line 1 Line 2 Line 3");
+    expect(stripAnsi(result)).toContain("    │› Line 1 Line 2 Line 3");
   });
 
   it("renders tool entry with only title and no other parameters", () => {
@@ -2369,12 +2369,12 @@ describe("tool intent and title rendering", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("🚀 exec ▾ ✔");
-    expect(stripAnsi(result)).toContain("    │▫︎ Simple task");
+    expect(stripAnsi(result)).toContain("    │› Simple task");
     expect(stripAnsi(result)).not.toContain("╰─");
     expect(stripAnsi(result)).not.toContain("├─");
   });
 
-  it("renders steer tool entry with ✨ icon and hollow-square summary line in expanded mode", () => {
+  it("renders steer tool entry with ✨ icon and yellow double-chevron summary line in expanded mode", () => {
     const entries: ToolEntry[] = [
       {
         toolCallId: "steer:123",
@@ -2387,11 +2387,34 @@ describe("tool intent and title rendering", () => {
     ];
     const result = renderStatusContent(entries, true);
     expect(stripAnsi(result)).toContain("✨ steer ▾ ✔");
-    expect(stripAnsi(result)).toContain("    │▫︎ 我想改用另一個檔案來測試...");
+    expect(stripAnsi(result)).toContain("    » 我想改用另一個檔案來測試...");
     expect(result).toContain(
-      `    │▫︎ ${YELLOW}我想改用另一個檔案來測試...${RESET}`,
+      `    ${YELLOW}» 我想改用另一個檔案來測試...${RESET}`,
     );
   });
+
+  it.each(["message", "openclaw.message"])(
+    "renders %s with a yellow double-chevron summary above its parameters",
+    (toolName) => {
+      const result = renderStatusContent(
+        [
+          {
+            toolCallId: "message_1",
+            toolName,
+            params: { message: "Send the summary", target: "current channel" },
+            status: "completed",
+          },
+        ],
+        true,
+      );
+      expect(stripAnsi(result)).toContain(
+        "    » Send the summary\n    ╰─ target current channel",
+      );
+      expect(result).toContain(`    ${YELLOW}» Send the summary${RESET}`);
+      expect(stripAnsi(result)).not.toContain("│");
+      expect(stripAnsi(result)).not.toContain("message Send");
+    },
+  );
 
   it("renders steer tool entry with ✨ icon in collapsed mode", () => {
     const entries: ToolEntry[] = [

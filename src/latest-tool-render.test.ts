@@ -70,13 +70,30 @@ describe("latest ordinary tool detail budget", () => {
 
     expectBounded(result.content, 500);
     expect(plain).toContain("tool_latest ▾ ✔");
-    expect(plain).toContain(`    │▫︎ ${title.slice(0, 32)}...`);
+    expect(plain).toContain(`    │› ${title.slice(0, 32)}...`);
     expect(plain).toContain("detail_0");
     expect(plain).toContain("visible detail 0");
     expect(plain).toMatch(/…|\.\.\./u);
     expect(plain).not.toContain("detail_29");
     expect(result.displayState["tool:latest"] ?? "expanded").toBe("expanded");
   });
+
+  it.each(["steer", "message", "openclaw.steer", "openclaw.message"])(
+    "keeps the yellow double-chevron summary for a compact %s preview",
+    (toolName) => {
+      const title =
+        "Inspect current target sections and pre-existing baseline differences";
+      const latest = entry("latest", { title, ...largeParams() }, { toolName });
+      const result = renderStatusContentWithState([latest], false, 500);
+      expectBounded(result.content, 500);
+      expect(result.content).toContain(
+        `    \u001b[33m» ${title.slice(0, 32)}...\u001b[0m`,
+      );
+      expect(stripAnsi(result.content)).not.toContain("│");
+      expect(stripAnsi(result.content)).toContain("detail_0");
+      expect(result.displayState["tool:latest"] ?? "expanded").toBe("expanded");
+    },
+  );
 
   it("keeps a decision question and probabilities ahead of oversized state", () => {
     const essential = decision();
