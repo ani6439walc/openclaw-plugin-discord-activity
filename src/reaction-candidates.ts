@@ -25,7 +25,7 @@ export function sampleReactionCandidates(
   random: () => number = Math.random,
 ): ReactionEmoji[] {
   const choices = [...pool];
-  const count = Math.min(30, choices.length);
+  const count = Math.min(10, choices.length);
   for (let index = 0; index < count; index += 1) {
     const swapIndex = index + Math.floor(random() * (choices.length - index));
     [choices[index], choices[swapIndex]] = [

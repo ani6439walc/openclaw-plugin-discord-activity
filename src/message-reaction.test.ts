@@ -729,7 +729,7 @@ describe("message reaction handler", () => {
     expect(addReaction).not.toHaveBeenCalled();
   });
 
-  it("offers 30 default emoji plus none when no custom list is configured", async () => {
+  it("offers 10 default emoji plus none when no custom list is configured", async () => {
     const evaluate = vi.fn(async () => decision("none"));
     const handler = createMessageReactionHandler({
       config: resolveConfig({ messageReaction: { enabled: true } })
@@ -750,9 +750,41 @@ describe("message reaction handler", () => {
     await handler.onMessageReceived(message, context);
     await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
     const criteria = evaluate.mock.calls[0]?.[0].questions.reaction.criteria;
-    expect(Object.keys(criteria)).toHaveLength(31);
+    expect(Object.keys(criteria)).toHaveLength(11);
     expect(criteria).toHaveProperty("none");
+    handler.stop();
   });
+
+  it.each(["host", "fallback"] as const)(
+    "offers 10 custom emoji with their meanings plus none to the %s decision",
+    async (route) => {
+      const emojis = Array.from({ length: 100 }, (_, index) => ({
+        emoji: String.fromCodePoint(0x1f600 + index),
+        meaning: `Meaning ${index}`,
+      }));
+      const fallback = vi.fn(
+        async (_batch: ReactionDecisionBatch, _signal: AbortSignal) => "none",
+      );
+      const { handler, evaluate } = setup(
+        emojis,
+        route === "host" ? "typesafe/jev-latest" : null,
+        fallback,
+      );
+      handler.onMessageReceived(message, context);
+      const selectedEvaluator = route === "host" ? evaluate : fallback;
+      await vi.waitFor(() => expect(selectedEvaluator).toHaveBeenCalledOnce());
+      const criteria =
+        selectedEvaluator.mock.calls[0]![0].questions.reaction.criteria;
+      expect(Object.keys(criteria)).toHaveLength(11);
+      expect(criteria).toHaveProperty("none");
+      emojis.slice(0, 10).forEach((candidate, index) => {
+        expect(criteria[`emoji_${index}`]).toBe(
+          `${candidate.emoji}: ${candidate.meaning}`,
+        );
+      });
+      handler.stop();
+    },
+  );
 
   it("drops overload instead of queueing unbounded reaction work", async () => {
     const { handler, getSessionEntry, evaluate } = setup();
