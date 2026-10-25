@@ -2394,7 +2394,7 @@ describe("tool intent and title rendering", () => {
   });
 
   it.each(["message", "openclaw.message"])(
-    "renders %s with a yellow double-chevron summary above its parameters",
+    "renders %s with a default-color single chevron connected to its parameters",
     (toolName) => {
       const result = renderStatusContent(
         [
@@ -2408,10 +2408,10 @@ describe("tool intent and title rendering", () => {
         true,
       );
       expect(stripAnsi(result)).toContain(
-        "    » Send the summary\n    ╰─ target current channel",
+        "    │› Send the summary\n    ╰─ target current channel",
       );
-      expect(result).toContain(`    ${YELLOW}» Send the summary${RESET}`);
-      expect(stripAnsi(result)).not.toContain("│");
+      expect(result).toContain(`    │› ${YELLOW}Send the summary${RESET}`);
+      expect(stripAnsi(result)).not.toContain("»");
       expect(stripAnsi(result)).not.toContain("message Send");
     },
   );

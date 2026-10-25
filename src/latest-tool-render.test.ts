@@ -78,18 +78,22 @@ describe("latest ordinary tool detail budget", () => {
     expect(result.displayState["tool:latest"] ?? "expanded").toBe("expanded");
   });
 
-  it.each(["steer", "message", "openclaw.steer", "openclaw.message"])(
-    "keeps the yellow double-chevron summary for a compact %s preview",
-    (toolName) => {
+  it.each([
+    { toolName: "steer", prefix: "\n    \u001b[33m» " },
+    { toolName: "message", prefix: "\n    │› \u001b[33m" },
+    { toolName: "openclaw.steer", prefix: "\n    \u001b[33m» " },
+    { toolName: "openclaw.message", prefix: "\n    │› \u001b[33m" },
+  ])(
+    "keeps the correct summary marker and color for a compact $toolName preview",
+    ({ toolName, prefix }) => {
       const title =
         "Inspect current target sections and pre-existing baseline differences";
       const latest = entry("latest", { title, ...largeParams() }, { toolName });
       const result = renderStatusContentWithState([latest], false, 500);
       expectBounded(result.content, 500);
       expect(result.content).toContain(
-        `    \u001b[33m» ${title.slice(0, 32)}...\u001b[0m`,
+        `${prefix}${title.slice(0, 32)}...\u001b[0m`,
       );
-      expect(stripAnsi(result.content)).not.toContain("│");
       expect(stripAnsi(result.content)).toContain("detail_0");
       expect(result.displayState["tool:latest"] ?? "expanded").toBe("expanded");
     },

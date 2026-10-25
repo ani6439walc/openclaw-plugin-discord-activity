@@ -331,7 +331,7 @@ function formatExpandedTitle(title: string, maxLength = 120): string {
 
 function formatToolIntentSummary(toolName: string, text: string): string {
   const name = canonicalToolNameForDedupe(toolName);
-  return name === "steer" || name === "message"
+  return name === "steer"
     ? `    ${ansiSpan(ANSI.yellow, `» ${text}`)}`
     : `    │› ${ansiSpan(ANSI.yellow, text)}`;
 }

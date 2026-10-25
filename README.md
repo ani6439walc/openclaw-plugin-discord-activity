@@ -31,9 +31,9 @@ rows and internal workflow details retain their own formatting.
 
 Tool intent summaries normally use `│›` above the parameter tree. The vertical
 line aligns with `├─` and `╰─`; the line and single chevron use the default text
-color, while the summary stays yellow. `steer` and `message` instead use a
-standalone `»` summary line with both the double chevron and text yellow, without
-a leading vertical line. OpenClaw-prefixed aliases follow the same rules.
+color, while the summary stays yellow. This includes `message`. Only `steer` uses
+a standalone `»` summary line with both the double chevron and text yellow,
+without a leading vertical line. OpenClaw-prefixed aliases follow the same rules.
 Bounded previews use the same layouts.
 
 A simplified live status message looks like this:
