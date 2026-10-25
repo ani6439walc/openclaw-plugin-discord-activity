@@ -13,6 +13,7 @@ import {
   extractUserIdFromDirectSessionKey,
 } from "./parser.js";
 import {
+  rememberRecentEmoji,
   resolveReactionEmojiPool,
   sampleReactionCandidates,
   type ReactionEmoji,
@@ -81,6 +82,7 @@ type MessageReactionDeps = {
   removeAckReaction: MessageReactionDeps["addReaction"];
   wait?: (ms: number, signal: AbortSignal) => Promise<void>;
   random?: () => number;
+  sampleRandom?: () => number;
 };
 
 type ReactionMessage = {
@@ -141,6 +143,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     ? `${BASE_REACTION_INSTRUCTIONS}\n\n${promptAppend}`
     : BASE_REACTION_INSTRUCTIONS;
   const seen = new Map<string, number>();
+  const recentEmojis = new Map<string, string[]>();
   const controllers = new Set<AbortController>();
   let active = 0;
   let stopped = false;
@@ -315,6 +318,11 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       status: result.status,
     });
     if (result.outcome !== "applied" || signal.aborted) return;
+    const historyKey = `${params.accountId ?? "default"}:${params.sessionKey}`;
+    recentEmojis.set(
+      historyKey,
+      rememberRecentEmoji(recentEmojis.get(historyKey) ?? [], emoji),
+    );
     try {
       const ackReaction = deps.resolveAckReaction(
         params.agentId,
@@ -406,7 +414,12 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     if (!decisionRoute) return skip("missing-decision-model");
     const key = `${ctx.accountId ?? "default"}:${contextKey}:${messageId}`;
     if (!remember(key, Date.now())) return skip("duplicate");
-    const candidates = sampleReactionCandidates(pool, deps.random);
+    const historyKey = `${ctx.accountId ?? "default"}:${sessionKey}`;
+    const candidates = sampleReactionCandidates(
+      pool,
+      deps.sampleRandom ?? deps.random,
+      recentEmojis.get(historyKey) ?? [],
+    );
     const delayMs =
       MIN_REACTION_DELAY_MS +
       Math.floor(

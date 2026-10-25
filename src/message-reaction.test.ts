@@ -52,6 +52,7 @@ function setup(
   timing: {
     wait?: (ms: number, signal: AbortSignal) => Promise<void>;
     random?: () => number;
+    sampleRandom?: () => number;
   } = {},
 ) {
   const evaluate = vi.fn(async () => decision("emoji_0"));
@@ -84,6 +85,7 @@ function setup(
     removeAckReaction,
     wait: timing.wait ?? vi.fn(async () => {}),
     random: timing.random ?? (() => 0),
+    sampleRandom: timing.sampleRandom,
   });
   return {
     handler,
@@ -785,6 +787,64 @@ describe("message reaction handler", () => {
       handler.stop();
     },
   );
+
+  it("keeps the last 10 applied emoji out of the next sample in that conversation", async () => {
+    const emojis = Array.from({ length: 30 }, (_, index) =>
+      String.fromCodePoint(0x1f600 + index),
+    );
+    let sampleCursor = 0;
+    const { handler, evaluate, addReaction } = setup(
+      emojis,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        sampleRandom: () => {
+          const offset = sampleCursor % 10;
+          sampleCursor += 1;
+          return offset === 0 ? 0.99 : 0;
+        },
+      },
+    );
+    for (let index = 0; index < 10; index += 1) {
+      evaluate.mockResolvedValueOnce(decision("emoji_0"));
+      await handler.onMessageReceived(
+        { ...message, messageId: String(234567890123456780n + BigInt(index)) },
+        context,
+      );
+      await vi.waitFor(() =>
+        expect(addReaction).toHaveBeenCalledTimes(index + 1),
+      );
+    }
+    const applied = addReaction.mock.calls.map((call) => call[2] as string);
+    expect(new Set(applied).size).toBe(10);
+
+    evaluate.mockResolvedValueOnce(decision("none"));
+    await handler.onMessageReceived(
+      { ...message, messageId: "234567890123456790" },
+      context,
+    );
+    await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(11));
+    const criteria = evaluate.mock.calls[10]![0].questions.reaction.criteria;
+    const offered = Object.values(criteria);
+    for (const emoji of applied) expect(offered).not.toContain(emoji);
+    expect(criteria).toHaveProperty("none");
+    expect(Object.keys(criteria)).toHaveLength(11);
+
+    const other = setup(emojis);
+    other.handler.onMessageReceived(message, {
+      ...context,
+      sessionKey: "agent:main:discord:channel:999999999999999999",
+    });
+    await vi.waitFor(() => expect(other.evaluate).toHaveBeenCalledOnce());
+    expect(
+      other.evaluate.mock.calls[0]![0].questions.reaction.criteria.emoji_0,
+    ).toBe(emojis[0]);
+    handler.stop();
+    other.handler.stop();
+  });
 
   it("drops overload instead of queueing unbounded reaction work", async () => {
     const { handler, getSessionEntry, evaluate } = setup();
