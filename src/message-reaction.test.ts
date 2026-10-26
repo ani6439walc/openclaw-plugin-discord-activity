@@ -847,18 +847,18 @@ describe("message reaction handler", () => {
       },
     );
     await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(12));
-    const otherOffered = Object.values(
-      evaluate.mock.calls[11]![0].questions.reaction.criteria,
-    );
+    const otherCriteria =
+      evaluate.mock.calls[11]![0].questions.reaction.criteria;
+    expect(Object.keys(otherCriteria)).toHaveLength(11);
     const history = recentReactionEmojis();
     expect(history.get(`${context.accountId}:${context.sessionKey}`)).toEqual(
       applied,
     );
     expect(
-      history.get(
+      history.has(
         `${context.accountId}:agent:main:discord:channel:999999999999999999`,
       ),
-    ).toBeUndefined();
+    ).toBe(false);
     handler.stop();
   });
 
@@ -894,21 +894,30 @@ describe("message reaction handler", () => {
       ["👍"],
     ]) as Array<[string, string[]]>;
     history.clear();
-    for (const [key, value] of filler) history.set(key, value);
     history.set(originalKey, [applied]);
+    for (const [key, value] of filler) history.set(key, value);
     expect(history.size).toBe(1000);
 
     second.evaluate.mockResolvedValueOnce(decision("emoji_0"));
     await second.handler.onMessageReceived(
       { ...message, messageId: "234567890123456792" },
+      context,
+    );
+    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledOnce());
+    expect(history.has(originalKey)).toBe(true);
+    expect([...history.keys()].at(-1)).toBe(originalKey);
+
+    second.evaluate.mockResolvedValueOnce(decision("emoji_0"));
+    await second.handler.onMessageReceived(
+      { ...message, messageId: "234567890123456793" },
       {
         ...context,
         sessionKey: "agent:main:discord:channel:fresh",
       },
     );
-    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledTimes(2));
     expect(history.has(filler[0]![0])).toBe(false);
-    expect(history.get(originalKey)).toEqual([applied]);
+    expect(history.has(originalKey)).toBe(true);
     expect(history.size).toBe(1000);
     second.handler.stop();
   });
