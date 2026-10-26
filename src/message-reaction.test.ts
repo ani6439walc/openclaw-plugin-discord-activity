@@ -104,7 +104,7 @@ describe("message reaction handler", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    recentReactionEmojis().clear();
+    recentReactionEmojis().splice(0);
   });
 
   it.each([
@@ -790,7 +790,7 @@ describe("message reaction handler", () => {
     },
   );
 
-  it("keeps the last 10 applied emoji out of the next sample in that conversation", async () => {
+  it("keeps the last 10 applied emoji out of the next sample across conversations", async () => {
     const emojis = Array.from({ length: 11 }, (_, index) =>
       String.fromCodePoint(0x1f600 + index),
     );
@@ -849,20 +849,33 @@ describe("message reaction handler", () => {
     await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(12));
     const otherCriteria =
       evaluate.mock.calls[11]![0].questions.reaction.criteria;
-    expect(Object.keys(otherCriteria)).toHaveLength(11);
-    const history = recentReactionEmojis();
-    expect(history.get(`${context.accountId}:${context.sessionKey}`)).toEqual(
-      applied,
-    );
-    expect(
-      history.has(
-        `${context.accountId}:agent:main:discord:channel:999999999999999999`,
-      ),
-    ).toBe(false);
+    expect(Object.keys(otherCriteria)).toHaveLength(2);
+    for (const emoji of applied) {
+      expect(Object.values(otherCriteria)).not.toContain(emoji);
+    }
+    expect(recentReactionEmojis()).toEqual(applied);
     handler.stop();
   });
 
-  it("keeps applied emoji across a new handler and evicts the least recently used conversation", async () => {
+  it("keeps applied emoji across a reloaded module", async () => {
+    const runtimeKey = Symbol.for("discord-activity:recent-reaction-emojis:v1");
+    const current = recentReactionEmojis();
+    current.splice(0, current.length, "\ud83c\udf89");
+
+    vi.resetModules();
+    const reloaded = await import("./message-reaction.js");
+    const shared = reloaded.recentReactionEmojis();
+
+    expect(shared).toBe(current);
+    expect(shared).toEqual(["\ud83c\udf89"]);
+    expect(
+      (globalThis as typeof globalThis & { [runtimeKey]?: string[] })[
+        runtimeKey
+      ],
+    ).toBe(shared);
+  });
+
+  it("keeps applied emoji across a new handler and drops the oldest entry", async () => {
     const emojis = Array.from({ length: 12 }, (_, index) =>
       String.fromCodePoint(0x1f600 + index),
     );
@@ -887,38 +900,32 @@ describe("message reaction handler", () => {
     ).not.toContain(applied);
 
     const history = recentReactionEmojis();
-    const originalKey = `${context.accountId}:${context.sessionKey}`;
-    expect(history.get(originalKey)).toEqual([applied]);
-    const filler = Array.from({ length: 999 }, (_, index) => [
-      `default:agent:main:discord:channel:${index}`,
-      ["👍"],
-    ]) as Array<[string, string[]]>;
-    history.clear();
-    history.set(originalKey, [applied]);
-    for (const [key, value] of filler) history.set(key, value);
-    expect(history.size).toBe(1000);
+    expect(history).toEqual([applied]);
+    const oldest = "👍";
+    history.splice(
+      0,
+      history.length,
+      oldest,
+      ...Array.from({ length: 8 }, (_, index) =>
+        String.fromCodePoint(0x1f300 + index),
+      ),
+      applied,
+    );
+    expect(history).toHaveLength(10);
 
     second.evaluate.mockResolvedValueOnce(decision("emoji_0"));
     await second.handler.onMessageReceived(
       { ...message, messageId: "234567890123456792" },
-      context,
-    );
-    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledOnce());
-    expect(history.has(originalKey)).toBe(true);
-    expect([...history.keys()].at(-1)).toBe(originalKey);
-
-    second.evaluate.mockResolvedValueOnce(decision("emoji_0"));
-    await second.handler.onMessageReceived(
-      { ...message, messageId: "234567890123456793" },
       {
         ...context,
         sessionKey: "agent:main:discord:channel:fresh",
       },
     );
-    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledTimes(2));
-    expect(history.has(filler[0]![0])).toBe(false);
-    expect(history.has(originalKey)).toBe(true);
-    expect(history.size).toBe(1000);
+    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledOnce());
+    const refreshed = second.addReaction.mock.calls[0]![2] as string;
+    expect(history.at(-1)).toBe(refreshed);
+    expect(history).not.toContain(oldest);
+    expect(history).toHaveLength(10);
     second.handler.stop();
   });
 

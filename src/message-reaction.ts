@@ -29,20 +29,16 @@ const TOTAL_DEADLINE_MS = 7000;
 const DECISION_DEADLINE_MS = 5000;
 const MIN_REACTION_DELAY_MS = 3000;
 const MAX_REACTION_DELAY_MS = 5000;
-const MAX_RECENT_EMOJI_KEYS = 1000;
 // Gateway and agent generations load separate copies of this module.
 const RECENT_EMOJI_RUNTIME_KEY = Symbol.for(
   "discord-activity:recent-reaction-emojis:v1",
 );
 const recentEmojiGlobal = globalThis as typeof globalThis & {
-  [RECENT_EMOJI_RUNTIME_KEY]?: Map<string, string[]>;
+  [RECENT_EMOJI_RUNTIME_KEY]?: string[];
 };
-const recentEmojis = (recentEmojiGlobal[RECENT_EMOJI_RUNTIME_KEY] ??= new Map<
-  string,
-  string[]
->());
+const recentEmojis = (recentEmojiGlobal[RECENT_EMOJI_RUNTIME_KEY] ??= []);
 
-export function recentReactionEmojis(): Map<string, string[]> {
+export function recentReactionEmojis(): string[] {
   return recentEmojis;
 }
 const BASE_REACTION_INSTRUCTIONS = [
@@ -333,16 +329,8 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       status: result.status,
     });
     if (result.outcome !== "applied" || signal.aborted) return;
-    const historyKey = `${params.accountId ?? "default"}:${params.sessionKey}`;
-    const nextRecent = rememberRecentEmoji(
-      recentEmojis.get(historyKey) ?? [],
-      emoji,
-    );
-    recentEmojis.delete(historyKey);
-    recentEmojis.set(historyKey, nextRecent);
-    while (recentEmojis.size > MAX_RECENT_EMOJI_KEYS) {
-      recentEmojis.delete(recentEmojis.keys().next().value!);
-    }
+    const nextRecent = rememberRecentEmoji(recentEmojis, emoji);
+    recentEmojis.splice(0, recentEmojis.length, ...nextRecent);
     try {
       const ackReaction = deps.resolveAckReaction(
         params.agentId,
@@ -434,11 +422,10 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     if (!decisionRoute) return skip("missing-decision-model");
     const key = `${ctx.accountId ?? "default"}:${contextKey}:${messageId}`;
     if (!remember(key, Date.now())) return skip("duplicate");
-    const historyKey = `${ctx.accountId ?? "default"}:${sessionKey}`;
     const candidates = sampleReactionCandidates(
       pool,
       deps.sampleRandom ?? deps.random,
-      recentEmojis.get(historyKey) ?? [],
+      recentEmojis,
     );
     const delayMs =
       MIN_REACTION_DELAY_MS +

@@ -129,7 +129,7 @@
           "emojis": {
             "type": "array",
             "maxItems": 2000,
-            "description": "Candidate Unicode emoji. Omit for the built-in seven-category PiliApp snapshot; [] disables reactions; a nonempty list replaces the snapshot. Emoji applied to the previous 10 messages in the same conversation are left out, then up to 10 distinct emoji are sampled.",
+            "description": "Candidate Unicode emoji. Omit for the built-in seven-category PiliApp snapshot; [] disables reactions; a nonempty list replaces the snapshot. The last 10 emoji successfully applied anywhere in this process are left out, then up to 10 distinct emoji are sampled.",
             "items": {
               "oneOf": [
                 { "type": "string", "minLength": 1, "maxLength": 64 },
