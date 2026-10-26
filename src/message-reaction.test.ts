@@ -857,6 +857,24 @@ describe("message reaction handler", () => {
     handler.stop();
   });
 
+  it("keeps applied emoji across a reloaded module", async () => {
+    const runtimeKey = Symbol.for("discord-activity:recent-reaction-emojis:v1");
+    const current = recentReactionEmojis();
+    current.splice(0, current.length, "\ud83c\udf89");
+
+    vi.resetModules();
+    const reloaded = await import("./message-reaction.js");
+    const shared = reloaded.recentReactionEmojis();
+
+    expect(shared).toBe(current);
+    expect(shared).toEqual(["\ud83c\udf89"]);
+    expect(
+      (globalThis as typeof globalThis & { [runtimeKey]?: string[] })[
+        runtimeKey
+      ],
+    ).toBe(shared);
+  });
+
   it("keeps applied emoji across a new handler and drops the oldest entry", async () => {
     const emojis = Array.from({ length: 12 }, (_, index) =>
       String.fromCodePoint(0x1f600 + index),
