@@ -29,6 +29,22 @@ const TOTAL_DEADLINE_MS = 7000;
 const DECISION_DEADLINE_MS = 5000;
 const MIN_REACTION_DELAY_MS = 3000;
 const MAX_REACTION_DELAY_MS = 5000;
+const MAX_RECENT_EMOJI_KEYS = 1000;
+// Gateway and agent generations load separate copies of this module.
+const RECENT_EMOJI_RUNTIME_KEY = Symbol.for(
+  "discord-activity:recent-reaction-emojis:v1",
+);
+const recentEmojiGlobal = globalThis as typeof globalThis & {
+  [RECENT_EMOJI_RUNTIME_KEY]?: Map<string, string[]>;
+};
+const recentEmojis = (recentEmojiGlobal[RECENT_EMOJI_RUNTIME_KEY] ??= new Map<
+  string,
+  string[]
+>());
+
+export function recentReactionEmojis(): Map<string, string[]> {
+  return recentEmojis;
+}
 const BASE_REACTION_INSTRUCTIONS = [
   "Choose one natural reaction to the latest user message using the recap only as context.",
   "Express a response to the message's tone, intent or emotional nuance; a literal object match is not required.",
@@ -143,7 +159,6 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     ? `${BASE_REACTION_INSTRUCTIONS}\n\n${promptAppend}`
     : BASE_REACTION_INSTRUCTIONS;
   const seen = new Map<string, number>();
-  const recentEmojis = new Map<string, string[]>();
   const controllers = new Set<AbortController>();
   let active = 0;
   let stopped = false;
@@ -319,10 +334,15 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     });
     if (result.outcome !== "applied" || signal.aborted) return;
     const historyKey = `${params.accountId ?? "default"}:${params.sessionKey}`;
-    recentEmojis.set(
-      historyKey,
-      rememberRecentEmoji(recentEmojis.get(historyKey) ?? [], emoji),
+    const nextRecent = rememberRecentEmoji(
+      recentEmojis.get(historyKey) ?? [],
+      emoji,
     );
+    recentEmojis.delete(historyKey);
+    recentEmojis.set(historyKey, nextRecent);
+    while (recentEmojis.size > MAX_RECENT_EMOJI_KEYS) {
+      recentEmojis.delete(recentEmojis.keys().next().value!);
+    }
     try {
       const ackReaction = deps.resolveAckReaction(
         params.agentId,
