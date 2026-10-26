@@ -20,12 +20,27 @@ export function resolveReactionEmojiPool(
   return pool;
 }
 
+const SAMPLE_COUNT = 10;
+const RECENT_EMOJI_LIMIT = 10;
+
+export function rememberRecentEmoji(
+  recent: readonly string[],
+  emoji: string,
+): string[] {
+  const next = recent.filter((entry) => entry !== emoji);
+  next.push(emoji);
+  return next.slice(-RECENT_EMOJI_LIMIT);
+}
+
 export function sampleReactionCandidates(
   pool: readonly ReactionEmoji[],
   random: () => number = Math.random,
+  recent: readonly string[] = [],
 ): ReactionEmoji[] {
-  const choices = [...pool];
-  const count = Math.min(10, choices.length);
+  const excluded = new Set(recent.slice(-RECENT_EMOJI_LIMIT));
+  const available = pool.filter((candidate) => !excluded.has(candidate.emoji));
+  const choices = [...(available.length > 0 ? available : pool)];
+  const count = Math.min(SAMPLE_COUNT, choices.length);
   for (let index = 0; index < count; index += 1) {
     const swapIndex = index + Math.floor(random() * (choices.length - index));
     [choices[index], choices[swapIndex]] = [

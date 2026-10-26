@@ -4,6 +4,7 @@ import { resolveConfig } from "./config.js";
 import { resolveDmChannel, sleep } from "./discord-api.js";
 import {
   createMessageReactionHandler,
+  recentReactionEmojis,
   type ReactionDecisionBatch,
 } from "./message-reaction.js";
 
@@ -52,6 +53,7 @@ function setup(
   timing: {
     wait?: (ms: number, signal: AbortSignal) => Promise<void>;
     random?: () => number;
+    sampleRandom?: () => number;
   } = {},
 ) {
   const evaluate = vi.fn(async () => decision("emoji_0"));
@@ -84,6 +86,7 @@ function setup(
     removeAckReaction,
     wait: timing.wait ?? vi.fn(async () => {}),
     random: timing.random ?? (() => 0),
+    sampleRandom: timing.sampleRandom,
   });
   return {
     handler,
@@ -101,6 +104,7 @@ describe("message reaction handler", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    recentReactionEmojis().clear();
   });
 
   it.each([
@@ -785,6 +789,138 @@ describe("message reaction handler", () => {
       handler.stop();
     },
   );
+
+  it("keeps the last 10 applied emoji out of the next sample in that conversation", async () => {
+    const emojis = Array.from({ length: 11 }, (_, index) =>
+      String.fromCodePoint(0x1f600 + index),
+    );
+    let sampleCursor = 0;
+    const { handler, evaluate, addReaction } = setup(
+      emojis,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        sampleRandom: () => {
+          const offset = sampleCursor % 10;
+          sampleCursor += 1;
+          return offset === 0 ? 0.99 : 0;
+        },
+      },
+    );
+    for (let index = 0; index < 10; index += 1) {
+      evaluate.mockResolvedValueOnce(decision("emoji_0"));
+      await handler.onMessageReceived(
+        { ...message, messageId: String(234567890123456780n + BigInt(index)) },
+        context,
+      );
+      await vi.waitFor(() =>
+        expect(addReaction).toHaveBeenCalledTimes(index + 1),
+      );
+    }
+    const applied = addReaction.mock.calls.map((call) => call[2] as string);
+    expect(new Set(applied).size).toBe(10);
+
+    evaluate.mockResolvedValueOnce(decision("none"));
+    await handler.onMessageReceived(
+      { ...message, messageId: "234567890123456790" },
+      context,
+    );
+    await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(11));
+    const criteria = evaluate.mock.calls[10]![0].questions.reaction.criteria;
+    const offered = Object.values(criteria);
+    for (const emoji of applied) expect(offered).not.toContain(emoji);
+    expect(criteria).toHaveProperty("none");
+    expect(Object.keys(criteria)).toHaveLength(2);
+    const remaining = emojis.filter((emoji) => !applied.includes(emoji));
+    expect(remaining).toHaveLength(1);
+    expect(offered).toContain(remaining[0]);
+
+    evaluate.mockResolvedValueOnce(decision("none"));
+    await handler.onMessageReceived(
+      { ...message, messageId: "234567890123456791" },
+      {
+        ...context,
+        sessionKey: "agent:main:discord:channel:999999999999999999",
+      },
+    );
+    await vi.waitFor(() => expect(evaluate).toHaveBeenCalledTimes(12));
+    const otherCriteria =
+      evaluate.mock.calls[11]![0].questions.reaction.criteria;
+    expect(Object.keys(otherCriteria)).toHaveLength(11);
+    const history = recentReactionEmojis();
+    expect(history.get(`${context.accountId}:${context.sessionKey}`)).toEqual(
+      applied,
+    );
+    expect(
+      history.has(
+        `${context.accountId}:agent:main:discord:channel:999999999999999999`,
+      ),
+    ).toBe(false);
+    handler.stop();
+  });
+
+  it("keeps applied emoji across a new handler and evicts the least recently used conversation", async () => {
+    const emojis = Array.from({ length: 12 }, (_, index) =>
+      String.fromCodePoint(0x1f600 + index),
+    );
+    const first = setup(emojis);
+    first.evaluate.mockResolvedValueOnce(decision("emoji_0"));
+    await first.handler.onMessageReceived(message, context);
+    await vi.waitFor(() => expect(first.addReaction).toHaveBeenCalledOnce());
+    const applied = first.addReaction.mock.calls[0]![2] as string;
+    first.handler.stop();
+
+    const second = setup(emojis);
+    second.evaluate.mockResolvedValueOnce(decision("none"));
+    await second.handler.onMessageReceived(
+      { ...message, messageId: "234567890123456791" },
+      context,
+    );
+    await vi.waitFor(() => expect(second.evaluate).toHaveBeenCalledOnce());
+    expect(
+      Object.values(
+        second.evaluate.mock.calls[0]![0].questions.reaction.criteria,
+      ),
+    ).not.toContain(applied);
+
+    const history = recentReactionEmojis();
+    const originalKey = `${context.accountId}:${context.sessionKey}`;
+    expect(history.get(originalKey)).toEqual([applied]);
+    const filler = Array.from({ length: 999 }, (_, index) => [
+      `default:agent:main:discord:channel:${index}`,
+      ["👍"],
+    ]) as Array<[string, string[]]>;
+    history.clear();
+    history.set(originalKey, [applied]);
+    for (const [key, value] of filler) history.set(key, value);
+    expect(history.size).toBe(1000);
+
+    second.evaluate.mockResolvedValueOnce(decision("emoji_0"));
+    await second.handler.onMessageReceived(
+      { ...message, messageId: "234567890123456792" },
+      context,
+    );
+    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledOnce());
+    expect(history.has(originalKey)).toBe(true);
+    expect([...history.keys()].at(-1)).toBe(originalKey);
+
+    second.evaluate.mockResolvedValueOnce(decision("emoji_0"));
+    await second.handler.onMessageReceived(
+      { ...message, messageId: "234567890123456793" },
+      {
+        ...context,
+        sessionKey: "agent:main:discord:channel:fresh",
+      },
+    );
+    await vi.waitFor(() => expect(second.addReaction).toHaveBeenCalledTimes(2));
+    expect(history.has(filler[0]![0])).toBe(false);
+    expect(history.has(originalKey)).toBe(true);
+    expect(history.size).toBe(1000);
+    second.handler.stop();
+  });
 
   it("drops overload instead of queueing unbounded reaction work", async () => {
     const { handler, getSessionEntry, evaluate } = setup();
