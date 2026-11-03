@@ -329,9 +329,11 @@ function formatExpandedTitle(title: string, maxLength = 120): string {
   return `${chars.slice(0, maxLength).join("")}...`;
 }
 
+const DOUBLE_CHEVRON_TOOL_NAMES = new Set(["steer", "openclaw"]);
+
 function formatToolIntentSummary(toolName: string, text: string): string {
   const name = canonicalToolNameForDedupe(toolName);
-  return name === "steer"
+  return DOUBLE_CHEVRON_TOOL_NAMES.has(name)
     ? `    ${ansiSpan(ANSI.yellow, `» ${text}`)}`
     : `    │› ${ansiSpan(ANSI.yellow, text)}`;
 }

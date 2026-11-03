@@ -2393,6 +2393,29 @@ describe("tool intent and title rendering", () => {
     );
   });
 
+  it.each(["openclaw", "openclaw.openclaw"])(
+    "renders %s with a yellow double chevron like steer",
+    (toolName) => {
+      const result = renderStatusContent(
+        [
+          {
+            toolCallId: "openclaw_1",
+            toolName,
+            params: {
+              action: "config.get",
+              description: "Read back recallTopK",
+            },
+            status: "completed",
+          },
+        ],
+        true,
+      );
+      expect(stripAnsi(result)).toContain("    » Read back recallTopK");
+      expect(stripAnsi(result)).not.toContain("│›");
+      expect(result).toContain(`    ${YELLOW}» Read back recallTopK${RESET}`);
+    },
+  );
+
   it.each(["message", "openclaw.message"])(
     "renders %s with a default-color single chevron connected to its parameters",
     (toolName) => {

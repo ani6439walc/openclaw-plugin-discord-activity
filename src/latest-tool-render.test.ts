@@ -82,6 +82,7 @@ describe("latest ordinary tool detail budget", () => {
     { toolName: "steer", prefix: "\n    \u001b[33m» " },
     { toolName: "message", prefix: "\n    │› \u001b[33m" },
     { toolName: "openclaw.steer", prefix: "\n    \u001b[33m» " },
+    { toolName: "openclaw", prefix: "\n    \u001b[33m» " },
     { toolName: "openclaw.message", prefix: "\n    │› \u001b[33m" },
   ])(
     "keeps the correct summary marker and color for a compact $toolName preview",
