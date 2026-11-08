@@ -199,13 +199,13 @@ template: the model receives the original notice and, for created and updated
 skills, a diff of each skill, and writes the whole message. The built-in system
 prompt is language-neutral; it requires a leading emoji, every skill name in
 backticks followed directly by its description (no colon after the name), what
-happened to each skill, what the assistant will now do differently, and a hint
-that the change can be undone. It asks for one paragraph containing a single
-change-summary sentence and one closing undo sentence, then an immediate stop.
-The original notice and diffs must be merged into one summary, each distinct
-skill name appears once, and paraphrased or translated repetitions are excluded.
-The prompt includes one example. Set the language with `skillLearnedNotice.promptAppend`,
-for example:
+happened to each skill, and what the assistant will now do differently, while
+omitting any "say undo" hint (since Discord notices include an Undo button). It
+asks for one paragraph containing a single change-summary sentence, then an
+immediate stop. The original notice and diffs must be merged into one summary,
+each distinct skill name appears once, and paraphrased or translated repetitions
+are excluded. The prompt includes one example. Set the language with
+`skillLearnedNotice.promptAppend`, for example:
 
 ```json
 "skillLearnedNotice": {
