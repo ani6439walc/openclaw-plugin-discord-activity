@@ -83,14 +83,14 @@ describe("createLearnedNoticeHandler", () => {
   it("sends the model's whole message, built from the original notice and the diff", async () => {
     const original = notice("updated `alpha` (tweak)");
     complete.mockResolvedValue({
-      text: "Updated `alpha`: step 2 is now checked. Say undo to revert.",
+      text: "Updated `alpha` so step 2 is now checked.",
     });
     const result = await handler()(
       { to: "channel:123", content: original },
       discordCtx,
     );
     expect(result).toEqual({
-      content: "Updated `alpha`: step 2 is now checked. Say undo to revert.",
+      content: "Updated `alpha` so step 2 is now checked.",
     });
     const params = complete.mock.calls[0]![0];
     expect(params).not.toHaveProperty("model");
@@ -101,13 +101,13 @@ describe("createLearnedNoticeHandler", () => {
   });
 
   it("still asks the model when no diff or session is available", async () => {
-    complete.mockResolvedValue({ text: "Archived `beta`. Say undo." });
+    complete.mockResolvedValue({ text: "Archived `beta`." });
     expect(
       await handler()(
         { to: "c", content: notice("archived `beta` (unused)") },
         { channelId: "discord" },
       ),
-    ).toEqual({ content: "Archived `beta`. Say undo." });
+    ).toEqual({ content: "Archived `beta`." });
     expect(complete.mock.calls[0]![0].messages[0].content).not.toContain(
       "```diff",
     );
@@ -301,7 +301,7 @@ describe("createLearnedNoticeHandler", () => {
 describe("normalizeNoticeReply", () => {
   it("keeps one copy when the model writes the message twice", () => {
     const once =
-      "🔍 已更新 `dual-remote-pr`：現在會用合成資料重現問題，確認回歸測試在舊版失敗、新版通過。若想恢復舊版，可以說「undo」。";
+      "🔍 已更新 `dual-remote-pr`：現在會用合成資料重現問題，確認回歸測試在舊版失敗、新版通過。";
     expect(normalizeNoticeReply(`${once}${once}`, ["dual-remote-pr"])).toBe(
       once,
     );
@@ -340,8 +340,13 @@ describe("buildSystemPrompt", () => {
     const prompt = buildSystemPrompt();
     expect(prompt).not.toMatch(/Chinese|中文/);
     expect(prompt).toContain("backticks");
-    expect(prompt).toContain("undo");
+    expect(prompt).toContain(
+      'Do not include any hint or instruction about saying "undo" or reverting the change',
+    );
     expect(prompt).toContain("Example output:");
+    expect(prompt).not.toContain(
+      'Say "undo" if you want the old version back.',
+    );
   });
 
   it("asks for a leading emoji, no colon after the skill name, and a single version", () => {
@@ -354,7 +359,9 @@ describe("buildSystemPrompt", () => {
     );
     expect(prompt).toContain("Write exactly one version of the message");
     // The example output follows the same format it asks for.
-    expect(prompt).toMatch(/Example output:\n🔧 Updated `deploy-staging` to /u);
+    expect(prompt).toMatch(
+      /Example output:\n🔧 Updated `deploy-staging` to check that the image tag matches the release before deploying\.$/u,
+    );
   });
 });
 

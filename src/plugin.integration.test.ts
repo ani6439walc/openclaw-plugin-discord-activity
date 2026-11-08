@@ -131,7 +131,7 @@ describe("plugin", () => {
     "passes learned-notice thinking from config %j as reasoning %s",
     async (pluginConfig, expectedThinking) => {
       const complete = vi.fn(async () => ({
-        text: "🔧 Updated `alpha` to check results. Say undo to revert.",
+        text: "🔧 Updated `alpha` to check results.",
       }));
       mockApi.pluginConfig = pluginConfig;
       mockApi.runtime = {
