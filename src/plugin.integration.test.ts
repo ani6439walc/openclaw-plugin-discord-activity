@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -840,6 +841,191 @@ describe("plugin", () => {
         await fs.rm(agentDirV1, { recursive: true, force: true });
         await fs.rm(agentDirV2, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe("instance lifecycle background context", () => {
+    function createMockLifecycle(
+      instanceStore: AsyncLocalStorage<string>,
+      instanceId: string,
+    ) {
+      const controller = new AbortController();
+      const disposers: Array<() => void | Promise<void>> = [];
+      let retired = false;
+      const lifecycle: NonNullable<OpenClawPluginApi["lifecycle"]> = {
+        signal: controller.signal,
+        onDispose(dispose) {
+          disposers.push(dispose);
+          return () => {
+            const idx = disposers.indexOf(dispose);
+            if (idx >= 0) disposers.splice(idx, 1);
+          };
+        },
+        runInBackgroundContext<T>(run: () => T): T {
+          if (retired) {
+            const err = new Error(`Instance ${instanceId} is retired`);
+            err.name = "PluginInstanceUnavailableError";
+            throw err;
+          }
+          return instanceStore.run(instanceId, run);
+        },
+      };
+      return {
+        lifecycle,
+        async dispose() {
+          retired = true;
+          controller.abort();
+          for (const dispose of [...disposers]) {
+            await dispose();
+          }
+        },
+      };
+    }
+
+    it("cancels deferred reactions on instance disposal during delay or in-flight HTTP without borrowing a successor instance", async () => {
+      const instanceStore = new AsyncLocalStorage<string>();
+      const instance1 = createMockLifecycle(instanceStore, "gen-1");
+      const instance2 = createMockLifecycle(instanceStore, "gen-2");
+
+      const observedEvaluateInstances: Array<string | undefined> = [];
+      const evaluate1 = vi.fn(async () => {
+        observedEvaluateInstances.push(instanceStore.getStore());
+        return {
+          status: "ok" as const,
+          result: {
+            model: "jev",
+            answers: {
+              reaction: {
+                type: "choice" as const,
+                choice: "emoji_0",
+                probabilities: {},
+              },
+            },
+          },
+          provenance: {
+            providerId: "typesafe",
+            rubricVersion: "1",
+            runtimeGeneration: "gen-1",
+          },
+        };
+      });
+      const evaluate2 = vi.fn(async () => {
+        throw new Error("successor instance must not be borrowed");
+      });
+
+      let inFlightReactionSignal: AbortSignal | undefined;
+      let startedInFlightPut = false;
+      const fetchMock = vi.fn(
+        (_url: string, init?: RequestInit): Promise<Response> => {
+          if (init?.method === "PUT") {
+            startedInFlightPut = true;
+            inFlightReactionSignal = init.signal ?? undefined;
+            return new Promise<Response>((_resolve, reject) => {
+              init.signal?.addEventListener(
+                "abort",
+                () =>
+                  reject(
+                    new DOMException(
+                      "The operation was aborted.",
+                      "AbortError",
+                    ),
+                  ),
+                { once: true },
+              );
+            });
+          }
+          return Promise.resolve(new Response(null, { status: 204 }));
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const api1 = {
+        ...mockApi,
+        on: vi.fn(),
+        lifecycle: instance1.lifecycle,
+        config: {
+          channels: {
+            discord: { token: "synthetic-token", ackReaction: "👀" },
+          },
+          agents: { defaults: { decisionModel: "typesafe/jev-latest" } },
+        },
+        pluginConfig: {
+          messageReaction: { enabled: true, emojis: ["🎉"] },
+        },
+        runtime: {
+          agent: {
+            session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+          },
+          decisions: { evaluate: evaluate1 },
+          llm: { complete: vi.fn() },
+        },
+      } as unknown as OpenClawPluginApi;
+
+      const api2 = {
+        ...api1,
+        on: vi.fn(),
+        lifecycle: instance2.lifecycle,
+        runtime: {
+          agent: {
+            session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+          },
+          decisions: { evaluate: evaluate2 },
+          llm: { complete: vi.fn() },
+        },
+      } as unknown as OpenClawPluginApi;
+
+      plugin.register(api1);
+      plugin.register(api2);
+
+      const reactionHook1 = (
+        api1.on as ReturnType<typeof vi.fn>
+      ).mock.calls.find(([name]) => name === "message_received")?.[1] as (
+        event: unknown,
+        ctx: unknown,
+      ) => void;
+
+      const sessionCtx = {
+        channelId: "discord",
+        conversationId: "channel:123456789012345678",
+        sessionKey: "agent:main:discord:channel:123456789012345678",
+      };
+
+      // Case 1: Start message 1, reach in-flight PUT HTTP request under gen-1 context, then reload/dispose gen-1.
+      reactionHook1(
+        { messageId: "434567890123456781", content: "In-flight HTTP reload" },
+        sessionCtx,
+      );
+      // Queue a second message that is still inside its 3-5s human delay when disposal fires.
+      await vi.advanceTimersByTimeAsync(2000);
+      reactionHook1(
+        { messageId: "434567890123456782", content: "Mid-delay reload" },
+        sessionCtx,
+      );
+      await vi.advanceTimersByTimeAsync(3500);
+      await vi.waitFor(() => expect(startedInFlightPut).toBe(true));
+      expect(observedEvaluateInstances).toEqual(["gen-1"]);
+      expect(inFlightReactionSignal?.aborted).toBe(false);
+
+      // Dispose gen-1 while message 1 is mid-HTTP PUT and message 2 is mid-delay.
+      await instance1.dispose();
+      expect(inFlightReactionSignal?.aborted).toBe(true);
+
+      // Advance past all remaining delays/deadlines: neither message 2 nor ACK cleanup runs, and gen-2 is untouched.
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(evaluate1).toHaveBeenCalledTimes(1);
+      expect(evaluate2).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Any stray hook call on disposed gen-1 is ignored without touching gen-2.
+      reactionHook1(
+        { messageId: "434567890123456783", content: "After disposal" },
+        sessionCtx,
+      );
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(evaluate1).toHaveBeenCalledTimes(1);
+      expect(evaluate2).not.toHaveBeenCalled();
+
+      await instance2.dispose();
     });
   });
 });

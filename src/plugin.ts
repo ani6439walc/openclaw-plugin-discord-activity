@@ -58,8 +58,12 @@ export default definePluginEntry({
     });
 
     if (config.messageReaction?.enabled) {
+      const lifecycle = api.lifecycle;
+      const runInBackgroundContext =
+        lifecycle?.runInBackgroundContext?.bind(lifecycle);
       const reactionHandler = createMessageReactionHandler({
         config: config.messageReaction,
+        runInBackgroundContext,
         prepareOperation: () => {
           const cfg = readCurrentHostConfig(api);
           return {
@@ -91,8 +95,27 @@ export default definePluginEntry({
         addReaction: addReactionWithResult,
         removeAckReaction: removeAckReactionWithResult,
       });
+      const onLifecycleAbort = () => {
+        void reactionHandler.stop();
+      };
+      if (lifecycle?.signal) {
+        if (lifecycle.signal.aborted) {
+          void reactionHandler.stop();
+        } else {
+          lifecycle.signal.addEventListener("abort", onLifecycleAbort, {
+            once: true,
+          });
+        }
+      }
+      lifecycle?.onDispose?.(() => {
+        lifecycle.signal?.removeEventListener("abort", onLifecycleAbort);
+        return reactionHandler.stop();
+      });
       api.on("message_received", reactionHandler.onMessageReceived);
-      api.on("gateway_stop", reactionHandler.stop);
+      api.on("gateway_stop", () => {
+        lifecycle?.signal?.removeEventListener("abort", onLifecycleAbort);
+        return reactionHandler.stop();
+      });
     }
     api.on("message_received", handlers.onMessageReceived);
     api.on("before_tool_call", handlers.onBeforeToolCall);

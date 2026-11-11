@@ -104,6 +104,7 @@ type MessageReactionBaseDeps = {
   wait?: (ms: number, signal: AbortSignal) => Promise<void>;
   random?: () => number;
   sampleRandom?: () => number;
+  runInBackgroundContext?: <T>(run: () => T) => T;
 };
 
 type MessageReactionDeps = MessageReactionBaseDeps &
@@ -176,6 +177,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     : BASE_REACTION_INSTRUCTIONS;
   const seen = new Map<string, number>();
   const controllers = new Set<AbortController>();
+  const inFlight = new Set<Promise<void>>();
   let active = 0;
   let stopped = false;
 
@@ -195,7 +197,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     const { signal } = params.controller;
     await raceAbort((deps.wait ?? sleep)(params.delayMs, signal), signal);
     if (signal.aborted) return;
-    const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
       logger.warn("message reaction deadline reached.", {
         messageId: params.messageId,
         sessionKey: params.sessionKey,
@@ -206,6 +208,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       await applyReaction(params);
     } finally {
       clearTimeout(timer);
+      timer = undefined;
     }
   }
 
@@ -455,6 +458,54 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
           (MAX_REACTION_DELAY_MS - MIN_REACTION_DELAY_MS + 1),
       );
     const controller = new AbortController();
+    controllers.add(controller);
+    active += 1;
+    let launchedWork: Promise<void> | undefined;
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      controllers.delete(controller);
+      active -= 1;
+    };
+    const launch = () => {
+      launchedWork = processMessage({
+        agentId,
+        sessionKey,
+        userId,
+        channelId,
+        accountId: ctx.accountId,
+        messageId,
+        text: messageText,
+        candidates,
+        controller,
+        decisionRoute,
+        delayMs,
+        resolvers,
+      }).finally(cleanup);
+      return launchedWork;
+    };
+
+    let backgroundTask: Promise<void>;
+    try {
+      backgroundTask = deps.runInBackgroundContext
+        ? deps.runInBackgroundContext(launch)
+        : launch();
+    } catch (error) {
+      controller.abort();
+      if (!launchedWork) {
+        cleanup();
+      } else {
+        void launchedWork.catch(() => {});
+      }
+      logger.warn("message reaction background context unavailable.", {
+        messageId,
+        sessionKey,
+        errorName: error instanceof Error ? error.name : "unknown",
+      });
+      return;
+    }
+
     logger.info("message reaction accepted.", {
       messageId,
       sessionKey,
@@ -462,39 +513,37 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       decisionRoute,
       delayMs,
     });
-    controllers.add(controller);
-    active += 1;
-    void processMessage({
-      agentId,
-      sessionKey,
-      userId,
-      channelId,
-      accountId: ctx.accountId,
-      messageId,
-      text: messageText,
-      candidates,
-      controller,
-      decisionRoute,
-      delayMs,
-      resolvers,
-    })
+
+    const settled = backgroundTask
       .catch((error: unknown) => {
+        const wasAborted = controller.signal.aborted;
+        controller.abort();
         logger.warn("message reaction failed.", {
           messageId,
           sessionKey,
           errorName: error instanceof Error ? error.name : "unknown",
-          aborted: controller.signal.aborted,
+          aborted: wasAborted,
         });
       })
+      .then(async () => {
+        if (launchedWork) {
+          await launchedWork.catch(() => {});
+        } else {
+          cleanup();
+        }
+      })
       .finally(() => {
-        controllers.delete(controller);
-        active -= 1;
+        inFlight.delete(settled);
       });
+    inFlight.add(settled);
   }
 
-  function stop(): void {
+  async function stop(): Promise<void> {
     stopped = true;
     for (const controller of controllers) controller.abort();
+    if (inFlight.size > 0) {
+      await Promise.allSettled([...inFlight]);
+    }
   }
 
   return { onMessageReceived, stop };

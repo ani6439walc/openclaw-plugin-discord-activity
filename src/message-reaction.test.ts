@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../api.js";
 import { resolveConfig } from "./config.js";
@@ -1063,5 +1064,223 @@ describe("message reaction handler", () => {
     await handler.onMessageReceived({ content: message.content }, context);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("retains the registering instance background context across the 3-5s delay and returns the full task Promise", async () => {
+    vi.useFakeTimers();
+    const instanceStore = new AsyncLocalStorage<string>();
+    const callerHookStore = new AsyncLocalStorage<string>();
+    const observedContexts: Array<{
+      step: string;
+      instance: string | undefined;
+      callerHook: string | undefined;
+    }> = [];
+    const trackedPromises: Promise<unknown>[] = [];
+
+    let releaseAck!: () => void;
+    const ackBarrier = new Promise<void>((resolve) => {
+      releaseAck = resolve;
+    });
+
+    const record = (step: string) => {
+      observedContexts.push({
+        step,
+        instance: instanceStore.getStore(),
+        callerHook: callerHookStore.getStore(),
+      });
+    };
+
+    const handler = createMessageReactionHandler({
+      config: resolveConfig({
+        messageReaction: { enabled: true, emojis: ["🎉"] },
+      }).messageReaction,
+      runInBackgroundContext: <T>(run: () => T): T =>
+        callerHookStore.run(undefined as unknown as string, () =>
+          instanceStore.run("instance-1", () => {
+            const result = run();
+            if (result instanceof Promise) trackedPromises.push(result);
+            return result;
+          }),
+        ),
+      resolveDecisionModel: () => "typesafe/jev-latest",
+      resolveGlobalDecisionModel: () => undefined,
+      getSessionEntry: vi.fn(async () => {
+        record("getSessionEntry");
+        return { activitySummary: { text: "Release recap" } };
+      }),
+      evaluate: vi.fn(async () => {
+        record("evaluate");
+        return decision("emoji_0");
+      }),
+      getToken: () => "token",
+      resolveDmChannel: vi.fn(async () => {
+        record("resolveDmChannel");
+        return "345678901234567890";
+      }),
+      addReaction: vi.fn(async () => {
+        record("addReaction");
+        return { outcome: "applied" as const, reason: "created" };
+      }),
+      resolveAckReaction: () => "👀",
+      removeAckReaction: vi.fn(async () => {
+        record("removeAckReaction");
+        await ackBarrier;
+        return { outcome: "applied" as const, reason: "removed" };
+      }),
+      wait: sleep,
+      random: () => 0,
+    });
+
+    // Dispatch inside a transient caller hook context that ends immediately on return.
+    const hookReturn = callerHookStore.run("ephemeral-hook-turn", () =>
+      handler.onMessageReceived(message, context),
+    );
+    expect(hookReturn).toBeUndefined();
+    expect(trackedPromises).toHaveLength(1);
+
+    let trackedSettled = false;
+    void trackedPromises[0]!.finally(() => {
+      trackedSettled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.waitFor(() =>
+      expect(observedContexts.map((entry) => entry.step)).toEqual([
+        "getSessionEntry",
+        "evaluate",
+        "resolveDmChannel",
+        "addReaction",
+        "removeAckReaction",
+      ]),
+    );
+    // Runner Promise stays pending until the final ACK cleanup finishes.
+    expect(trackedSettled).toBe(false);
+    releaseAck();
+    await trackedPromises[0];
+    expect(trackedSettled).toBe(true);
+
+    for (const entry of observedContexts) {
+      expect(entry.instance).toBe("instance-1");
+      expect(entry.callerHook).toBeUndefined();
+    }
+
+    // Also verify fallback decision fetch runs inside the retained background context
+    // and propagates terminal task rejection to the runner Promise.
+    const fallbackTracked: Promise<unknown>[] = [];
+    let fallbackContext: string | undefined;
+    const failingAdd = createMessageReactionHandler({
+      config: resolveConfig({
+        messageReaction: { enabled: true, emojis: ["🎉"] },
+      }).messageReaction,
+      runInBackgroundContext: <T>(run: () => T): T =>
+        instanceStore.run("instance-fallback", () => {
+          const result = run();
+          if (result instanceof Promise) fallbackTracked.push(result);
+          return result;
+        }),
+      resolveDecisionModel: () => "",
+      resolveGlobalDecisionModel: () => undefined,
+      evaluateFallback: vi.fn(async () => {
+        fallbackContext = instanceStore.getStore();
+        return "emoji_0";
+      }),
+      getSessionEntry: vi.fn(async () => undefined),
+      evaluate: vi.fn(),
+      getToken: () => "token",
+      resolveDmChannel: vi.fn(async () => "345678901234567890"),
+      addReaction: vi.fn(async () => {
+        throw new Error("discordboom");
+      }),
+      resolveAckReaction: () => "",
+      removeAckReaction: vi.fn(),
+      wait: sleep,
+      random: () => 0,
+    });
+    failingAdd.onMessageReceived(
+      { ...message, messageId: "234567890123456790" },
+      context,
+    );
+    const rejectionAssertion = expect(fallbackTracked[0]).rejects.toThrow(
+      "discordboom",
+    );
+    await vi.advanceTimersByTimeAsync(3000);
+    await rejectionAssertion;
+    expect(fallbackContext).toBe("instance-fallback");
+    await handler.stop();
+    await failingAdd.stop();
+  });
+
+  it("refuses retired background-context admission or forced retirement without falling back to unbound execution", async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(logger, "warn");
+    const getSessionEntry = vi.fn(async () => undefined);
+    const evaluate = vi.fn(async () => decision("emoji_0"));
+    const addReaction = vi.fn(async () => ({
+      outcome: "applied" as const,
+      reason: "created",
+    }));
+
+    let retiredSynchronously = true;
+    let rejectForcedRetirement!: (reason?: unknown) => void;
+    const handler = createMessageReactionHandler({
+      config: resolveConfig({
+        messageReaction: { enabled: true, emojis: ["🎉"] },
+      }).messageReaction,
+      runInBackgroundContext: <T>(run: () => T): T => {
+        if (retiredSynchronously) {
+          const err = new Error("Plugin instance retired");
+          err.name = "PluginInstanceUnavailableError";
+          throw err;
+        }
+        const task = run() as Promise<unknown>;
+        const forced = new Promise<never>((_, reject) => {
+          rejectForcedRetirement = reject;
+        });
+        return Promise.race([task, forced]) as T;
+      },
+      resolveDecisionModel: () => "typesafe/jev-latest",
+      resolveGlobalDecisionModel: () => undefined,
+      getSessionEntry,
+      evaluate,
+      getToken: () => "token",
+      resolveDmChannel: vi.fn(async () => "345678901234567890"),
+      addReaction,
+      resolveAckReaction: () => "",
+      removeAckReaction: vi.fn(),
+      wait: sleep,
+      random: () => 0,
+    });
+
+    // 10 synchronous retired refusals neither execute unbound nor leak concurrency slots.
+    for (let i = 0; i < 10; i += 1) {
+      handler.onMessageReceived(
+        { ...message, messageId: String(334567890123456780n + BigInt(i)) },
+        context,
+      );
+    }
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(getSessionEntry).not.toHaveBeenCalled();
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(addReaction).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "message reaction background context unavailable.",
+      expect.objectContaining({ errorName: "PluginInstanceUnavailableError" }),
+    );
+
+    // Async forced retirement mid-delay aborts the underlying reaction task cleanly.
+    retiredSynchronously = false;
+    handler.onMessageReceived(
+      { ...message, messageId: "334567890123456799" },
+      context,
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+    const forcedErr = new Error("Plugin instance force retired");
+    forcedErr.name = "PluginInstanceUnavailableError";
+    rejectForcedRetirement(forcedErr);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(getSessionEntry).not.toHaveBeenCalled();
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(addReaction).not.toHaveBeenCalled();
+    await handler.stop();
   });
 });
