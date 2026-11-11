@@ -7,11 +7,11 @@ type AgentConfigReader = (
 
 /**
  * Model for the learned-skill notice: the plugin's `skillLearnedNotice.model`, otherwise the
- * explicit utility model of the agent (`agents.entries.<id>.utilityModel`, then
+ * explicit utility model of the notice's owning agent (`agents.entries.<id>.utilityModel`, then
  * `agents.defaults.utilityModel`). An empty utility model disables utility routing and an unset
  * one means core's automatic choice, which plugins cannot resolve; both return undefined so the
- * host picks the model. The completion is not bound to the notice's agent, so that is the host's
- * default model (its ambient owner agent), not necessarily the notice agent's own default.
+ * host picks the model for the completion's owning agent (the validated source agent from
+ * `ctx.sessionKey`, or the host's ambient owner when the notice has no agent session).
  */
 export function resolveLearnedNoticeModel(params: {
   configured?: string;

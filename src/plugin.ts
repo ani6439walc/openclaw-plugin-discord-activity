@@ -1,6 +1,7 @@
 import {
   definePluginEntry,
   setApiLogger,
+  type OpenClawConfig,
   type OpenClawPluginApi,
 } from "../api.js";
 import { resolveDiscordToken } from "../token.js";
@@ -12,10 +13,13 @@ import { HINDSIGHT_MEMORY_EVENT_STREAM } from "./hindsight-memory-status.js";
 import {
   createLearnedNoticeHandler,
   LEARNED_NOTICE_HOOK_TIMEOUT_MS,
+  resolveLearnedNoticeOwner,
 } from "./learned-notice-hook.js";
 import {
+  listAgentIds,
   resolveAgentConfig,
   resolveAgentDir,
+  tryResolveDefaultAgentId,
 } from "openclaw/plugin-sdk/agent-scope-runtime";
 import { resolveLearnedNoticeModel } from "./learned-notice-model.js";
 import {
@@ -30,6 +34,31 @@ import {
 } from "./discord-api.js";
 import { createFallbackDecisionEvaluator } from "./decision-model.js";
 import { resolveAckReaction } from "openclaw/plugin-sdk/channel-feedback";
+
+function readCurrentHostConfig(api: OpenClawPluginApi): OpenClawConfig {
+  return api.runtime?.config?.current
+    ? (api.runtime.config.current() as OpenClawConfig)
+    : api.config;
+}
+
+function resolveAmbientNoticeOwnerId(
+  cfg: OpenClawConfig,
+  configuredAgentIds: readonly string[],
+): string | undefined {
+  const rawSystemAgent = (
+    cfg.agents?.defaults as { systemAgent?: { agentId?: unknown } } | undefined
+  )?.systemAgent?.agentId;
+  if (typeof rawSystemAgent === "string") {
+    const trimmed = rawSystemAgent.trim();
+    if (/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(trimmed)) {
+      const normalized = trimmed.toLowerCase();
+      if (configuredAgentIds.includes(normalized)) {
+        return normalized;
+      }
+    }
+  }
+  return tryResolveDefaultAgentId(cfg);
+}
 
 export default definePluginEntry({
   id: "discord-activity",
@@ -46,17 +75,36 @@ export default definePluginEntry({
       store: defaultStore,
       orphans: defaultOrphans,
       getToken: (accountId?: string) =>
-        resolveDiscordToken(api.config, { accountId }).token,
+        resolveDiscordToken(readCurrentHostConfig(api), { accountId }).token,
       config,
     });
 
     if (config.messageReaction?.enabled) {
+      const lifecycle = api.lifecycle;
+      const runInBackgroundContext =
+        lifecycle?.runInBackgroundContext?.bind(lifecycle);
       const reactionHandler = createMessageReactionHandler({
         config: config.messageReaction,
-        resolveDecisionModel: (agentId) =>
-          resolveAgentConfig(api.config, agentId)?.decisionModel,
-        resolveGlobalDecisionModel: () =>
-          api.config.agents?.defaults?.decisionModel,
+        runInBackgroundContext,
+        prepareOperation: () => {
+          const cfg = readCurrentHostConfig(api);
+          return {
+            resolveDecisionModel: (agentId) =>
+              resolveAgentConfig(cfg, agentId)?.decisionModel,
+            resolveGlobalDecisionModel: () =>
+              cfg.agents?.defaults?.decisionModel,
+            evaluateFallback: config.decisionModel
+              ? createFallbackDecisionEvaluator(config.decisionModel, cfg)
+              : undefined,
+            getToken: (accountId) =>
+              resolveDiscordToken(cfg, { accountId }).token,
+            resolveAckReaction: (agentId, accountId) =>
+              resolveAckReaction(cfg, agentId, {
+                channel: "discord",
+                accountId: normalizeAccountId(accountId),
+              }),
+          };
+        },
         getSessionEntry: (agentId, sessionKey) =>
           api.runtime.agent.session.getSessionEntryAsync({
             agentId,
@@ -65,22 +113,31 @@ export default definePluginEntry({
           }),
         evaluate: (batch, options) =>
           api.runtime.decisions.evaluate(batch, options),
-        evaluateFallback: config.decisionModel
-          ? createFallbackDecisionEvaluator(config.decisionModel, api.config)
-          : undefined,
-        getToken: (accountId) =>
-          resolveDiscordToken(api.config, { accountId }).token,
         resolveDmChannel,
         addReaction: addReactionWithResult,
-        resolveAckReaction: (agentId, accountId) =>
-          resolveAckReaction(api.config, agentId, {
-            channel: "discord",
-            accountId: normalizeAccountId(accountId),
-          }),
         removeAckReaction: removeAckReactionWithResult,
       });
+      const onLifecycleAbort = () => {
+        void reactionHandler.stop();
+      };
+      if (lifecycle?.signal) {
+        if (lifecycle.signal.aborted) {
+          void reactionHandler.stop();
+        } else {
+          lifecycle.signal.addEventListener("abort", onLifecycleAbort, {
+            once: true,
+          });
+        }
+      }
+      lifecycle?.onDispose?.(() => {
+        lifecycle.signal?.removeEventListener("abort", onLifecycleAbort);
+        return reactionHandler.stop();
+      });
       api.on("message_received", reactionHandler.onMessageReceived);
-      api.on("gateway_stop", reactionHandler.stop);
+      api.on("gateway_stop", () => {
+        lifecycle?.signal?.removeEventListener("abort", onLifecycleAbort);
+        return reactionHandler.stop();
+      });
     }
     api.on("message_received", handlers.onMessageReceived);
     api.on("before_tool_call", handlers.onBeforeToolCall);
@@ -89,17 +146,33 @@ export default definePluginEntry({
     api.on(
       "message_sending",
       createLearnedNoticeHandler({
-        resolveAgentDir: (agentId) => resolveAgentDir(api.config, agentId),
-        resolveAgentId: (sessionKey) =>
-          parseAgentSessionKey(sessionKey)?.agentId,
+        prepareOperation: () => {
+          const cfg = readCurrentHostConfig(api);
+          const configuredAgentIds = listAgentIds(cfg);
+          const ambientOwnerId = resolveAmbientNoticeOwnerId(
+            cfg,
+            configuredAgentIds,
+          );
+          return {
+            resolveNoticeOwner: (sessionKey) =>
+              resolveLearnedNoticeOwner({
+                sessionKey,
+                parseSessionAgentId: (key) =>
+                  parseAgentSessionKey(key)?.agentId,
+                configuredAgentIds,
+                ambientOwnerId,
+              }),
+            resolveAgentDir: (agentId) => resolveAgentDir(cfg, agentId),
+            resolveModel: (agentId) =>
+              resolveLearnedNoticeModel({
+                configured: config.skillLearnedNotice?.model,
+                cfg,
+                agentId,
+                resolveAgentConfig,
+              }),
+          };
+        },
         complete: (params) => api.runtime.llm.complete(params),
-        resolveModel: (agentId) =>
-          resolveLearnedNoticeModel({
-            configured: config.skillLearnedNotice?.model,
-            cfg: api.config,
-            agentId,
-            resolveAgentConfig,
-          }),
         thinking: config.skillLearnedNotice?.thinking,
         promptAppend: config.skillLearnedNotice?.promptAppend,
       }),

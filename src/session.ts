@@ -107,6 +107,30 @@ async function runSerializedSessionOperation(
   }
 }
 
+function memoizeTokenForOperation(
+  getToken: (accountId?: string) => string,
+): (accountId?: string) => string {
+  const resolved = new Map<
+    string | undefined,
+    { ok: true; token: string } | { ok: false; error: unknown }
+  >();
+  return (accountId?: string) => {
+    const cached = resolved.get(accountId);
+    if (cached) {
+      if (cached.ok) return cached.token;
+      throw cached.error;
+    }
+    try {
+      const token = getToken(accountId);
+      resolved.set(accountId, { ok: true, token });
+      return token;
+    } catch (error) {
+      resolved.set(accountId, { ok: false, error });
+      throw error;
+    }
+  };
+}
+
 function scheduleDeleteRecovery(
   session: SessionEntry,
   messageId: string,
@@ -121,8 +145,9 @@ function scheduleDeleteRecovery(
   };
 
   setTimeout(() => {
+    const operationGetToken = memoizeTokenForOperation(getToken);
     void deleteDiscordStatusMessageWithResult(
-      getToken,
+      operationGetToken,
       cleanup.channelId,
       cleanup.messageId,
       cleanup.accountId,
@@ -157,16 +182,17 @@ async function deleteStatusMessageWithRecovery(
   session: SessionEntry,
   messageId: string,
   hookName: string,
-  getToken: (accountId?: string) => string,
+  operationGetToken: (accountId?: string) => string,
+  liveGetToken: (accountId?: string) => string = operationGetToken,
 ) {
   const result = await deleteDiscordStatusMessageWithResult(
-    getToken,
+    operationGetToken,
     session.channelId,
     messageId,
     session.accountId,
   );
   if (!result.deleted && result.retryable) {
-    scheduleDeleteRecovery(session, messageId, hookName, getToken);
+    scheduleDeleteRecovery(session, messageId, hookName, liveGetToken);
   } else if (!result.deleted) {
     logger.warn("status message cleanup failed without recovery.", {
       contextKey: session.contextKey,
@@ -201,11 +227,13 @@ export async function retireSession(
         return;
       }
 
+      const operationGetToken = memoizeTokenForOperation(getToken);
       const staleMsgId = session.statusMessageId;
       await deleteStatusMessageWithRecovery(
         session,
         staleMsgId,
         hookName,
+        operationGetToken,
         getToken,
       );
       if (session.statusMessageId === staleMsgId) {
@@ -324,6 +352,7 @@ export async function clearStatusMessage(
 
     if (!session.statusMessageId) return;
 
+    const operationGetToken = memoizeTokenForOperation(getToken);
     const msgId = session.statusMessageId;
     logger.info(`[${hookName}] deleting status message ${msgId}.`, {
       contextKey: session.contextKey,
@@ -332,7 +361,13 @@ export async function clearStatusMessage(
       messageId: msgId,
     });
 
-    await deleteStatusMessageWithRecovery(session, msgId, hookName, getToken);
+    await deleteStatusMessageWithRecovery(
+      session,
+      msgId,
+      hookName,
+      operationGetToken,
+      getToken,
+    );
     if (session.statusMessageId === msgId) {
       session.statusMessageId = undefined;
     }
@@ -468,6 +503,8 @@ export async function updateStatusMessage(
       return;
     }
 
+    const operationGetToken = memoizeTokenForOperation(getToken);
+
     if (isNewMessage) {
       const isRetryingUncertainCreate = session.statusCreateNonce !== undefined;
       const createNonce = session.statusCreateNonce ?? createMessageNonce();
@@ -477,7 +514,7 @@ export async function updateStatusMessage(
           ? session.userMessageId
           : undefined;
       const result = await sendDiscordStatusWithDmFallbackWithResult(
-        getToken,
+        operationGetToken,
         session,
         content,
         replyToId,
@@ -495,6 +532,7 @@ export async function updateStatusMessage(
             session,
             result.messageId,
             "late_status_create",
+            operationGetToken,
             getToken,
           );
         }
@@ -537,7 +575,7 @@ export async function updateStatusMessage(
 
       if (isRetryingUncertainCreate) {
         const reconcileResult = await editDiscordStatusMessageWithResult(
-          getToken,
+          operationGetToken,
           session.channelId,
           session.statusMessageId,
           content,
@@ -582,7 +620,7 @@ export async function updateStatusMessage(
 
     const messageId = session.statusMessageId;
     const result = await editDiscordStatusMessageWithResult(
-      getToken,
+      operationGetToken,
       session.channelId,
       messageId,
       content,

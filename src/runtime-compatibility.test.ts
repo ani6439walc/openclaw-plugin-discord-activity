@@ -17,9 +17,21 @@ type PackageMetadata = {
   };
 };
 
+type PinnedOpenClawMetadata = {
+  version: string;
+  engines: { node: string };
+};
+
 const packageMetadata = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as PackageMetadata;
+const pinnedOpenClawMetadata = JSON.parse(
+  readFileSync(
+    new URL("../node_modules/openclaw/package.json", import.meta.url),
+    "utf8",
+  ),
+) as PinnedOpenClawMetadata;
+const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 
 describe("OpenClaw runtime compatibility", () => {
   it("loads the SDK entrypoints used by the plugin", () => {
@@ -78,12 +90,21 @@ describe("OpenClaw runtime compatibility", () => {
     }
   });
 
-  it("keeps runtime, SDK, peer, and minimum versions aligned", () => {
+  it("keeps runtime, SDK, peer, README, and minimum versions aligned", () => {
     const peerVersion = packageMetadata.peerDependencies.openclaw;
+    const minGatewayVersion = packageMetadata.openclaw.compat.minGatewayVersion;
+    const nodeEngines = pinnedOpenClawMetadata.engines.node;
 
     expect(packageMetadata.openclaw.compat.pluginApi).toBe(`>=${peerVersion}`);
-    expect(packageMetadata.openclaw.compat.minGatewayVersion).toBe(peerVersion);
+    expect(minGatewayVersion).toBe(peerVersion);
     expect(packageMetadata.openclaw.build.openclawVersion).toBe(peerVersion);
     expect(packageMetadata.openclaw.build.pluginSdkVersion).toBe(peerVersion);
+    expect(pinnedOpenClawMetadata.version).toBe(peerVersion);
+    expect(readme).toContain(
+      `The pinned OpenClaw ${peerVersion} requires Node.js \`${nodeEngines}\`.`,
+    );
+    expect(readme).toContain(
+      `This release targets OpenClaw/plugin SDK \`${peerVersion}\`, declares \`${minGatewayVersion}\` as the minimum gateway version,`,
+    );
   });
 });
