@@ -281,7 +281,7 @@ The repository is a small TypeScript plugin with focused runtime modules and col
 
 ## Installation
 
-The pinned OpenClaw 2026.10.3 requires Node.js `>=24.16.0 <25 || >=26.1.0`.
+The pinned OpenClaw 2026.11.2 requires Node.js `>=24.16.0 <25 || >=26.1.0`.
 CI validates Node.js 24 and 26.
 
 Install the published plugin from [ClawHub](https://clawhub.ai/wei840222/plugins/discord-activity):
@@ -329,7 +329,7 @@ The plugin manifest activates on startup for the `discord` channel:
 
 Discord bot credentials are resolved through OpenClaw account/secret configuration by the plugin SDK. Keep Discord credentials in the OpenClaw Discord channel/account configuration or secret store; do not hard-code credentials in this plugin.
 
-This release targets OpenClaw/plugin SDK `2026.10.3`, declares `2026.10.3` as the minimum gateway version, and loads `openclaw/plugin-sdk/plugin-entry` plus `openclaw/plugin-sdk/runtime-env` directly. The integration suite verifies those entrypoints and version declarations together.
+This release targets OpenClaw/plugin SDK `2026.11.2`, declares `2026.11.2` as the minimum gateway version, and loads `openclaw/plugin-sdk/plugin-entry` plus `openclaw/plugin-sdk/runtime-env` directly. The integration suite verifies those entrypoints and version declarations together.
 
 ## Configuration
 
