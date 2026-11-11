@@ -63,20 +63,24 @@ export type ReactionDecisionBatch = {
   };
 };
 
-type MessageReactionDeps = {
-  config: PluginConfig["messageReaction"];
+export type MessageReactionOperationResolvers = {
   resolveDecisionModel: (agentId: string) => unknown;
   resolveGlobalDecisionModel: () => unknown;
-  getSessionEntry: (
-    agentId: string,
-    sessionKey: string,
-  ) => Promise<{ activitySummary?: { text?: string } } | undefined>;
-  evaluate: DecisionEvaluate;
   evaluateFallback?: (
     batch: ReactionDecisionBatch,
     signal: AbortSignal,
   ) => Promise<string | undefined>;
   getToken: (accountId?: string) => string;
+  resolveAckReaction: (agentId: string, accountId?: string) => string;
+};
+
+type MessageReactionBaseDeps = {
+  config: PluginConfig["messageReaction"];
+  getSessionEntry: (
+    agentId: string,
+    sessionKey: string,
+  ) => Promise<{ activitySummary?: { text?: string } } | undefined>;
+  evaluate: DecisionEvaluate;
   resolveDmChannel: (
     userId: string,
     token: string,
@@ -90,12 +94,27 @@ type MessageReactionDeps = {
     token: string,
     signal: AbortSignal,
   ) => Promise<DiscordMutationResult>;
-  resolveAckReaction: (agentId: string, accountId?: string) => string;
-  removeAckReaction: MessageReactionDeps["addReaction"];
+  removeAckReaction: (
+    channelId: string,
+    messageId: string,
+    emoji: string,
+    token: string,
+    signal: AbortSignal,
+  ) => Promise<DiscordMutationResult>;
   wait?: (ms: number, signal: AbortSignal) => Promise<void>;
   random?: () => number;
   sampleRandom?: () => number;
 };
+
+type MessageReactionDeps = MessageReactionBaseDeps &
+  (
+    | (MessageReactionOperationResolvers & {
+        prepareOperation?: undefined;
+      })
+    | {
+        prepareOperation: () => MessageReactionOperationResolvers;
+      }
+  );
 
 type ReactionMessage = {
   agentId: string;
@@ -109,6 +128,7 @@ type ReactionMessage = {
   controller: AbortController;
   decisionRoute: "agent" | "global" | "fallback";
   delayMs: number;
+  resolvers: MessageReactionOperationResolvers;
 };
 
 function aborted(): DOMException {
@@ -198,7 +218,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       accountId: params.accountId ?? "default",
       decisionRoute: params.decisionRoute,
     };
-    const token = deps.getToken(params.accountId);
+    const token = params.resolvers.getToken(params.accountId);
     if (!token || signal.aborted) {
       logger.info("message reaction skipped.", {
         ...logContext,
@@ -248,7 +268,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       });
       if (params.decisionRoute === "fallback") {
         selected = await raceAbort(
-          deps.evaluateFallback!(batch, signal),
+          params.resolvers.evaluateFallback!(batch, signal),
           signal,
         );
       } else {
@@ -332,7 +352,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
     const nextRecent = rememberRecentEmoji(recentEmojis, emoji);
     recentEmojis.splice(0, recentEmojis.length, ...nextRecent);
     try {
-      const ackReaction = deps.resolveAckReaction(
+      const ackReaction = params.resolvers.resolveAckReaction(
         params.agentId,
         params.accountId,
       );
@@ -406,17 +426,18 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       });
       return;
     }
-    const agentModel = deps.resolveDecisionModel(agentId);
+    const resolvers = deps.prepareOperation ? deps.prepareOperation() : deps;
+    const agentModel = resolvers.resolveDecisionModel(agentId);
     const hasAgentSetting = typeof agentModel === "string";
     const globalModel = hasAgentSetting
       ? undefined
-      : deps.resolveGlobalDecisionModel();
+      : resolvers.resolveGlobalDecisionModel();
     const decisionRoute =
       hasAgentSetting && agentModel.trim()
         ? "agent"
         : typeof globalModel === "string" && globalModel.trim()
           ? "global"
-          : deps.evaluateFallback
+          : resolvers.evaluateFallback
             ? "fallback"
             : undefined;
     if (!decisionRoute) return skip("missing-decision-model");
@@ -455,6 +476,7 @@ export function createMessageReactionHandler(deps: MessageReactionDeps) {
       controller,
       decisionRoute,
       delayMs,
+      resolvers,
     })
       .catch((error: unknown) => {
         logger.warn("message reaction failed.", {

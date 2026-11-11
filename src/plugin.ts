@@ -1,6 +1,7 @@
 import {
   definePluginEntry,
   setApiLogger,
+  type OpenClawConfig,
   type OpenClawPluginApi,
 } from "../api.js";
 import { resolveDiscordToken } from "../token.js";
@@ -31,6 +32,12 @@ import {
 import { createFallbackDecisionEvaluator } from "./decision-model.js";
 import { resolveAckReaction } from "openclaw/plugin-sdk/channel-feedback";
 
+function readCurrentHostConfig(api: OpenClawPluginApi): OpenClawConfig {
+  return api.runtime?.config?.current
+    ? (api.runtime.config.current() as OpenClawConfig)
+    : api.config;
+}
+
 export default definePluginEntry({
   id: "discord-activity",
   name: "Discord Activity",
@@ -46,17 +53,32 @@ export default definePluginEntry({
       store: defaultStore,
       orphans: defaultOrphans,
       getToken: (accountId?: string) =>
-        resolveDiscordToken(api.config, { accountId }).token,
+        resolveDiscordToken(readCurrentHostConfig(api), { accountId }).token,
       config,
     });
 
     if (config.messageReaction?.enabled) {
       const reactionHandler = createMessageReactionHandler({
         config: config.messageReaction,
-        resolveDecisionModel: (agentId) =>
-          resolveAgentConfig(api.config, agentId)?.decisionModel,
-        resolveGlobalDecisionModel: () =>
-          api.config.agents?.defaults?.decisionModel,
+        prepareOperation: () => {
+          const cfg = readCurrentHostConfig(api);
+          return {
+            resolveDecisionModel: (agentId) =>
+              resolveAgentConfig(cfg, agentId)?.decisionModel,
+            resolveGlobalDecisionModel: () =>
+              cfg.agents?.defaults?.decisionModel,
+            evaluateFallback: config.decisionModel
+              ? createFallbackDecisionEvaluator(config.decisionModel, cfg)
+              : undefined,
+            getToken: (accountId) =>
+              resolveDiscordToken(cfg, { accountId }).token,
+            resolveAckReaction: (agentId, accountId) =>
+              resolveAckReaction(cfg, agentId, {
+                channel: "discord",
+                accountId: normalizeAccountId(accountId),
+              }),
+          };
+        },
         getSessionEntry: (agentId, sessionKey) =>
           api.runtime.agent.session.getSessionEntryAsync({
             agentId,
@@ -65,18 +87,8 @@ export default definePluginEntry({
           }),
         evaluate: (batch, options) =>
           api.runtime.decisions.evaluate(batch, options),
-        evaluateFallback: config.decisionModel
-          ? createFallbackDecisionEvaluator(config.decisionModel, api.config)
-          : undefined,
-        getToken: (accountId) =>
-          resolveDiscordToken(api.config, { accountId }).token,
         resolveDmChannel,
         addReaction: addReactionWithResult,
-        resolveAckReaction: (agentId, accountId) =>
-          resolveAckReaction(api.config, agentId, {
-            channel: "discord",
-            accountId: normalizeAccountId(accountId),
-          }),
         removeAckReaction: removeAckReactionWithResult,
       });
       api.on("message_received", reactionHandler.onMessageReceived);
@@ -89,17 +101,22 @@ export default definePluginEntry({
     api.on(
       "message_sending",
       createLearnedNoticeHandler({
-        resolveAgentDir: (agentId) => resolveAgentDir(api.config, agentId),
+        prepareOperation: () => {
+          const cfg = readCurrentHostConfig(api);
+          return {
+            resolveAgentDir: (agentId) => resolveAgentDir(cfg, agentId),
+            resolveModel: (agentId) =>
+              resolveLearnedNoticeModel({
+                configured: config.skillLearnedNotice?.model,
+                cfg,
+                agentId,
+                resolveAgentConfig,
+              }),
+          };
+        },
         resolveAgentId: (sessionKey) =>
           parseAgentSessionKey(sessionKey)?.agentId,
         complete: (params) => api.runtime.llm.complete(params),
-        resolveModel: (agentId) =>
-          resolveLearnedNoticeModel({
-            configured: config.skillLearnedNotice?.model,
-            cfg: api.config,
-            agentId,
-            resolveAgentConfig,
-          }),
         thinking: config.skillLearnedNotice?.thinking,
         promptAppend: config.skillLearnedNotice?.promptAppend,
       }),

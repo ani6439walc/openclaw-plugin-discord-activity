@@ -62,20 +62,33 @@ export type LearnedNoticeCompletion = (params: {
   signal: AbortSignal;
 }) => Promise<{ text: string }>;
 
-export type LearnedNoticeDeps = {
+export type LearnedNoticeOperationResolvers = {
   /** Agent state directory for an agent id, e.g. `resolveAgentDir(config, agentId)`. */
   resolveAgentDir: (agentId: string) => string;
+  /** Model ref for the rewrite of an agent's notice; undefined lets the host choose its default. */
+  resolveModel?: (agentId: string | undefined) => string | undefined;
+};
+
+type LearnedNoticeBaseDeps = {
   /** Agent id encoded in a session key, or undefined when it has none. */
   resolveAgentId: (sessionKey: string) => string | undefined;
   complete: LearnedNoticeCompletion;
-  /** Model ref for the rewrite of an agent's notice; undefined lets the host choose its default. */
-  resolveModel?: (agentId: string | undefined) => string | undefined;
   /** Thinking level for the rewrite; undefined sends none, so the host and model decide. */
   thinking?: ThinkingLevel;
   /** Appended to the system prompt, e.g. the language of the message. */
   promptAppend?: string;
   now?: () => number;
 };
+
+export type LearnedNoticeDeps = LearnedNoticeBaseDeps &
+  (
+    | (LearnedNoticeOperationResolvers & {
+        prepareOperation?: undefined;
+      })
+    | {
+        prepareOperation: () => LearnedNoticeOperationResolvers;
+      }
+  );
 
 function isDiscordMessage(ctx: MessageContext): boolean {
   return ctx.channelId === "discord" || ctx.messageProvider === "discord";
@@ -188,6 +201,7 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
     const changes = parseLearnedNotice(event.content);
     if (!changes) return undefined;
 
+    const resolvers = deps.prepareOperation ? deps.prepareOperation() : deps;
     const agentId = ctx.sessionKey
       ? deps.resolveAgentId(ctx.sessionKey)
       : undefined;
@@ -196,7 +210,7 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
       try {
         diffs = await collectDiffs(
           changes,
-          deps.resolveAgentDir(agentId),
+          resolvers.resolveAgentDir(agentId),
           now(),
         );
       } catch (error) {
@@ -207,7 +221,7 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
       }
     }
     try {
-      const model = deps.resolveModel?.(agentId);
+      const model = resolvers.resolveModel?.(agentId);
       const result = await deps.complete({
         ...(model ? { model } : {}),
         ...(deps.thinking ? { reasoning: deps.thinking } : {}),
