@@ -13,10 +13,13 @@ import { HINDSIGHT_MEMORY_EVENT_STREAM } from "./hindsight-memory-status.js";
 import {
   createLearnedNoticeHandler,
   LEARNED_NOTICE_HOOK_TIMEOUT_MS,
+  resolveLearnedNoticeOwner,
 } from "./learned-notice-hook.js";
 import {
+  listAgentIds,
   resolveAgentConfig,
   resolveAgentDir,
+  tryResolveDefaultAgentId,
 } from "openclaw/plugin-sdk/agent-scope-runtime";
 import { resolveLearnedNoticeModel } from "./learned-notice-model.js";
 import {
@@ -36,6 +39,25 @@ function readCurrentHostConfig(api: OpenClawPluginApi): OpenClawConfig {
   return api.runtime?.config?.current
     ? (api.runtime.config.current() as OpenClawConfig)
     : api.config;
+}
+
+function resolveAmbientNoticeOwnerId(
+  cfg: OpenClawConfig,
+  configuredAgentIds: readonly string[],
+): string | undefined {
+  const rawSystemAgent = (
+    cfg.agents?.defaults as { systemAgent?: { agentId?: unknown } } | undefined
+  )?.systemAgent?.agentId;
+  if (typeof rawSystemAgent === "string") {
+    const trimmed = rawSystemAgent.trim();
+    if (/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(trimmed)) {
+      const normalized = trimmed.toLowerCase();
+      if (configuredAgentIds.includes(normalized)) {
+        return normalized;
+      }
+    }
+  }
+  return tryResolveDefaultAgentId(cfg);
 }
 
 export default definePluginEntry({
@@ -126,7 +148,20 @@ export default definePluginEntry({
       createLearnedNoticeHandler({
         prepareOperation: () => {
           const cfg = readCurrentHostConfig(api);
+          const configuredAgentIds = listAgentIds(cfg);
+          const ambientOwnerId = resolveAmbientNoticeOwnerId(
+            cfg,
+            configuredAgentIds,
+          );
           return {
+            resolveNoticeOwner: (sessionKey) =>
+              resolveLearnedNoticeOwner({
+                sessionKey,
+                parseSessionAgentId: (key) =>
+                  parseAgentSessionKey(key)?.agentId,
+                configuredAgentIds,
+                ambientOwnerId,
+              }),
             resolveAgentDir: (agentId) => resolveAgentDir(cfg, agentId),
             resolveModel: (agentId) =>
               resolveLearnedNoticeModel({
@@ -137,8 +172,6 @@ export default definePluginEntry({
               }),
           };
         },
-        resolveAgentId: (sessionKey) =>
-          parseAgentSessionKey(sessionKey)?.agentId,
         complete: (params) => api.runtime.llm.complete(params),
         thinking: config.skillLearnedNotice?.thinking,
         promptAppend: config.skillLearnedNotice?.promptAppend,

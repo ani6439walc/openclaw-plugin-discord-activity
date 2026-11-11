@@ -995,13 +995,15 @@ describe("plugin", () => {
         { messageId: "434567890123456781", content: "In-flight HTTP reload" },
         sessionCtx,
       );
-      // Queue a second message that is still inside its 3-5s human delay when disposal fires.
-      await vi.advanceTimersByTimeAsync(2000);
+      // Queue a second message after 3000ms, then advance 2001ms:
+      // message 1 is at 5001ms (> 5000ms max delay, guaranteed mid-HTTP PUT) while
+      // message 2 is at 2001ms (< 3000ms min delay, guaranteed mid-delay).
+      await vi.advanceTimersByTimeAsync(3000);
       reactionHook1(
         { messageId: "434567890123456782", content: "Mid-delay reload" },
         sessionCtx,
       );
-      await vi.advanceTimersByTimeAsync(3500);
+      await vi.advanceTimersByTimeAsync(2001);
       await vi.waitFor(() => expect(startedInFlightPut).toBe(true));
       expect(observedEvaluateInstances).toEqual(["gen-1"]);
       expect(inFlightReactionSignal?.aborted).toBe(false);
@@ -1026,6 +1028,236 @@ describe("plugin", () => {
       expect(evaluate2).not.toHaveBeenCalled();
 
       await instance2.dispose();
+    });
+  });
+
+  describe("learned notice source-agent ownership", () => {
+    it("isolates shared-model credentials per owning agent, rejects untrusted/unknown/internal keys, and preserves no-cascade policy denials", async () => {
+      vi.useRealTimers();
+      const mainDir = await fs.mkdtemp(path.join(os.tmpdir(), "notice-main-"));
+      const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "notice-work-"));
+      try {
+        await fs.mkdir(path.join(mainDir, "workshop-skills", "alpha"), {
+          recursive: true,
+        });
+        await fs.writeFile(
+          path.join(mainDir, "workshop-skills", "alpha", "SKILL.md"),
+          "main agent skill body\n",
+        );
+        await fs.mkdir(path.join(workDir, "workshop-skills", "alpha"), {
+          recursive: true,
+        });
+        await fs.writeFile(
+          path.join(workDir, "workshop-skills", "alpha", "SKILL.md"),
+          "work agent skill body\n",
+        );
+
+        // Two configured agents sharing the exact same model ref ("anthropic/claude-haiku-4-5")
+        // with distinct fake credential stores.
+        const fakeCredentialStores: Record<string, string> = {
+          main: "fake-cred-store-main",
+          work: "fake-cred-store-work",
+        };
+        let allowAgentIdOverride = true;
+        const observedExecutions: Array<{
+          effectiveOwner: string;
+          requestedAgentId: string | undefined;
+          model: string | undefined;
+          credential: string;
+          prompt: string;
+        }> = [];
+
+        const complete = vi.fn(
+          async (params: {
+            agentId?: string;
+            model?: string;
+            messages: [{ role: "user"; content: string }];
+          }) => {
+            if (params.agentId && !allowAgentIdOverride) {
+              throw Object.assign(
+                new Error(
+                  "Plugin discord-activity is not authorized to override agentId",
+                ),
+                { code: "LLM_COMPLETION_NOT_AUTHORIZED" },
+              );
+            }
+            const effectiveOwner = params.agentId ?? "main";
+            const credential = fakeCredentialStores[effectiveOwner];
+            if (!credential) {
+              throw new Error(`Unexpected owner ${effectiveOwner}`);
+            }
+            observedExecutions.push({
+              effectiveOwner,
+              requestedAgentId: params.agentId,
+              model: params.model,
+              credential,
+              prompt: params.messages[0].content,
+            });
+            return {
+              text: `🔧 Created \`alpha\` using ${effectiveOwner} owner.`,
+            };
+          },
+        );
+
+        const hostConfig = {
+          channels: { discord: { token: "synthetic-token" } },
+          agents: {
+            entries: {
+              main: {
+                default: true,
+                agentDir: mainDir,
+                utilityModel: "anthropic/claude-haiku-4-5",
+              },
+              work: {
+                agentDir: workDir,
+                utilityModel: "anthropic/claude-haiku-4-5",
+              },
+            },
+          },
+        } as unknown as OpenClawPluginApi["config"];
+
+        mockApi.config = hostConfig;
+        mockApi.pluginConfig = {};
+        mockApi.runtime = {
+          config: { current: () => hostConfig },
+          agent: {
+            session: { getSessionEntryAsync: vi.fn(async () => undefined) },
+          },
+          decisions: { evaluate: vi.fn() },
+          llm: { complete },
+        } as unknown as OpenClawPluginApi["runtime"];
+
+        plugin.register(mockApi);
+        const learnedHook = (
+          mockApi.on as ReturnType<typeof vi.fn>
+        ).mock.calls.find(
+          ([name, , opts]) =>
+            name === "message_sending" && opts?.timeoutMs === 60_000,
+        )?.[1] as (
+          event: unknown,
+          ctx: unknown,
+        ) => Promise<{ content: string } | undefined>;
+
+        // 1. Default agent ("main"): omits agentId override while using main's diff, model, and credential store.
+        const mainRes = await learnedHook(
+          {
+            to: "channel:123",
+            content:
+              '💾 Learned: created `alpha` (new). Say "undo" to revert this skill change.',
+          },
+          {
+            channelId: "discord",
+            sessionKey: "agent:main:discord:channel:123",
+          },
+        );
+        expect(mainRes).toEqual({
+          content: "🔧 Created `alpha` using main owner.",
+        });
+        expect(observedExecutions[0]).toMatchObject({
+          effectiveOwner: "main",
+          requestedAgentId: undefined,
+          model: "anthropic/claude-haiku-4-5",
+          credential: "fake-cred-store-main",
+        });
+        expect(observedExecutions[0]?.prompt).toContain(
+          "main agent skill body",
+        );
+        expect(observedExecutions[0]?.prompt).not.toContain(
+          "work agent skill body",
+        );
+
+        // 2. Non-default agent ("work"): passes agentId="work", reads work's diff, and uses work's credential store.
+        const workRes = await learnedHook(
+          {
+            to: "channel:123",
+            content:
+              '💾 Learned: created `alpha` (new). Say "undo" to revert this skill change.',
+          },
+          {
+            channelId: "discord",
+            sessionKey: "agent:work:discord:channel:123",
+          },
+        );
+        expect(workRes).toEqual({
+          content: "🔧 Created `alpha` using work owner.",
+        });
+        expect(observedExecutions[1]).toMatchObject({
+          effectiveOwner: "work",
+          requestedAgentId: "work",
+          model: "anthropic/claude-haiku-4-5",
+          credential: "fake-cred-store-work",
+        });
+        expect(observedExecutions[1]?.prompt).toContain(
+          "work agent skill body",
+        );
+        expect(observedExecutions[1]?.prompt).not.toContain(
+          "main agent skill body",
+        );
+
+        // 3. Untrusted notice body or `to` mentioning `agent:work` with missing/unscoped sessionKey cannot select `work`.
+        await learnedHook(
+          {
+            to: "agent:work:discord:channel:123",
+            content:
+              '💾 Learned: created `alpha` (agent:work sessionKey=agent:work:discord:channel:123). Say "undo" to revert this skill change.',
+          },
+          {
+            channelId: "discord",
+          },
+        );
+        expect(observedExecutions[2]).toMatchObject({
+          effectiveOwner: "main",
+          requestedAgentId: undefined,
+          credential: "fake-cred-store-main",
+        });
+        expect(observedExecutions[2]?.prompt).not.toContain(
+          "work agent skill body",
+        );
+
+        // 4. Internal, malformed, and unconfigured agent session keys are rejected without calling `complete`.
+        complete.mockClear();
+        for (const badSessionKey of [
+          "agent:work:discord:channel:123:subagent:child",
+          "agent:work:discord:channel:123:skill-harness-review:1",
+          "agent:../work:discord:channel:123",
+          "agent:ghost:discord:channel:123",
+          "untrusted-session-key",
+        ]) {
+          const res = await learnedHook(
+            {
+              to: "channel:123",
+              content:
+                '💾 Learned: created `alpha` (new). Say "undo" to revert this skill change.',
+            },
+            {
+              channelId: "discord",
+              sessionKey: badSessionKey,
+            },
+          );
+          expect(res).toBeUndefined();
+        }
+        expect(complete).not.toHaveBeenCalled();
+
+        // 5. Simulated host policy denial (`allowAgentIdOverride = false`) preserves original notice with zero cascade.
+        allowAgentIdOverride = false;
+        const deniedRes = await learnedHook(
+          {
+            to: "channel:123",
+            content:
+              '💾 Learned: created `alpha` (new). Say "undo" to revert this skill change.',
+          },
+          {
+            channelId: "discord",
+            sessionKey: "agent:work:discord:channel:123",
+          },
+        );
+        expect(deniedRes).toBeUndefined();
+        expect(complete).toHaveBeenCalledTimes(1);
+        expect(complete.mock.calls[0]?.[0]).toMatchObject({ agentId: "work" });
+      } finally {
+        await fs.rm(mainDir, { recursive: true, force: true });
+        await fs.rm(workDir, { recursive: true, force: true });
+      }
     });
   });
 });

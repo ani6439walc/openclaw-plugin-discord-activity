@@ -7,6 +7,7 @@ import {
   collapseRepetition,
   createLearnedNoticeHandler,
   normalizeNoticeReply,
+  resolveLearnedNoticeOwner,
   type LearnedNoticeCompletion,
 } from "./learned-notice-hook.js";
 import type { ThinkingLevel } from "./config.js";
@@ -380,5 +381,153 @@ describe("collapseRepetition", () => {
       "Updated `a`. Updated `a`",
     );
     expect(collapseRepetition("")).toBe("");
+  });
+});
+
+describe("resolveLearnedNoticeOwner", () => {
+  const parseSessionAgentId = (sessionKey: string) => {
+    const match = sessionKey.match(/^agent:([^:]+):/i);
+    return match?.[1]?.toLowerCase();
+  };
+
+  it("omits completionAgentId when the source agent matches the ambient owner and sets it for non-default agents", () => {
+    expect(
+      resolveLearnedNoticeOwner({
+        sessionKey: "agent:main:discord:channel:123",
+        parseSessionAgentId,
+        configuredAgentIds: ["main", "work"],
+        ambientOwnerId: "main",
+      }),
+    ).toEqual({
+      kind: "agent",
+      agentId: "main",
+      completionAgentId: undefined,
+    });
+
+    expect(
+      resolveLearnedNoticeOwner({
+        sessionKey: "agent:work:discord:channel:123",
+        parseSessionAgentId,
+        configuredAgentIds: ["main", "work"],
+        ambientOwnerId: "main",
+      }),
+    ).toEqual({
+      kind: "agent",
+      agentId: "work",
+      completionAgentId: "work",
+    });
+
+    // Multi-agent fleet with no ambient owner passes completionAgentId for every configured agent.
+    expect(
+      resolveLearnedNoticeOwner({
+        sessionKey: "agent:main:discord:channel:123",
+        parseSessionAgentId,
+        configuredAgentIds: ["main", "work"],
+        ambientOwnerId: undefined,
+      }),
+    ).toEqual({
+      kind: "agent",
+      agentId: "main",
+      completionAgentId: "main",
+    });
+  });
+
+  it("treats missing or legacy unscoped Discord keys as unscoped and rejects internal, malformed, or unknown keys", () => {
+    for (const sessionKey of [undefined, "", "  ", "discord:channel:123"]) {
+      expect(
+        resolveLearnedNoticeOwner({
+          sessionKey,
+          parseSessionAgentId,
+          configuredAgentIds: ["main", "work"],
+          ambientOwnerId: "main",
+        }),
+      ).toEqual({ kind: "unscoped" });
+    }
+
+    for (const sessionKey of [
+      "agent:work:discord:channel:123:subagent:child",
+      "agent:work:discord:channel:123:skill-harness-review:1",
+      "agent:work:discord:channel:123:active-memory:1",
+    ]) {
+      expect(
+        resolveLearnedNoticeOwner({
+          sessionKey,
+          parseSessionAgentId,
+          configuredAgentIds: ["main", "work"],
+          ambientOwnerId: "main",
+        }),
+      ).toEqual({ kind: "invalid", reason: "internal-session" });
+    }
+
+    for (const sessionKey of [
+      "agent:../work:discord:channel:123",
+      "agent::discord:channel:123",
+      "agent:work",
+      "user:work",
+      "untrusted-session",
+    ]) {
+      expect(
+        resolveLearnedNoticeOwner({
+          sessionKey,
+          parseSessionAgentId: () => "main", // Even if parser tried normalizing invalid input to "main"!
+          configuredAgentIds: ["main", "work"],
+          ambientOwnerId: "main",
+        }),
+      ).toMatchObject({ kind: "invalid", reason: "invalid-session-key" });
+    }
+
+    expect(
+      resolveLearnedNoticeOwner({
+        sessionKey: "agent:ghost:discord:channel:123",
+        parseSessionAgentId,
+        configuredAgentIds: ["main", "work"],
+        ambientOwnerId: "main",
+      }),
+    ).toEqual({
+      kind: "invalid",
+      reason: "unknown-agent",
+      rawAgentId: "ghost",
+    });
+  });
+
+  it("preserves the original notice without cascading when host completion denies agentId override", async () => {
+    const complete = vi.fn<LearnedNoticeCompletion>(async () => {
+      throw Object.assign(new Error("agentId override denied"), {
+        code: "LLM_COMPLETION_NOT_AUTHORIZED",
+      });
+    });
+    const resolveAgentDir = vi.fn(() => "/nonexistent-dir");
+    const run = createLearnedNoticeHandler({
+      prepareOperation: () => ({
+        resolveNoticeOwner: (sessionKey) =>
+          resolveLearnedNoticeOwner({
+            sessionKey,
+            parseSessionAgentId,
+            configuredAgentIds: ["main", "work"],
+            ambientOwnerId: "main",
+          }),
+        resolveAgentDir,
+        resolveModel: () => "anthropic/claude-haiku-4-5",
+      }),
+      complete,
+      now: () => NOW,
+    });
+
+    const result = await run(
+      {
+        to: "channel:123",
+        content: notice("updated `alpha` (tweak)"),
+      },
+      {
+        channelId: "discord",
+        sessionKey: "agent:work:discord:channel:123",
+      },
+    );
+    expect(result).toBeUndefined();
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(complete.mock.calls[0]?.[0]).toMatchObject({
+      agentId: "work",
+      model: "anthropic/claude-haiku-4-5",
+    });
   });
 });

@@ -2,6 +2,7 @@ import { logger } from "../api.js";
 import type { ThinkingLevel } from "./config.js";
 import { parseLearnedNotice, type LearnedChange } from "./learned-notice.js";
 import { loadSkillDiff } from "./learned-notice-diff.js";
+import { isInternalSessionKey } from "./parser.js";
 import type { MessageContext, MessageSendingEvent } from "./types.js";
 
 /** Hook budget; operators can still override it with `plugins.entries.<id>.hooks.timeouts`. */
@@ -52,6 +53,7 @@ export function buildSystemPrompt(extra?: string): string {
 }
 
 export type LearnedNoticeCompletion = (params: {
+  agentId?: string;
   model?: string;
   reasoning?: ThinkingLevel;
   messages: [{ role: "user"; content: string }];
@@ -62,16 +64,90 @@ export type LearnedNoticeCompletion = (params: {
   signal: AbortSignal;
 }) => Promise<{ text: string }>;
 
+export type LearnedNoticeOwner =
+  | { kind: "unscoped" }
+  | {
+      kind: "agent";
+      agentId: string;
+      completionAgentId?: string;
+    }
+  | {
+      kind: "invalid";
+      reason: "internal-session" | "invalid-session-key" | "unknown-agent";
+      rawAgentId?: string;
+    };
+
+const VALID_AGENT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+const UNSCOPED_DISCORD_SESSION_KEY_RE =
+  /^discord:(?:channel|direct|group|dm|chat):[^:]+$/i;
+
+/**
+ * Resolves the source-agent owner strictly from the host-supplied `ctx.sessionKey`.
+ * Notice text and delivery targets never influence agent selection.
+ */
+export function resolveLearnedNoticeOwner(params: {
+  sessionKey?: string;
+  parseSessionAgentId: (sessionKey: string) => string | undefined;
+  configuredAgentIds: readonly string[];
+  ambientOwnerId?: string;
+}): LearnedNoticeOwner {
+  const trimmed = params.sessionKey?.trim();
+  if (!trimmed) return { kind: "unscoped" };
+  if (isInternalSessionKey(trimmed)) {
+    return { kind: "invalid", reason: "internal-session" };
+  }
+  if (UNSCOPED_DISCORD_SESSION_KEY_RE.test(trimmed)) {
+    return { kind: "unscoped" };
+  }
+  if (!/^agent:/i.test(trimmed)) {
+    return { kind: "invalid", reason: "invalid-session-key" };
+  }
+  const rest = trimmed.slice("agent:".length);
+  const sep = rest.indexOf(":");
+  const rawAgent = sep > 0 ? rest.slice(0, sep) : "";
+  if (!VALID_AGENT_ID_RE.test(rawAgent)) {
+    return {
+      kind: "invalid",
+      reason: "invalid-session-key",
+      rawAgentId: rawAgent || undefined,
+    };
+  }
+  const parsed = params.parseSessionAgentId(trimmed);
+  const normalizedRaw = rawAgent.toLowerCase();
+  if (!parsed || parsed.toLowerCase() !== normalizedRaw) {
+    return {
+      kind: "invalid",
+      reason: "invalid-session-key",
+      rawAgentId: normalizedRaw,
+    };
+  }
+  if (!params.configuredAgentIds.includes(normalizedRaw)) {
+    return {
+      kind: "invalid",
+      reason: "unknown-agent",
+      rawAgentId: normalizedRaw,
+    };
+  }
+  return {
+    kind: "agent",
+    agentId: normalizedRaw,
+    completionAgentId:
+      normalizedRaw === params.ambientOwnerId ? undefined : normalizedRaw,
+  };
+}
+
 export type LearnedNoticeOperationResolvers = {
   /** Agent state directory for an agent id, e.g. `resolveAgentDir(config, agentId)`. */
   resolveAgentDir: (agentId: string) => string;
   /** Model ref for the rewrite of an agent's notice; undefined lets the host choose its default. */
   resolveModel?: (agentId: string | undefined) => string | undefined;
+  /** Validated source-agent ownership resolved from `ctx.sessionKey` against the operation snapshot. */
+  resolveNoticeOwner?: (sessionKey: string | undefined) => LearnedNoticeOwner;
 };
 
 type LearnedNoticeBaseDeps = {
-  /** Agent id encoded in a session key, or undefined when it has none. */
-  resolveAgentId: (sessionKey: string) => string | undefined;
+  /** Legacy agent id resolver for standalone unit tests when `resolveNoticeOwner` is omitted. */
+  resolveAgentId?: (sessionKey: string) => string | undefined;
   complete: LearnedNoticeCompletion;
   /** Thinking level for the rewrite; undefined sends none, so the host and model decide. */
   thinking?: ThinkingLevel;
@@ -183,6 +259,19 @@ async function collectDiffs(
   return diffs;
 }
 
+function resolveFallbackOwner(
+  sessionKey: string | undefined,
+  resolveAgentId?: (sessionKey: string) => string | undefined,
+): LearnedNoticeOwner {
+  const trimmed = sessionKey?.trim();
+  if (!trimmed) return { kind: "unscoped" };
+  if (isInternalSessionKey(trimmed)) {
+    return { kind: "invalid", reason: "internal-session" };
+  }
+  const agentId = resolveAgentId?.(trimmed);
+  return agentId ? { kind: "agent", agentId } : { kind: "unscoped" };
+}
+
 /**
  * Rewrites the background skill-review notice on Discord. The model writes the whole message
  * from the original notice and, where available, each skill's diff. Any failure sends the
@@ -202,9 +291,23 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
     if (!changes) return undefined;
 
     const resolvers = deps.prepareOperation ? deps.prepareOperation() : deps;
-    const agentId = ctx.sessionKey
-      ? deps.resolveAgentId(ctx.sessionKey)
-      : undefined;
+    const owner = resolvers.resolveNoticeOwner
+      ? resolvers.resolveNoticeOwner(ctx.sessionKey)
+      : resolveFallbackOwner(ctx.sessionKey, deps.resolveAgentId);
+    if (owner.kind === "invalid") {
+      logger.warn(
+        "learned notice: untrusted or unknown session owner, sending original",
+        {
+          reason: owner.reason,
+          agentId: owner.rawAgentId,
+        },
+      );
+      return undefined;
+    }
+
+    const agentId = owner.kind === "agent" ? owner.agentId : undefined;
+    const completionAgentId =
+      owner.kind === "agent" ? owner.completionAgentId : undefined;
     let diffs = new Map<string, string>();
     if (agentId) {
       try {
@@ -223,6 +326,7 @@ export function createLearnedNoticeHandler(deps: LearnedNoticeDeps) {
     try {
       const model = resolvers.resolveModel?.(agentId);
       const result = await deps.complete({
+        ...(completionAgentId ? { agentId: completionAgentId } : {}),
         ...(model ? { model } : {}),
         ...(deps.thinking ? { reasoning: deps.thinking } : {}),
         messages: [
