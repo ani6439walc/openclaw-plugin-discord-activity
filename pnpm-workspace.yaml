@@ -11,6 +11,7 @@ packageExtensions:
     dependencies:
       "@openclaw/proxyline": "0.4.0"
 minimumReleaseAgeExclude:
-  - openclaw@2026.11.2
-  - "@openclaw/ai@2026.11.2"
+  - openclaw@2026.11.3
+  - "@openclaw/ai@2026.11.3"
   - zod@4.6.5
+  - prettier@3.10.0
