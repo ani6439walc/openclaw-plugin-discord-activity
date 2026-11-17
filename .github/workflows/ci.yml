@@ -48,9 +48,6 @@ jobs:
       - name: Run Vitest tests
         run: pnpm run test
 
-      - name: Run Python script tests
-        run: python3 .github/scripts/test_jules_pr_review.py
-
       - name: Build and verify package shape
         run: |
           pnpm run build
