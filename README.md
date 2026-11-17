@@ -70,8 +70,10 @@ can reduce previews further. A bounded error summary for the latest visible
 failed Code cell remains when its source is collapsed. Normal history and entry
 limits still apply.
 
-Source indentation and line breaks are preserved, with tabs rendered as two
-spaces. The existing visible-text sanitizer strips control sequences and replaces
+Single-line source wraps at 90 Unicode code points per preview row, including
+invalid JavaScript. This is display-only wrapping and can split a token or string;
+the original source and execution are unchanged. Multiline source keeps its
+indentation and line breaks, with tabs rendered as two spaces. The existing visible-text sanitizer strips control sequences and replaces
 backticks to keep the Discord ANSI fence intact; previews are for inspection,
 not an exact source-copy interface. A missing title leaves the header as `Code`.
 Waiting cells do not receive a success check, and an unrecognized outcome is
