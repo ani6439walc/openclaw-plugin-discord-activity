@@ -7,6 +7,14 @@ export type ChannelMeta = {
   runId?: string;
 };
 
+export type CodeModeDisplay = {
+  kind: "exec" | "wait";
+  state: "running" | "waiting" | "completed" | "failed" | "unknown";
+  code?: string;
+  title?: string;
+  error?: string;
+};
+
 export type ToolEntry = {
   toolCallId: string;
   displayId?: string;
@@ -19,6 +27,7 @@ export type ToolEntry = {
   result?: unknown;
   activityErrors?: string[];
   statusSequence?: number;
+  codeMode?: CodeModeDisplay;
 };
 
 export type SubagentToolName = "skill-harness" | "hindsight-memory";
@@ -32,6 +41,9 @@ export type OrphanEntry = {
   toolName: string;
   params: any;
   createdAt: number;
+  codeMode?: CodeModeDisplay;
+  sessionKey?: string;
+  runId?: string;
 };
 
 export type SessionEntry = {
@@ -133,6 +145,8 @@ export type BeforeToolCallEvent = {
   params: Record<string, unknown>;
   runId?: string;
   toolCallId?: string;
+  toolKind?: "code_mode_exec";
+  toolInputKind?: "javascript" | "typescript";
 };
 
 export type ToolContext = {
@@ -140,6 +154,7 @@ export type ToolContext = {
   runId?: string;
   toolName: string;
   toolCallId?: string;
+  toolKind?: "code_mode_exec";
 };
 
 export type AfterToolCallEvent = {

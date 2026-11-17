@@ -3758,4 +3758,140 @@ describe("createHookHandlers", () => {
       expect(countChannelMessagePosts(fetchMock)).toBe(1);
     });
   });
+  describe("Code Mode hooks", () => {
+    const context = {
+      channelId: "discord",
+      sessionKey: "agent:main:discord:channel:123",
+      runId: "code-agent-run",
+      toolName: "exec",
+    };
+    const cell = {
+      toolCallId: "code-cell",
+      toolName: "exec",
+      toolKind: "code_mode_exec" as const,
+      params: { title: "Inspect", code: "return 1", command: "return 1" },
+    };
+    async function inbound() {
+      await handlers.onMessageReceived(
+        { messageId: "code-message", metadata: { to: "channel:123" } },
+        context,
+      );
+      return store.sessions.get("discord:channel:123")!;
+    }
+    it("renders structured failure in red and leaves a completed child untouched", async () => {
+      const session = await inbound();
+      await handlers.onBeforeToolCall(cell, context);
+      const child = {
+        toolName: "skill_view",
+        toolCallId: "child",
+        params: { name: "example" },
+      };
+      await handlers.onBeforeToolCall(child, {
+        ...context,
+        toolName: "skill_view",
+      });
+      await handlers.onAfterToolCall(child, {
+        ...context,
+        toolName: "skill_view",
+      });
+      await handlers.onAfterToolCall(
+        {
+          ...cell,
+          result: { details: { status: "failed", error: "TypeError: broken" } },
+        },
+        context,
+      );
+      expect(session.toolHistory[0].codeMode?.state).toBe("failed");
+      expect(session.toolHistory[1].status).toBe("completed");
+      expect(stripAnsi(session.lastRenderedContent!)).toContain(
+        "💻 Code · Inspect",
+      );
+      expect(session.lastRenderedContent).toContain(
+        "\u001b[31mTypeError: broken",
+      );
+    });
+    it("updates one original Code row when wait resumes and does not repeat its source", async () => {
+      const session = await inbound();
+      await handlers.onBeforeToolCall(cell, context);
+      await handlers.onAfterToolCall(
+        {
+          ...cell,
+          result: { details: { status: "waiting", runId: "continuation" } },
+        },
+        context,
+      );
+      expect(session.toolHistory[0].codeMode?.state).toBe("waiting");
+      const wait = {
+        toolName: "wait",
+        toolCallId: "resume",
+        params: { runId: "continuation" },
+      };
+      await handlers.onBeforeToolCall(wait, { ...context, toolName: "wait" });
+      await handlers.onAfterToolCall(
+        { ...wait, result: { details: { status: "completed", value: 1 } } },
+        { ...context, toolName: "wait" },
+      );
+      expect(session.toolHistory).toHaveLength(1);
+      expect(session.toolHistory[0].codeMode?.state).toBe("completed");
+    });
+    it("keeps a steered Code run on the same activity card", async () => {
+      const session = await inbound();
+      session.activeRunIds = new Set([context.runId, "steer-code-run"]);
+      const steer = { ...context, runId: "steer-code-run" };
+      await handlers.onBeforeToolCall(cell, steer);
+      await handlers.onAfterToolCall(
+        {
+          ...cell,
+          result: {
+            details: { status: "failed", error: "TypeError: steering failed" },
+          },
+        },
+        steer,
+      );
+      expect(session.toolHistory[0].codeMode?.state).toBe("failed");
+      expect(session.toolHistory[0].error).toBe("TypeError: steering failed");
+    });
+    it.each([false, true])(
+      "preserves Code failure without optional run IDs (orphan=%s)",
+      async (orphan) => {
+        const noRun = { ...context, runId: undefined };
+        let session;
+        if (orphan) {
+          await handlers.onBeforeToolCall(cell, noRun);
+          await handlers.onMessageReceived(
+            { messageId: "no-run", metadata: { to: "channel:123" } },
+            noRun,
+          );
+          session = store.sessions.get("discord:channel:123")!;
+        } else {
+          await handlers.onMessageReceived(
+            { messageId: "no-run", metadata: { to: "channel:123" } },
+            noRun,
+          );
+          session = store.sessions.get("discord:channel:123")!;
+          await handlers.onBeforeToolCall(cell, noRun);
+        }
+        await handlers.onAfterToolCall(
+          {
+            ...cell,
+            result: {
+              details: { status: "failed", error: "TypeError: missing run" },
+            },
+          },
+          noRun,
+        );
+        expect(session.toolHistory[0].codeMode?.state).toBe("failed");
+        expect(session.toolHistory[0].status).toBe("error");
+      },
+    );
+    it("retains host identity across an orphan before event", async () => {
+      await handlers.onBeforeToolCall(cell, context);
+      const session = await inbound();
+      await handlers.onAfterToolCall(
+        { ...cell, result: { details: { status: "completed", value: 1 } } },
+        context,
+      );
+      expect(session.toolHistory[0].codeMode?.state).toBe("completed");
+    });
+  });
 });

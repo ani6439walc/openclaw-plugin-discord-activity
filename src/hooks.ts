@@ -1,4 +1,5 @@
 import { logger } from "../api.js";
+import { CodeModeActivities, codeModeDisplay } from "./code-mode-activity.js";
 import type {
   SessionEntry,
   ToolEntry,
@@ -200,6 +201,7 @@ function upsertToolEntry(
 
 export function createHookHandlers(deps: HookDeps) {
   const { store, orphans, getToken, config } = deps;
+  const codeModeActivities = new CodeModeActivities();
 
   // Initialize the ToolHistoryManager
   const toolHistoryManager = new ToolHistoryManager(config);
@@ -479,6 +481,7 @@ export function createHookHandlers(deps: HookDeps) {
     if (!store.isCurrentSession(session)) return;
     if (!bindSessionRun(session, ctx.runId)) return;
     const compactionEpoch = session.compactionEpoch ?? 0;
+    codeModeActivities.clear(session);
     session.finalized = true;
     await updateSessionStatus(session, true);
     if ((session.compactionEpoch ?? 0) !== compactionEpoch) {
@@ -645,6 +648,9 @@ export function createHookHandlers(deps: HookDeps) {
           toolName,
           params: event.params ?? {},
           createdAt: observedAtMs,
+          codeMode: codeModeDisplay(event, ctx),
+          sessionKey: ctx.sessionKey,
+          runId: event.runId ?? ctx.runId,
         });
         logger.debug(
           `before_tool_call: orphaned tool call (no sessionKey). id=${event.toolCallId}`,
@@ -679,6 +685,23 @@ export function createHookHandlers(deps: HookDeps) {
     }
 
     if (!toolCallId) return;
+    const codeActivity = codeModeActivities.before(
+      session,
+      event,
+      ctx,
+      observedAtMs,
+    );
+    if (codeActivity) {
+      if (!session.toolHistory.includes(codeActivity.entry)) {
+        toolHistoryManager.addEntry(session.toolHistory, codeActivity.entry);
+      }
+      updateSessionStatus(session, false).catch((err: unknown) => {
+        logger.warn("before_tool_call: Code Mode status update failed.", {
+          error: String(err),
+        });
+      });
+      return;
+    }
     upsertToolEntry(toolHistoryManager, session.toolHistory, {
       toolCallId,
       toolName,
@@ -716,6 +739,16 @@ export function createHookHandlers(deps: HookDeps) {
 
     if (!event.toolCallId) return;
     const toolCallId = event.toolCallId;
+    if (codeModeActivities.after(session, event, ctx, observedAtMs)) {
+      try {
+        await updateSessionStatus(session, false);
+      } catch (err) {
+        logger.warn("after_tool_call: Code Mode status update failed.", {
+          error: String(err),
+        });
+      }
+      return;
+    }
 
     let toolEntry = findDedupedToolEntry(session.toolHistory, {
       toolCallId,
@@ -737,6 +770,11 @@ export function createHookHandlers(deps: HookDeps) {
             params: orphan.params,
             status: "pending",
             startedAtMs: orphan.createdAt,
+            ...(orphan.codeMode &&
+            orphan.sessionKey === ctx.sessionKey &&
+            orphan.runId === (event.runId ?? ctx.runId)
+              ? { codeMode: orphan.codeMode }
+              : {}),
           };
           isOrphanReconcile = true;
           toolHistoryManager.addEntry(session.toolHistory, toolEntry);
@@ -748,6 +786,25 @@ export function createHookHandlers(deps: HookDeps) {
       }
     }
     if (toolEntry) {
+      if (toolEntry.codeMode) {
+        codeModeActivities.adopt(
+          session,
+          toolEntry,
+          event.runId ?? ctx.runId,
+          observedAtMs,
+        );
+        if (codeModeActivities.after(session, event, ctx, observedAtMs)) {
+          try {
+            await updateSessionStatus(session, false);
+          } catch (err) {
+            logger.warn(
+              "after_tool_call: orphan Code Mode status update failed.",
+              { error: String(err) },
+            );
+          }
+          return;
+        }
+      }
       const updateToolCallId = toolEntry.toolCallId;
       const nextToolCallId = preferToolCallId(toolEntry, {
         toolCallId,
