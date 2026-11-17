@@ -46,6 +46,38 @@ A simplified live status message looks like this:
     ╰─ query OpenClaw plugin SDK
 ```
 
+### Code Mode activity
+
+OpenClaw Code Mode cells use a `💻 Code` header with the cell title, execution
+state, and duration. The source appears once, even when OpenClaw supplies the
+same JavaScript through both `code` and `command`. Actual tool calls keep their
+own flat activity rows and their own outcomes; a successful cell can catch a
+failed tool call, and a cell can fail after a tool has already completed.
+Ordinary shell `exec` calls retain their command display.
+
+```text
+💻 Code · List available tools ▾ ✘ [31ms]
+    │ const tools = await API.list();
+    │ return tools.slice(0, 200);
+    ╰ TypeError: tools.slice is not a function
+```
+
+Source text is green, tree connectors are gray, and the error message is red.
+The header supplies the failure mark, so the error line has no second cross or
+`error` label. Source previews have at most six rows and 90 Unicode code points
+per row, including a source omission marker when needed. The message-wide budget
+can reduce previews further. A bounded error summary for the latest visible
+failed Code cell remains when its source is collapsed. Normal history and entry
+limits still apply.
+
+Source indentation and line breaks are preserved, with tabs rendered as two
+spaces. The existing visible-text sanitizer strips control sequences and replaces
+backticks to keep the Discord ANSI fence intact; previews are for inspection,
+not an exact source-copy interface. A missing title leaves the header as `Code`.
+Waiting cells do not receive a success check, and an unrecognized outcome is
+shown with `?`. Console text or a returned value containing an `error` field does
+not independently mark the cell as failed.
+
 `decision_evaluate` uses a dedicated `⚖️` display with the same cyan header,
 magenta result labels, green result values, and yellow timing as ordinary tools. It
 shows each question's `instructions` (or its ID when omitted) and the input

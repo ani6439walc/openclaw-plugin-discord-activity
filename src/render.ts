@@ -311,6 +311,10 @@ type StatusBlock = {
   compactBodyLines?: string[];
   previewUnits?: (compact: boolean) => string[][];
   protected?: boolean;
+  /** Bounded error text remains visible when the source preview is collapsed. */
+  footerLines?: string[];
+  codeModeFailure?: boolean;
+  codeModeErrorText?: string;
 };
 
 function sanitizeHeaderToken(value: string): string {
@@ -860,7 +864,106 @@ function createProgressCardBlock(
   };
 }
 
+function createCodeModeEntryBlock(t: ToolEntry): StatusBlock {
+  const display = t.codeMode!;
+  const title = display.title?.trim()
+    ? formatExpandedTitle(sanitizeHeaderToken(display.title.trim()), 90)
+    : undefined;
+  const name = `Code${title ? ` · ${title}` : ""}`;
+  const error =
+    display.state === "failed" ? (display.error ?? t.error) : undefined;
+  const errorSummary = error
+    ? formatExpandedTitle(sanitizeHeaderToken(error).trim(), 140)
+    : undefined;
+  const footerLines = errorSummary
+    ? [createCodeErrorFooter(errorSummary)]
+    : undefined;
+  const bodyLines =
+    display.kind === "exec"
+      ? createCodePreview(display.code, Boolean(footerLines))
+      : [];
+  const suffix =
+    display.state === "completed"
+      ? "✔"
+      : display.state === "failed"
+        ? "✘"
+        : display.state === "waiting"
+          ? "← waiting"
+          : display.state === "unknown"
+            ? "?"
+            : "←";
+  return {
+    key: `tool:${t.displayId ?? t.toolCallId}`,
+    header: {
+      icon: "💻",
+      name,
+      nameStyle: ANSI.boldCyan,
+      status: suffix,
+      statusStyle:
+        display.state === "failed"
+          ? ANSI.red
+          : display.state === "completed"
+            ? ANSI.green
+            : ANSI.yellow,
+      durationMs: t.durationMs,
+      disclosure: true,
+      collapsedName: `Code${title ? ` · ${formatCollapsedTitle(title)}` : ""}`,
+    },
+    children: [],
+    bodyLines,
+    footerLines,
+    codeModeFailure: Boolean(footerLines),
+    codeModeErrorText: errorSummary,
+    previewUnits: () => bodyLines.map((line) => [line]),
+  };
+}
+
+function createCodeErrorFooter(error: string): string {
+  return `    ${ansiSpan(ANSI.lightGray, "╰")} ${ansiSpan(ANSI.red, error)}`;
+}
+
+function fitCodeErrorText(error: string, budget: number): string {
+  if (error.length <= budget) return error;
+  let text = "";
+  for (const character of error) {
+    if (text.length + character.length + 1 > budget) break;
+    text += character;
+  }
+  return `${text}…`;
+}
+
+function createCodePreview(
+  code: string | undefined,
+  hasError: boolean,
+): string[] {
+  if (code === undefined || code.trim() === "") return [];
+  const lines = sanitizeVisibleText(code)
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .replaceAll("\t", "  ")
+    .trimEnd()
+    .split("\n");
+  // Reserve a preview row for the omission marker when the source is longer.
+  const retained = lines.slice(0, lines.length > 6 ? 5 : 6);
+  const omitted = lines.length - retained.length;
+  const preview = retained.map((line, index) => {
+    const chars = [...line];
+    const text = chars.length > 90 ? `${chars.slice(0, 89).join("")}…` : line;
+    const connector =
+      !hasError && omitted === 0 && index === retained.length - 1 ? "╰" : "│";
+    return `    ${ansiSpan(ANSI.lightGray, connector)} ${ansiSpan(ANSI.green, text)}`;
+  });
+  if (omitted > 0) {
+    const connector = hasError ? "│" : "╰";
+    preview.push(
+      `    ${ansiSpan(ANSI.lightGray, connector)} ${ansiSpan(ANSI.lightGray, `… ${omitted} more lines`)}`,
+    );
+  }
+  return preview;
+}
+
 function createEntryBlock(t: ToolEntry): StatusBlock {
+  if (t.codeMode) return createCodeModeEntryBlock(t);
   const icon = getToolIcon(t.toolName);
   const toolName = sanitizeHeaderToken(getDisplayToolName(t.toolName));
   const suffix = getSubSuffix(t.status);
@@ -996,6 +1099,7 @@ function renderBlocks(
               ...(block.summaryLine ? [block.summaryLine] : []),
               ...(block.bodyLines ?? renderStatusNodes(block.children)),
             ]),
+        ...(block.footerLines ?? []),
       ];
     });
   return `${OPENING_FENCE}${body.join("\n")}${CLOSING_FENCE}`;
@@ -1031,6 +1135,9 @@ function renderBoundedStatus(
   let content = renderCurrent();
   if (content.length <= maxLength) return complete(content);
 
+  const latestCodeFailure = blocks
+    .filter((block) => block.codeModeFailure)
+    .at(-1);
   const latest = blocks.find(
     (block) =>
       block.key === latestToolKey &&
@@ -1075,6 +1182,7 @@ function renderBoundedStatus(
     for (const block of blocks) {
       if (
         block.protected ||
+        block === latestCodeFailure ||
         block === latest ||
         displayState[block.key] === "removed"
       )
@@ -1091,7 +1199,7 @@ function renderBoundedStatus(
   }
 
   for (const block of blocks) {
-    if (block.protected) continue;
+    if (block.protected || block === latestCodeFailure) continue;
     if ((displayState[block.key] ?? "expanded") === "removed") continue;
     advanceDisplayState(displayState, block.key, "removed");
     content = renderCurrent();
@@ -1101,6 +1209,44 @@ function renderBoundedStatus(
   for (const block of blocks) {
     if (!block.compactBodyLines) continue;
     block.bodyLines = block.compactBodyLines;
+    content = renderCurrent();
+    if (content.length <= maxLength) return complete(content);
+  }
+
+  if (
+    latestCodeFailure?.codeModeErrorText &&
+    displayState[latestCodeFailure.key] !== "removed"
+  ) {
+    // Spend the last available bytes on the error, not title, time or source.
+    latestCodeFailure.header = {
+      ...latestCodeFailure.header,
+      name: "Code",
+      collapsedName: "Code",
+      disclosure: false,
+      durationMs: undefined,
+    };
+    latestCodeFailure.summaryLine = undefined;
+    latestCodeFailure.bodyLines = [];
+    latestCodeFailure.footerLines = [];
+    const fixedLength = renderCurrent().length;
+    const errorBudget =
+      maxLength - fixedLength - 1 - createCodeErrorFooter("").length;
+    if (errorBudget > 0) {
+      latestCodeFailure.footerLines = [
+        createCodeErrorFooter(
+          fitCodeErrorText(latestCodeFailure.codeModeErrorText, errorBudget),
+        ),
+      ];
+      content = renderCurrent();
+      if (content.length <= maxLength) return complete(content);
+    }
+  }
+
+  // Error retention is best-effort within the selected history window. If the
+  // Code header/error alone competes with protected progress or agent failure,
+  // drop that Code block last rather than losing the protected content too.
+  if (latestCodeFailure && displayState[latestCodeFailure.key] !== "removed") {
+    advanceDisplayState(displayState, latestCodeFailure.key, "removed");
     content = renderCurrent();
     if (content.length <= maxLength) return complete(content);
   }
