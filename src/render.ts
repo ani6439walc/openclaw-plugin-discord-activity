@@ -878,9 +878,13 @@ function createCodeModeEntryBlock(t: ToolEntry): StatusBlock {
   const footerLines = errorSummary
     ? [createCodeErrorFooter(errorSummary)]
     : undefined;
+  const previewSource =
+    display.previewFor === display.code && display.previewCode !== undefined
+      ? display.previewCode
+      : display.code;
   const bodyLines =
     display.kind === "exec"
-      ? createCodePreview(display.code, Boolean(footerLines))
+      ? createCodePreview(previewSource, Boolean(footerLines))
       : [];
   const suffix =
     display.state === "completed"
@@ -937,21 +941,12 @@ function createCodePreview(
   hasError: boolean,
 ): string[] {
   if (code === undefined || code.trim() === "") return [];
-  let lines = sanitizeVisibleText(code)
+  const lines = sanitizeVisibleText(code)
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n")
     .replaceAll("\t", "  ")
     .trimEnd()
     .split("\n");
-  // Wrap display text without parsing JavaScript: failed cells may be invalid.
-  // Preserve authored multiline layout and never change the executed source.
-  if (lines.length === 1) {
-    const chars = [...lines[0]];
-    lines = [];
-    for (let offset = 0; offset < chars.length; offset += 90) {
-      lines.push(chars.slice(offset, offset + 90).join(""));
-    }
-  }
   // Reserve a preview row for the omission marker when the source is longer.
   const retained = lines.slice(0, lines.length > 6 ? 5 : 6);
   const omitted = lines.length - retained.length;

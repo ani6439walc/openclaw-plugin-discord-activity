@@ -1,6 +1,10 @@
 import { logger } from "../api.js";
 import type { SessionEntry } from "./types.js";
 import {
+  needsCodeModePreviewPreparation,
+  prepareCodeModePreviews,
+} from "./code-mode-format.js";
+import {
   deleteDiscordStatusMessageWithResult,
   editDiscordStatusMessageWithResult,
   sendDiscordStatusWithDmFallbackWithResult,
@@ -470,6 +474,11 @@ export async function updateStatusMessage(
     }
 
     if (!isExpectedCurrentSession()) return;
+
+    if (needsCodeModePreviewPreparation(session.toolHistory)) {
+      await prepareCodeModePreviews(session.toolHistory);
+      if (!isExpectedCurrentSession()) return;
+    }
 
     const { content, displayState, preparationComplete } =
       renderStatusContentWithState(

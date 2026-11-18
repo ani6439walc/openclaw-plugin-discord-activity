@@ -7,6 +7,8 @@ type CodeDisplay = {
   kind: "exec" | "wait";
   state: "running" | "waiting" | "completed" | "failed" | "unknown";
   code?: string;
+  previewCode?: string;
+  previewFor?: string;
   title?: string;
   error?: string;
 };
@@ -35,7 +37,40 @@ function plain(content: string): string {
 }
 
 describe("Code Mode activity display", () => {
-  it("wraps single-line source before truncating, even with invalid JavaScript", () => {
+  it("renders formatted previewCode across bounded rows while keeping raw code intact", () => {
+    const code =
+      "const a=1;const b=2;const c=3;const d=4;const e=5;const f=6;return a+b+c+d+e+f;";
+    const previewCode = [
+      "const a = 1;",
+      "const b = 2;",
+      "const c = 3;",
+      "const d = 4;",
+      "const e = 5;",
+      "const f = 6;",
+      "return a + b + c + d + e + f;",
+    ].join("\n");
+    const result = plain(
+      renderStatusContent(
+        [
+          codeEntry({
+            kind: "exec",
+            state: "completed",
+            code,
+            previewCode,
+            previewFor: code,
+          }),
+        ],
+        false,
+      ),
+    );
+    const rows = result.split("\n").filter((line) => /^    [│╰] /u.test(line));
+    expect(rows).toHaveLength(6);
+    expect(rows[0]).toBe("    │ const a = 1;");
+    expect(rows[4]).toBe("    │ const e = 5;");
+    expect(rows[5]).toBe("    ╰ … 2 more lines");
+  });
+
+  it("renders unformatted invalid single-line source directly without hard-wrapping tokens", () => {
     const code = 'const value = "a;b";'.repeat(7) + "await broken({";
     const result = plain(
       renderStatusContent(
@@ -44,6 +79,8 @@ describe("Code Mode activity display", () => {
             kind: "exec",
             state: "failed",
             code,
+            previewCode: code,
+            previewFor: code,
             error: "SyntaxError",
           }),
         ],
@@ -51,26 +88,9 @@ describe("Code Mode activity display", () => {
       ),
     );
     const rows = result.split("\n").filter((line) => /^    [│╰] /u.test(line));
-    const source = rows.slice(0, -1).map((line) => line.slice(6));
-    expect(source.length).toBeGreaterThan(1);
-    expect(source.join("")).toBe(code);
-    expect(source.every((line) => [...line].length <= 90)).toBe(true);
-    expect(rows.at(-1)).toContain("SyntaxError");
-  });
-
-  it("bounds wrapped single-line Unicode source to six preview rows", () => {
-    const code = "界💻".repeat(400);
-    const result = plain(
-      renderStatusContent(
-        [codeEntry({ kind: "exec", state: "completed", code })],
-        false,
-      ),
-    );
-    const rows = result.split("\n").filter((line) => /^    [│╰] /u.test(line));
-    expect(rows).toHaveLength(6);
-    expect(rows[0].slice(6)).toBe("界💻".repeat(45));
-    expect(rows.at(-1)).toContain("… 4 more lines");
-    expect(result).not.toContain("\ufffd");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toBe(`    │ ${[...code].slice(0, 89).join("")}…`);
+    expect(rows[1]).toBe("    ╰ SyntaxError");
   });
 
   it("shows one source preview and a Code title while actual tool rows stay flat", () => {

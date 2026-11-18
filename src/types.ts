@@ -11,6 +11,9 @@ export type CodeModeDisplay = {
   kind: "exec" | "wait";
   state: "running" | "waiting" | "completed" | "failed" | "unknown";
   code?: string;
+  previewCode?: string;
+  previewFor?: string;
+  inputKind?: "javascript" | "typescript";
   title?: string;
   error?: string;
 };
