@@ -48,7 +48,7 @@ A simplified live status message looks like this:
 
 ### Code Mode activity
 
-OpenClaw Code Mode cells use a `💻 Code` header with the cell title, execution
+OpenClaw Code Mode cells use a `💻 code` header with the cell title, execution
 state, and duration. The source appears once, even when OpenClaw supplies the
 same JavaScript through both `code` and `command`. Actual tool calls keep their
 own flat activity rows and their own outcomes; a successful cell can catch a
@@ -56,7 +56,7 @@ failed tool call, and a cell can fail after a tool has already completed.
 Ordinary shell `exec` calls retain their command display.
 
 ```text
-💻 Code · List available tools ▾ ✘ [31ms]
+💻 code · List available tools ▾ ✘ [31ms]
     │ const tools = await API.list();
     │ return tools.slice(0, 200);
     ╰ TypeError: tools.slice is not a function
@@ -79,7 +79,7 @@ single-line text is shown directly without hard-wrapping tokens across rows.
 Multiline source keeps its indentation and line breaks, with tabs rendered as two
 spaces. The existing visible-text sanitizer strips control sequences and replaces
 backticks to keep the Discord ANSI fence intact; previews are for inspection,
-not an exact source-copy interface. A missing title leaves the header as `Code`.
+not an exact source-copy interface. A missing title leaves the header as `code`.
 Waiting cells do not receive a success check, and an unrecognized outcome is
 shown with `?`. Console text or a returned value containing an `error` field does
 not independently mark the cell as failed.

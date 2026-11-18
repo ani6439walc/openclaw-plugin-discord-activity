@@ -93,7 +93,7 @@ describe("Code Mode activity display", () => {
     expect(rows[1]).toBe("    ╰ SyntaxError");
   });
 
-  it("shows one source preview and a Code title while actual tool rows stay flat", () => {
+  it("shows one source preview and a code title while actual tool rows stay flat", () => {
     const code = 'return await skill_view({ name: "example" });';
     const result = plain(
       renderStatusContent(
@@ -114,7 +114,7 @@ describe("Code Mode activity display", () => {
         false,
       ),
     );
-    expect(result).toContain("💻 Code · Load skill");
+    expect(result).toContain("💻 code · Load skill");
     expect(result.split(code)).toHaveLength(2);
     expect(result).not.toContain("command");
     expect(result).toContain("🔧 skill_view");
@@ -195,7 +195,7 @@ describe("Code Mode activity display", () => {
       false,
     );
     expect(result.match(/```/g)).toHaveLength(2);
-    expect(plain(result)).toContain("Code · A B");
+    expect(plain(result)).toContain("code · A B");
     expect(result).not.toContain("\u001b[31m");
     expect(result).not.toContain("\t");
   });
@@ -226,6 +226,7 @@ describe("Code Mode activity display", () => {
     const collapsed = renderStatusContentWithState(history, false, 470, {
       "tool:cell": "collapsed",
     });
+    expect(plain(collapsed.content)).toContain("💻 code · Collect results");
     expect(plain(collapsed.content)).toContain(error);
   });
 
@@ -279,7 +280,7 @@ describe("Code Mode activity display", () => {
       100,
     );
     expect(result.length).toBeLessThanOrEqual(100);
-    expect(plain(result)).toContain("💻 Code");
+    expect(plain(result)).toContain("💻 code");
     expect(plain(result)).toContain("TypeError");
     expect(result).toContain(ANSI.red);
     expect(plain(result)).not.toContain("return value;");
@@ -302,7 +303,7 @@ describe("Code Mode activity display", () => {
         false,
       ),
     );
-    expect(result).toContain("💻 Code");
+    expect(result).toContain("💻 code");
     expect(result).toContain("waiting");
     expect(result).not.toContain("doNotRepeat");
   });
