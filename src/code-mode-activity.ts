@@ -55,6 +55,7 @@ export function codeModeDisplay(
     kind: "exec",
     state: "running",
     code: conflict ? undefined : (commandAlias ?? codeAlias),
+    ...(event.toolInputKind ? { inputKind: event.toolInputKind } : {}),
     title:
       typeof event.params.title === "string" ? event.params.title : undefined,
     ...(conflict

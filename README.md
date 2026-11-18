@@ -70,10 +70,14 @@ can reduce previews further. A bounded error summary for the latest visible
 failed Code cell remains when its source is collapsed. Normal history and entry
 limits still apply.
 
-Single-line source wraps at 90 Unicode code points per preview row, including
-invalid JavaScript. This is display-only wrapping and can split a token or string;
-the original source and execution are unchanged. Multiline source keeps its
-indentation and line breaks, with tabs rendered as two spaces. The existing visible-text sanitizer strips control sequences and replaces
+Single-line source up to 8,000 UTF-16 code units is formatted for display with
+`prettier/standalone` (`babel` / `babel-ts`, `printWidth: 90`, `tabWidth: 2`)
+before applying the six-row and 90-code-point preview bounds; the original source
+and execution are unchanged. If single-line source cannot be parsed (such as a
+`SyntaxError` in a failed cell) or exceeds the formatting guard, the original
+single-line text is shown directly without hard-wrapping tokens across rows.
+Multiline source keeps its indentation and line breaks, with tabs rendered as two
+spaces. The existing visible-text sanitizer strips control sequences and replaces
 backticks to keep the Discord ANSI fence intact; previews are for inspection,
 not an exact source-copy interface. A missing title leaves the header as `Code`.
 Waiting cells do not receive a success check, and an unrecognized outcome is

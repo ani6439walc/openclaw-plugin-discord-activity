@@ -3893,5 +3893,92 @@ describe("createHookHandlers", () => {
       );
       expect(session.toolHistory[0].codeMode?.state).toBe("completed");
     });
+    it("formats single-line Code Mode source with Prettier while preserving raw params and code", async () => {
+      const session = await inbound();
+      const rawCode =
+        "const r=await sessions_search({query:'clawhub-publishing',limit:5});for(const m of r.results??[])text({snippet:m.snippet,sessionKey:m.sessionKey});";
+      const oneLineCell = {
+        ...cell,
+        params: {
+          title: "Check existing source",
+          code: rawCode,
+          command: rawCode,
+        },
+      };
+      await handlers.onBeforeToolCall(oneLineCell, context);
+      await handlers.onAfterToolCall(
+        {
+          ...oneLineCell,
+          result: { details: { status: "completed", value: null } },
+        },
+        context,
+      );
+      expect(oneLineCell.params.code).toBe(rawCode);
+      expect(session.toolHistory[0].codeMode?.code).toBe(rawCode);
+      const rendered = stripAnsi(session.lastRenderedContent!);
+      expect(rendered).toContain(
+        '│ const r = await sessions_search({ query: "clawhub-publishing", limit: 5 });',
+      );
+      expect(rendered).toContain(
+        "╰ for (const m of r.results ?? []) text({ snippet: m.snippet, sessionKey: m.sessionKey });",
+      );
+    });
+    it("falls back to original single-line code on SyntaxError without throwing", async () => {
+      const session = await inbound();
+      const brokenCode = 'const value = "a;b";'.repeat(7) + "await broken({";
+      const brokenCell = {
+        ...cell,
+        params: {
+          title: "Broken source",
+          code: brokenCode,
+          command: brokenCode,
+        },
+      };
+      await handlers.onBeforeToolCall(brokenCell, context);
+      await handlers.onAfterToolCall(
+        {
+          ...brokenCell,
+          result: {
+            details: {
+              status: "failed",
+              error: "SyntaxError: Unexpected token",
+            },
+          },
+        },
+        context,
+      );
+      const rendered = stripAnsi(session.lastRenderedContent!);
+      const rows = rendered
+        .split("\n")
+        .filter((line) => /^    [│╰] /u.test(line));
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toBe(`    │ ${[...brokenCode].slice(0, 89).join("")}…`);
+      expect(rows[1]).toBe("    ╰ SyntaxError: Unexpected token");
+    });
+    it("preserves leading blank lines and indentation without Prettier reformatting", async () => {
+      const session = await inbound();
+      const leadingBlankCode = "\n  const x=1;return x;";
+      const leadingBlankCell = {
+        ...cell,
+        params: {
+          title: "Leading blank",
+          code: leadingBlankCode,
+          command: leadingBlankCode,
+        },
+      };
+      await handlers.onBeforeToolCall(leadingBlankCell, context);
+      await handlers.onAfterToolCall(
+        {
+          ...leadingBlankCell,
+          result: { details: { status: "completed", value: 1 } },
+        },
+        context,
+      );
+      const rendered = stripAnsi(session.lastRenderedContent!);
+      const rows = rendered
+        .split("\n")
+        .filter((line) => /^    [│╰] /u.test(line));
+      expect(rows).toEqual(["    │ ", "    ╰   const x=1;return x;"]);
+    });
   });
 });
