@@ -21,8 +21,8 @@ let prettierBundlePromise: Promise<PrettierBundle> | undefined;
 
 function isFormattableSingleLine(code: string): boolean {
   if (code.length > MAX_SINGLE_LINE_FORMAT_LENGTH) return false;
-  const trimmed = code.trim();
-  return Boolean(trimmed) && !/[\r\n\u2028\u2029]/u.test(trimmed);
+  const trimmedEnd = code.trimEnd();
+  return Boolean(trimmedEnd.trim()) && !/[\r\n\u2028\u2029]/u.test(trimmedEnd);
 }
 
 function loadPrettierBundle(): Promise<PrettierBundle> {

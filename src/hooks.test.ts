@@ -3955,5 +3955,30 @@ describe("createHookHandlers", () => {
       expect(rows[0]).toBe(`    │ ${[...brokenCode].slice(0, 89).join("")}…`);
       expect(rows[1]).toBe("    ╰ SyntaxError: Unexpected token");
     });
+    it("preserves leading blank lines and indentation without Prettier reformatting", async () => {
+      const session = await inbound();
+      const leadingBlankCode = "\n  const x=1;return x;";
+      const leadingBlankCell = {
+        ...cell,
+        params: {
+          title: "Leading blank",
+          code: leadingBlankCode,
+          command: leadingBlankCode,
+        },
+      };
+      await handlers.onBeforeToolCall(leadingBlankCell, context);
+      await handlers.onAfterToolCall(
+        {
+          ...leadingBlankCell,
+          result: { details: { status: "completed", value: 1 } },
+        },
+        context,
+      );
+      const rendered = stripAnsi(session.lastRenderedContent!);
+      const rows = rendered
+        .split("\n")
+        .filter((line) => /^    [│╰] /u.test(line));
+      expect(rows).toEqual(["    │ ", "    ╰   const x=1;return x;"]);
+    });
   });
 });

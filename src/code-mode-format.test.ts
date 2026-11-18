@@ -34,6 +34,12 @@ describe("formatCodeModePreviewSource", () => {
     expect(formatted).toBe(code);
   });
 
+  it("preserves leading blank lines and indentation as authored multiline source", async () => {
+    const code = "\n  const x=1;return x;";
+    const formatted = await formatCodeModePreviewSource(code);
+    expect(formatted).toBe(code);
+  });
+
   it("falls back to original code when single-line JavaScript has a SyntaxError", async () => {
     const code = 'const value = "a;b";'.repeat(7) + "await broken({";
     const formatted = await formatCodeModePreviewSource(code);
