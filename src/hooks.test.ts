@@ -3804,7 +3804,7 @@ describe("createHookHandlers", () => {
       expect(session.toolHistory[0].codeMode?.state).toBe("failed");
       expect(session.toolHistory[1].status).toBe("completed");
       expect(stripAnsi(session.lastRenderedContent!)).toContain(
-        "💻 Code · Inspect",
+        "💻 code · Inspect",
       );
       expect(session.lastRenderedContent).toContain(
         "\u001b[31mTypeError: broken",

@@ -869,7 +869,7 @@ function createCodeModeEntryBlock(t: ToolEntry): StatusBlock {
   const title = display.title?.trim()
     ? formatExpandedTitle(sanitizeHeaderToken(display.title.trim()), 90)
     : undefined;
-  const name = `Code${title ? ` · ${title}` : ""}`;
+  const name = `code${title ? ` · ${title}` : ""}`;
   const error =
     display.state === "failed" ? (display.error ?? t.error) : undefined;
   const errorSummary = error
@@ -911,7 +911,7 @@ function createCodeModeEntryBlock(t: ToolEntry): StatusBlock {
             : ANSI.yellow,
       durationMs: t.durationMs,
       disclosure: true,
-      collapsedName: `Code${title ? ` · ${formatCollapsedTitle(title)}` : ""}`,
+      collapsedName: `code${title ? ` · ${formatCollapsedTitle(title)}` : ""}`,
     },
     children: [],
     bodyLines,
@@ -1224,8 +1224,8 @@ function renderBoundedStatus(
     // Spend the last available bytes on the error, not title, time or source.
     latestCodeFailure.header = {
       ...latestCodeFailure.header,
-      name: "Code",
-      collapsedName: "Code",
+      name: "code",
+      collapsedName: "code",
       disclosure: false,
       durationMs: undefined,
     };
