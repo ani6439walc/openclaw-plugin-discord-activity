@@ -7,6 +7,13 @@ export function getToolIcon(name: string): string {
   if (n.includes("__")) return "🔗";
 
   // Web & Communication
+  if (
+    canonicalToolNameForDedupe(name) === "deep_research" ||
+    n === "deep-research" ||
+    n.endsWith(":deep_research")
+  ) {
+    return "🔭";
+  }
   if (n.includes("browser")) return "🌎";
   if (
     n.includes("web_search") ||
