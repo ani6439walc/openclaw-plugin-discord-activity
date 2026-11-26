@@ -131,16 +131,6 @@ function formatPhaseStatus(data: Record<string, unknown>): string {
     return `search · ${count} ${unit}${confBadge}${clue}`;
   }
 
-  if (phase === "experience-search") {
-    if (count === 0) {
-      return "experience · 0 candidates";
-    }
-    const unit = count === 1 ? "candidate" : "candidates";
-    const clueStr = cleanClue(data.reason) ?? cleanClue(data.result);
-    const clue = clueStr ? ` (${clueStr})` : "";
-    return `experience · ${count} ${unit}${confBadge}${clue}`;
-  }
-
   if (phase === "rerank") {
     if (count === 0) {
       return "rerank · 0 candidates";

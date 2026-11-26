@@ -3545,6 +3545,40 @@ describe("createHookHandlers", () => {
       expect(entry?.status).toBe("completed");
     });
 
+    it("ignores retired experience events before and during skill selection", async () => {
+      const fetchMock = createDiscordFetchMock();
+      const sessionKey = "agent:main:discord:direct:123";
+      await handlers.onMessageReceived(
+        { messageId: "user_msg_1", metadata: { to: "user:123" } },
+        { channelId: "discord", sessionKey, accountId: "default" },
+      );
+      const session = store.sessions.get("discord:direct:123")!;
+      const event = (phase: string, state: string) => ({
+        stream: "plugin:skill-harness",
+        runId: "run-1",
+        sessionKey,
+        data: { kind: "skill-harness.pipeline", phase, state },
+      });
+
+      await handlers.onSkillHarnessPipelineEvent(
+        event("experience-search", "completed"),
+      );
+      expect(session.toolHistory).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      await handlers.onSkillHarnessPipelineEvent(event("pipeline", "started"));
+      const entry = session.toolHistory[0];
+      expect(entry.params.status).toBe("selecting skills");
+      fetchMock.mockClear();
+
+      await handlers.onSkillHarnessPipelineEvent(
+        event(" experience-search ", "failed"),
+      );
+      expect(session.toolHistory[0]).toBe(entry);
+      expect(entry.activityErrors).toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("ignores malformed skill-harness pipeline events", async () => {
       const fetchMock = createDiscordFetchMock();
 

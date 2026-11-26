@@ -135,46 +135,18 @@ describe("skill-harness status lifecycle", () => {
       );
     });
 
-    it("formats experience-search with candidate, confidence, and clue", () => {
-      const event = makePipelineEvent("experience-search", "completed", {
-        candidateCount: 1,
-        confidence: 0.57,
-        reason: ["#1 hindsight-docs"],
-        result: ["hindsight-docs"],
-      });
-      const updated = updateSkillHarnessEntry(undefined, event, 1_300);
-
-      expect(updated?.params.status).toBe(
-        "experience · 1 candidate (.57) (#1 hindsight-docs)",
-      );
-    });
-
-    it("formats experience-search with RRF score normalized to uppercase RRF: format", () => {
-      const event = makePipelineEvent("experience-search", "completed", {
-        candidateCount: 1,
-        confidence: 0.55,
-        reason: "#1 openclaw-runtime-config-introspection · RRF 0.0367",
-        result: [],
-      });
-      const updated = updateSkillHarnessEntry(undefined, event, 1_300);
-
-      expect(updated?.params.status).toBe(
-        "experience · 1 candidate (.55) (#1 openclaw-runtime-config-introspection, RRF: 0.0367)",
-      );
-    });
-
     it("formats rerank with candidates, confidence, and sources", () => {
       const event = makePipelineEvent("rerank", "completed", {
         candidateCount: 2,
         confidence: 0.92,
-        reason: ["search", "experience"],
+        reason: ["search", "name-match"],
         result: ["handoff", "hindsight-docs"],
         selectedSkills: ["handoff", "hindsight-docs"],
       });
       const updated = updateSkillHarnessEntry(undefined, event, 1_400);
 
       expect(updated?.params.status).toBe(
-        "rerank · 2 candidates (.92) (search, experience)",
+        "rerank · 2 candidates (.92) (search, name-match)",
       );
     });
   });
