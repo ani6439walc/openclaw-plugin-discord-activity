@@ -153,7 +153,6 @@ describe("tool icon categories", () => {
     ["sessions_send", "🛸"],
     ["sessions_spawn", "💬"],
     ["sessions_yield", "🏁"],
-    ["skill_experience", "🎯"],
     ["skill_list", "🛒"],
     ["skill_search", "🪃"],
     ["skill_view", "🔧"],

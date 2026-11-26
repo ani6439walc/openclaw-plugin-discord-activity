@@ -25,7 +25,7 @@ function createReviewEvents(parentSessionKey: string) {
     toolCallId,
     runId,
     params: {
-      path: "/tmp/skill-harness-review-experiences-test/experiences/private/body.md",
+      path: "/tmp/skill-harness-review-test/skills/private/SKILL.md",
     },
   };
   return {

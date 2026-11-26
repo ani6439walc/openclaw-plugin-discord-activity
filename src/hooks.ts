@@ -1236,6 +1236,12 @@ export function createHookHandlers(deps: HookDeps) {
   }
 
   async function onSkillHarnessPipelineEvent(event: AgentPipelineEvent) {
+    if (
+      typeof event.data?.phase === "string" &&
+      event.data.phase.trim() === "experience-search"
+    )
+      return;
+
     const observedAtMs = Date.now();
     const sessionKey = getSkillHarnessPipelineSessionKey(event);
     if (
